@@ -167,6 +167,17 @@ EdgeCollapse QEMSimplifier::computeCollapse(int v1, int v2) const {
     return ec;
 }
 
+// ─── Marcação de vértices de boundary (para BoundaryMode::LockSeamVertices) ──
+
+void QEMSimplifier::markBoundaryVertices() {
+    boundaryVertex.assign(vertices.size(), false);
+    for (const auto& e : classifyEdges()) {
+        if (!e.boundary) continue;
+        boundaryVertex[e.v1] = true;
+        boundaryVertex[e.v2] = true;
+    }
+}
+
 // ─── Adjacência ──────────────────────────────────────────────────────────────
 
 void QEMSimplifier::buildAdjacency() {
@@ -196,6 +207,7 @@ void QEMSimplifier::rebuildQueue(
         for (int i = 0; i < 3; i++) {
             int a = fc.v[i], b = fc.v[(i+1)%3];
             canonicalize(a, b);
+            if (edgeLocked(a, b)) continue;
             auto key = std::make_pair(a, b);
             if (edgeMap.count(key)) continue;
             EdgeCollapse ec = computeCollapse(a, b);
@@ -317,7 +329,9 @@ void QEMSimplifier::simplify(int targetFaces, double threshold) {
 #endif
 
     computeQ();
-    if (useBoundaryConstraints) addBoundaryConstraints();
+    lockSeamEdges = (boundaryMode == BoundaryMode::LockSeamVertices);
+    if (boundaryMode == BoundaryMode::Constraint) addBoundaryConstraints();
+    if (lockSeamEdges) markBoundaryVertices();
     buildAdjacency();
 
     using PQ = std::priority_queue<EdgeCollapse,
@@ -346,6 +360,7 @@ void QEMSimplifier::simplify(int targetFaces, double threshold) {
                 if ((vertices[i].pos - vertices[j].pos).squaredNorm() > t2) continue;
                 int a = i, b = j;
                 canonicalize(a, b);
+                if (edgeLocked(a, b)) continue;
                 auto key = std::make_pair(a, b);
                 if (!edgeMap.count(key)) {
                     EdgeCollapse ec = computeCollapse(a, b);
@@ -388,6 +403,7 @@ void QEMSimplifier::simplify(int targetFaces, double threshold) {
                         if (j == i) continue;
                         int p = keep, q = fc.v[j];
                         canonicalize(p, q);
+                        if (edgeLocked(p, q)) continue;
                         auto ekey = std::make_pair(p, q);
                         invalidEdges.erase(ekey);
 

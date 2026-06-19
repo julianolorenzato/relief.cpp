@@ -244,19 +244,28 @@ void GLWidget::updateEdgeOverlay() {
 
     auto edges = mesh->classifyEdges();
 
+    auto appendEdge = [](std::vector<float>& out, const Eigen::Vector3d& p0, const Eigen::Vector3d& p1, const float* c) {
+        out.push_back((float)p0.x()); out.push_back((float)p0.y()); out.push_back((float)p0.z());
+        out.push_back(c[0]); out.push_back(c[1]); out.push_back(c[2]);
+
+        out.push_back((float)p1.x()); out.push_back((float)p1.y()); out.push_back((float)p1.z());
+        out.push_back(c[0]); out.push_back(c[1]); out.push_back(c[2]);
+    };
+
+    // Arestas de boundary primeiro, internas depois, para permitir desenhar
+    // cada grupo independentemente conforme os checkboxes.
     std::vector<float> lineVerts;
     lineVerts.reserve(edges.size() * 2 * 6);
 
     for (const auto& e : edges) {
-        const auto& p0 = mesh->vertices[e.v1].pos;
-        const auto& p1 = mesh->vertices[e.v2].pos;
-        const float* c = e.boundary ? kBoundaryColor : kInternalColor;
+        if (!e.boundary) continue;
+        appendEdge(lineVerts, mesh->vertices[e.v1].pos, mesh->vertices[e.v2].pos, kBoundaryColor);
+    }
+    boundaryEdgeVertexCount = (int)(lineVerts.size() / 6);
 
-        lineVerts.push_back((float)p0.x()); lineVerts.push_back((float)p0.y()); lineVerts.push_back((float)p0.z());
-        lineVerts.push_back(c[0]); lineVerts.push_back(c[1]); lineVerts.push_back(c[2]);
-
-        lineVerts.push_back((float)p1.x()); lineVerts.push_back((float)p1.y()); lineVerts.push_back((float)p1.z());
-        lineVerts.push_back(c[0]); lineVerts.push_back(c[1]); lineVerts.push_back(c[2]);
+    for (const auto& e : edges) {
+        if (e.boundary) continue;
+        appendEdge(lineVerts, mesh->vertices[e.v1].pos, mesh->vertices[e.v2].pos, kInternalColor);
     }
 
     edgeVertexCount = (int)(lineVerts.size() / 6);
@@ -337,8 +346,13 @@ void GLWidget::setWireframe(bool enabled) {
     update();
 }
 
-void GLWidget::setShowEdgeClassification(bool enabled) {
-    showEdgeClassification = enabled;
+void GLWidget::setShowBoundaryEdges(bool enabled) {
+    showBoundaryEdges = enabled;
+    update();
+}
+
+void GLWidget::setShowInternalEdges(bool enabled) {
+    showInternalEdges = enabled;
     update();
 }
 
@@ -547,7 +561,7 @@ void GLWidget::paintGL() {
     if (useTexture) glBindTexture(GL_TEXTURE_2D, 0);
     shaderProgram.release();
 
-    if (showEdgeClassification && edgeVao.isCreated() && edgeVertexCount > 0) {
+    if ((showBoundaryEdges || showInternalEdges) && edgeVao.isCreated() && edgeVertexCount > 0) {
         edgeShaderProgram.bind();
         edgeShaderProgram.setUniformValue("projection", QMatrix4x4(glm::value_ptr(projection)).transposed());
         edgeShaderProgram.setUniformValue("view", QMatrix4x4(glm::value_ptr(view)).transposed());
@@ -556,7 +570,12 @@ void GLWidget::paintGL() {
         glDepthFunc(GL_LEQUAL);
         glLineWidth(1.5f);
         edgeVao.bind();
-        glDrawArrays(GL_LINES, 0, edgeVertexCount);
+        if (showBoundaryEdges && boundaryEdgeVertexCount > 0) {
+            glDrawArrays(GL_LINES, 0, boundaryEdgeVertexCount);
+        }
+        if (showInternalEdges && edgeVertexCount > boundaryEdgeVertexCount) {
+            glDrawArrays(GL_LINES, boundaryEdgeVertexCount, edgeVertexCount - boundaryEdgeVertexCount);
+        }
         edgeVao.release();
         edgeShaderProgram.release();
         glDepthFunc(GL_LESS);

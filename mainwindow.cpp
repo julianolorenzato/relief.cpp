@@ -134,14 +134,23 @@ QWidget* MainWindow::buildSimplifierTab() {
     connect(uvViewCheck, &QCheckBox::toggled, glWidgetSimplified, &GLWidget::setUVMode);
     controlsLayout->addWidget(uvViewCheck);
 
-    boundaryConstraintCheck = new QCheckBox("Boundary Constraints");
-    boundaryConstraintCheck->setChecked(true);
-    controlsLayout->addWidget(boundaryConstraintCheck);
+    controlsLayout->addWidget(new QLabel("Boundary:"));
+    boundaryModeCombo = new QComboBox();
+    boundaryModeCombo->addItem("No constraint",                (int)BoundaryMode::None);
+    boundaryModeCombo->addItem("Boundary constraint",          (int)BoundaryMode::Constraint);
+    boundaryModeCombo->addItem("Lock seam edges",               (int)BoundaryMode::LockSeamVertices);
+    boundaryModeCombo->setCurrentIndex(1);
+    controlsLayout->addWidget(boundaryModeCombo);
 
-    edgeClassificationCheck = new QCheckBox("Show Edge Classification");
-    connect(edgeClassificationCheck, &QCheckBox::toggled, glWidgetOriginal,   &GLWidget::setShowEdgeClassification);
-    connect(edgeClassificationCheck, &QCheckBox::toggled, glWidgetSimplified, &GLWidget::setShowEdgeClassification);
-    controlsLayout->addWidget(edgeClassificationCheck);
+    showBoundaryEdgesCheck = new QCheckBox("Show Boundary Edges");
+    connect(showBoundaryEdgesCheck, &QCheckBox::toggled, glWidgetOriginal,   &GLWidget::setShowBoundaryEdges);
+    connect(showBoundaryEdgesCheck, &QCheckBox::toggled, glWidgetSimplified, &GLWidget::setShowBoundaryEdges);
+    controlsLayout->addWidget(showBoundaryEdgesCheck);
+
+    showInternalEdgesCheck = new QCheckBox("Show Internal Edges");
+    connect(showInternalEdgesCheck, &QCheckBox::toggled, glWidgetOriginal,   &GLWidget::setShowInternalEdges);
+    connect(showInternalEdgesCheck, &QCheckBox::toggled, glWidgetSimplified, &GLWidget::setShowInternalEdges);
+    controlsLayout->addWidget(showInternalEdgesCheck);
 
     controlsGroup->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
     layout->addWidget(controlsGroup);
@@ -807,7 +816,7 @@ void MainWindow::onSimplify() {
 
     int targetFaces = targetFacesSpinBox->value();
     *simplifiedMesh = *originalMesh;
-    simplifiedMesh->useBoundaryConstraints = boundaryConstraintCheck->isChecked();
+    simplifiedMesh->boundaryMode = (BoundaryMode)boundaryModeCombo->currentData().toInt();
 
     statusLabel->setText("Simplifying...");
     statusBar()->repaint();

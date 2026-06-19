@@ -97,8 +97,9 @@ private:
     QCheckBox* cullFaceCheck           = nullptr;
     QCheckBox* texturedCheck           = nullptr;
     QCheckBox* uvViewCheck             = nullptr;
-    QCheckBox* boundaryConstraintCheck = nullptr;
-    QCheckBox* edgeClassificationCheck = nullptr;
+    QComboBox* boundaryModeCombo       = nullptr;
+    QCheckBox* showBoundaryEdgesCheck  = nullptr;
+    QCheckBox* showInternalEdgesCheck  = nullptr;
 
     QSlider*        inflateSlider = nullptr;
     QDoubleSpinBox* inflateSpin   = nullptr;

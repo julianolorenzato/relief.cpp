@@ -38,7 +38,8 @@ public slots:
     void setCullFace(bool enabled);
     void setTextured(bool enabled);
     void setUVMode(bool enabled);
-    void setShowEdgeClassification(bool enabled);
+    void setShowBoundaryEdges(bool enabled);
+    void setShowInternalEdges(bool enabled);
 
 signals:
     void cameraChanged(float rotX, float rotY, float z);
@@ -71,7 +72,8 @@ private:
     bool cullFace  = true;
     bool textured  = false;
     bool uvMode    = false;
-    bool showEdgeClassification = false;
+    bool showBoundaryEdges = false;
+    bool showInternalEdges = false;
 
     GLuint textureId = 0;
     void uploadTexture(const QEMSimplifier* m);
@@ -93,6 +95,9 @@ private:
     QOpenGLVertexArrayObject edgeVao;
     QOpenGLShaderProgram edgeShaderProgram;
     int edgeVertexCount = 0;
+    // edgeVbo armazena arestas de boundary primeiro, depois internas; este é o
+    // índice (em vértices) onde a parte interna começa.
+    int boundaryEdgeVertexCount = 0;
     void createEdgeShaderProgram();
     void updateEdgeOverlay();
 

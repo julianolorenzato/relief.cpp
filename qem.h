@@ -67,12 +67,18 @@ struct EdgeCollapse {
 
 // ─── Algoritmo QEM ───────────────────────────────────────────────────────────
 
+enum class BoundaryMode {
+    None,             // nenhuma restrição de boundary/seam
+    Constraint,        // penalidade suave (quadrica de plano perpendicular)
+    LockSeamVertices    // trava: nunca colapsa aresta com vértice de boundary
+};
+
 class QEMSimplifier {
 public:
     std::vector<Vertex> vertices;
     std::vector<Face>   faces;
 
-    bool useBoundaryConstraints = true;
+    BoundaryMode boundaryMode = BoundaryMode::Constraint;
 
     bool loadOBJ(const std::string& path);
     bool saveOBJ(const std::string& path) const;
@@ -112,4 +118,13 @@ private:
     std::vector<std::set<int>> adjacency;
     void buildAdjacency();
     void addBoundaryConstraints(double weight = 1000.0);
+
+    // Usado quando boundaryMode == LockSeamVertices: nenhuma aresta com
+    // endpoint marcado aqui pode ser candidata a colapso.
+    bool lockSeamEdges = false;
+    std::vector<bool> boundaryVertex;
+    void markBoundaryVertices();
+    bool edgeLocked(int a, int b) const {
+        return lockSeamEdges && (boundaryVertex[a] || boundaryVertex[b]);
+    }
 };
