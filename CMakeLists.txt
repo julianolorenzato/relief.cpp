@@ -68,7 +68,14 @@ add_executable(qem_gui
     qem.cpp
     qem_gltf.cpp
     glwidget.cpp
+    overlayglwidget.cpp
+    reliefglwidget.cpp
     mainwindow.cpp
+    heightmap.cpp
+    heightmap_worker.cpp
+    uv_atlas.cpp
+    texture_prep.cpp
+    texture_prep_worker.cpp
 )
 
 target_link_libraries(qem_gui

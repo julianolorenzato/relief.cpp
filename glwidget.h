@@ -10,6 +10,7 @@
 #include <vector>
 #include <glm/glm.hpp>
 #include "qem.h"
+#include "texture_prep.h"
 
 class GLWidget : public QOpenGLWidget, protected QOpenGLFunctions_3_3_Core {
     Q_OBJECT
@@ -20,6 +21,11 @@ public:
 
     // Define a malha a renderizar
     void setMesh(const QEMSimplifier* mesh);
+    // Atualiza buffers GL sem resetar câmera (para inflate/deflate em tempo real)
+    void updateMeshData();
+    // Substitui a textura da malha (ex.: Color Map gerado em Textures Preparation)
+    // por um mip pyramid já carregado em memória, e liga a textura automaticamente.
+    void setColorTexture(const MipPyramid& pyr);
 
     // Resetar câmera
     void resetCamera();
@@ -32,6 +38,7 @@ public slots:
     void setCullFace(bool enabled);
     void setTextured(bool enabled);
     void setUVMode(bool enabled);
+    void setShowEdgeClassification(bool enabled);
 
 signals:
     void cameraChanged(float rotX, float rotY, float z);
@@ -64,6 +71,7 @@ private:
     bool cullFace  = true;
     bool textured  = false;
     bool uvMode    = false;
+    bool showEdgeClassification = false;
 
     GLuint textureId = 0;
     void uploadTexture(const QEMSimplifier* m);
@@ -79,6 +87,14 @@ private:
     QOpenGLShaderProgram shaderProgram;
     void createShaderProgram();
     void updateMeshBuffers();
+
+    // Overlay de classificação de aresta (boundary vs interna)
+    QOpenGLBuffer edgeVbo{QOpenGLBuffer::VertexBuffer};
+    QOpenGLVertexArrayObject edgeVao;
+    QOpenGLShaderProgram edgeShaderProgram;
+    int edgeVertexCount = 0;
+    void createEdgeShaderProgram();
+    void updateEdgeOverlay();
 
     // UV view
     QOpenGLVertexArrayObject uvVao;

@@ -1,0 +1,497 @@
+#pragma once
+
+#define SKIP_MIPS -3
+#define eps 1e-5
+
+// Here, AABB means axis aligned bounding box
+// Calculates intersection of the ray with the bounding box
+// Assumes ray is inside of it
+float3 BoxIntersect(float3 ray_offset, float3 ray_direction, float3 inverse_direction, float3 aabbMin, float3 aabbMax)
+{
+    float3 t0 = (aabbMin - ray_offset) * inverse_direction;
+    float3 t1 = (aabbMax - ray_offset) * inverse_direction;
+
+    float3 tmax = max(t0, t1);
+
+    float t = min(tmax.x, min(tmax.y, tmax.z));
+
+    return clamp(ray_offset + t * ray_direction, aabbMin, aabbMax);
+}
+
+float4 SampleDepthMip(float2 UV, float mip_level, Texture2D<float4> Relief_Map, SamplerState Relief_MapSampler, bool Filter0, SamplerState Linear_Repeat_Sampler)
+{
+    bool Use_Linear = (Filter0) && (mip_level == 0.0f);
+    float4 Depth;
+
+    if (Use_Linear)
+        Depth = Relief_Map.SampleLevel(Linear_Repeat_Sampler, UV, mip_level);
+    else
+        Depth = Relief_Map.SampleLevel(Relief_MapSampler, UV, mip_level);
+
+    return (Depth);
+}
+
+void PerformIslandLeap(
+    float4 OffsetData,
+    inout float3 tangent_direction,
+    inout float3 Current_Position,
+    inout float3 invDir,
+    inout float2 leaping_point,
+    inout float2 landing_point,
+    inout bool jumped,
+    inout int numLeaps)
+{
+    // if(!jumped)
+    //{
+    float RotationAngle = OffsetData.z * 6.28319;
+
+    leaping_point = Current_Position.xy;
+
+    float3x3 RotationMatrix =
+        {
+            cos(RotationAngle), -sin(RotationAngle), 0,
+            sin(RotationAngle), cos(RotationAngle), 0,
+            0, 0, 1
+        };
+
+    tangent_direction = mul(tangent_direction, RotationMatrix);
+
+    Current_Position.xy += OffsetData.xy;
+
+    invDir = 1.0f / tangent_direction;
+
+    landing_point = Current_Position.xy;
+
+    jumped = true;
+
+    numLeaps += 1;
+    //}
+}
+
+void Island_leap_V3(
+    Texture2D<float4> Offset_Map,
+    SamplerState Offset_MapSampler,
+    Texture2D<float4> Depth_Map,
+    SamplerState Depth_MapSampler,
+    float4 DepthData,
+    inout float3 tangent_direction,
+    inout float3 Current_Position,
+    inout float3 invDir,
+    inout float2 leaping_point,
+    inout float2 landing_point,
+    inout bool jumped,
+    inout int OffsetMapTextureSamples,
+    inout int DiscriminantDepthTextureSamples,
+    inout int numLeaps)
+{
+    if (abs(DepthData.w) > 0.0f)
+    {
+        float4 DepthDiscriminant = Depth_Map.SampleLevel(Depth_MapSampler, Current_Position.xy, 0.0f);
+        DiscriminantDepthTextureSamples += 1;
+
+        if (DepthDiscriminant.w != 0.0f)
+        {
+            float4 OffsetData = Offset_Map.SampleLevel(Offset_MapSampler, Current_Position.xy, 0.0f);
+
+            OffsetMapTextureSamples += 1;
+
+            PerformIslandLeap(OffsetData, tangent_direction, Current_Position, invDir, leaping_point, landing_point, jumped, numLeaps);
+        }
+        else
+        {
+            jumped = false;
+        }
+    }
+}
+
+void Island_leap_V2(
+    Texture2D<float4> Offset_Map,
+    SamplerState Offset_MapSampler,
+    float4 DepthData,
+    inout float3 tangent_direction,
+    inout float3 Current_Position,
+    inout float3 invDir,
+    inout float2 leaping_point,
+    inout float2 landing_point,
+    inout bool jumped,
+    inout int OffsetMapTextureSamples,
+    inout int numLeaps)
+{
+    if (abs(DepthData.w) > 0.0f)
+    {
+        float4 OffsetData = Offset_Map.SampleLevel(Offset_MapSampler, Current_Position.xy, 0.0f);
+
+        OffsetMapTextureSamples += 1;
+
+        if (OffsetData.w > 0.0f)
+        {
+            PerformIslandLeap(OffsetData, tangent_direction, Current_Position, invDir, leaping_point, landing_point, jumped, numLeaps);
+        }
+        else
+        {
+            jumped = false;
+        }
+    }
+}
+
+void Island_leap_V1(
+    Texture2D<float4> Offset_Map,
+    SamplerState Offset_MapSampler,
+    inout float3 tangent_direction,
+    inout float3 Current_Position,
+    inout float3 invDir,
+    inout float2 leaping_point,
+    inout float2 landing_point,
+    inout bool jumped,
+    inout int OffsetMapTextureSamples,
+    inout int numLeaps)
+{
+    float4 OffsetData = Offset_Map.SampleLevel(Offset_MapSampler, Current_Position.xy, 0.0f);
+
+    OffsetMapTextureSamples += 1;
+
+    if (OffsetData.w > 0.0f)
+    {
+        PerformIslandLeap(OffsetData, tangent_direction, Current_Position, invDir, leaping_point, landing_point, jumped, numLeaps);
+    }
+    else
+    {
+        jumped = false;
+    }
+}
+
+float3 Mip_Relief(
+    float3 Tangent_Direction,
+    float2 UV,
+    float LastMip,
+    int maxSteps,
+    int OffsetMapSamplingVersion,
+    bool Filter0,
+    bool UseAtlas,
+    Texture2D<float4> Relief_Map,
+    SamplerState Relief_MapSampler,
+    Texture2D<float4> Offset_Map,
+    SamplerState Offset_MapSampler,
+    SamplerState Linear_Repeat_Sampler,
+    out float3 New_Tangent,
+    out int leapCounter,
+    out int steps,
+    out int DepthTextureSamples,
+    out int DiscriminantDepthTextureSamples,
+    out int OffsetMapTextureSamples)
+{
+    float StartMip = 0;
+    float pixelSize = pow(2, -LastMip);
+    float mip = StartMip;
+
+    float3 pos = float3(UV, 0);
+    float3 Starting_Point = pos;
+    float3 invDir = 1.0 / Tangent_Direction;
+
+    float2 leapingPoint = float2(0.0f, 0.0f);
+    float2 landingPoint = float2(0.0f, 0.0f);
+
+    bool jumped = false;
+
+    int WallCount = 0;
+    int numLeaps = 0;
+    int DepthTextureSamplesLocal = 0;
+    int DiscriminantDepthTextureSamplesLocal = 0;
+    int OffsetMapTextureSamplesLocal = 0;
+
+    [loop]
+    for (steps = 0; steps < maxSteps; steps++)
+    {
+        float4 Depth = -SampleDepthMip(pos.xy, mip, Relief_Map, Relief_MapSampler, Filter0, Linear_Repeat_Sampler);
+        DepthTextureSamplesLocal += 1;
+        bool SkipIter;
+        bool jumpedBuffer = jumped;
+
+        if (UseAtlas)
+        {
+            [flatten]
+            switch (OffsetMapSamplingVersion)
+            {
+            case 1:
+                Island_leap_V1(Offset_Map, Offset_MapSampler, Tangent_Direction, pos, invDir, leapingPoint, landingPoint, jumped, OffsetMapTextureSamplesLocal, numLeaps);
+                break;
+            case 2:
+                Island_leap_V2(Offset_Map, Offset_MapSampler, Depth, Tangent_Direction, pos, invDir, leapingPoint, landingPoint, jumped, OffsetMapTextureSamplesLocal, numLeaps);
+                break;
+            case 3:
+                Island_leap_V3(Offset_Map, Offset_MapSampler, Relief_Map, Relief_MapSampler, Depth, Tangent_Direction, pos, invDir, leapingPoint, landingPoint, jumped, OffsetMapTextureSamplesLocal, DiscriminantDepthTextureSamplesLocal, numLeaps);
+                break;
+            }
+        }
+
+        const float3 aabbMin = float3(floor(pos.xy / pixelSize) * pixelSize - eps, Depth.y);
+        const float3 aabbMax = float3(aabbMin.xy + pixelSize + 2 * eps, 0);
+
+        // if not inside surface, interset box
+        if (pos.z > Depth.y + eps)
+            pos = BoxIntersect(pos, Tangent_Direction, invDir, aabbMin, aabbMax);
+
+        // if surface hit (box ceiling)
+        if (pos.z < Depth.y + eps)
+        {
+            // if max surface depth hit, return even at higher mips
+            if (Depth.x == Depth.y)
+                break;
+
+            // move to lower mip level (finer image)
+            mip -= 1.0;
+            pixelSize *= 0.5;
+            WallCount = 0;
+        }
+        else
+        {
+            // if crossed 3 or more walls,
+            // move to higher mip level (coarser image)
+            WallCount++;
+            if (WallCount >= 3)
+            {
+                mip += 1;
+                pixelSize *= 2;
+            }
+        }
+    }
+
+    New_Tangent = Tangent_Direction;
+    leapCounter = numLeaps;
+
+    DepthTextureSamples = DepthTextureSamplesLocal;
+    DiscriminantDepthTextureSamples = DiscriminantDepthTextureSamplesLocal;
+    OffsetMapTextureSamples = OffsetMapTextureSamplesLocal;
+
+    return (pos);
+}
+
+float3 Cone_Relief(
+    float3 Tangent_Direction,
+    float2 UV,
+    int maxSteps,
+    int OffsetMapSamplingVersion,
+    bool UseAtlas,
+    Texture2D<float4> Relief_Map,
+    SamplerState Relief_MapSampler,
+    Texture2D<float4> Offset_Map,
+    SamplerState Offset_MapSampler,
+    out float3 New_Tangent,
+    out int leapCounter,
+    out int steps,
+    out int DepthTextureSamples,
+    out int DiscriminantDepthTextureSamples,
+    out int OffsetMapTextureSamples)
+{
+    float ray_ratio = length(Tangent_Direction), dcum = 0;
+
+    float3 pos = float3(UV, 0);
+    float3 Starting_Point = pos;
+    float3 invDir = 1.0 / Tangent_Direction;
+
+    float2 leapingPoint = float2(0.0f, 0.0f);
+    float2 landingPoint = float2(0.0f, 0.0f);
+
+    bool jumped = false;
+
+    int numLeaps = 0;
+    int DepthTextureSamplesLocal = 0;
+    int DiscriminantDepthTextureSamplesLocal = 0;
+    int OffsetMapTextureSamplesLocal = 0;
+
+    [loop]
+    for (steps = 0; steps < maxSteps; steps++)
+    {
+        float4 DepthData = Relief_Map.SampleLevel(Relief_MapSampler, pos.xy, 0);
+        DepthTextureSamplesLocal += 1;
+
+        if (UseAtlas)
+        {
+            [flatten]
+            switch (OffsetMapSamplingVersion)
+            {
+            case 1:
+                Island_leap_V1(Offset_Map, Offset_MapSampler, Tangent_Direction, pos, invDir, leapingPoint, landingPoint, jumped, OffsetMapTextureSamplesLocal, numLeaps);
+                break;
+            case 2:
+                Island_leap_V2(Offset_Map, Offset_MapSampler, DepthData, Tangent_Direction, pos, invDir, leapingPoint, landingPoint, jumped, OffsetMapTextureSamplesLocal, numLeaps);
+                break;
+            case 3:
+                Island_leap_V3(Offset_Map, Offset_MapSampler, Relief_Map, Relief_MapSampler, DepthData, Tangent_Direction, pos, invDir, leapingPoint, landingPoint, jumped, OffsetMapTextureSamplesLocal, DiscriminantDepthTextureSamplesLocal, numLeaps);
+                break;
+            }
+        }
+
+        float cone_ratio = DepthData.z;
+        float cone_height = saturate(DepthData.x - pos.z);
+
+        float d = cone_ratio * cone_height / (ray_ratio + cone_ratio);
+        pos += d * Tangent_Direction;
+
+        dcum += d;
+        float depth = DepthData.x;
+
+        if (dcum >= depth)
+            break;
+    }
+
+    New_Tangent = Tangent_Direction;
+    leapCounter = numLeaps;
+
+    DepthTextureSamples = DepthTextureSamplesLocal;
+    DiscriminantDepthTextureSamples = DiscriminantDepthTextureSamplesLocal;
+    OffsetMapTextureSamples = OffsetMapTextureSamplesLocal;
+
+    return (pos);
+}
+
+float3 Linear_Relief(
+    float3 Tangent_Direction,
+    float2 UV,
+    int maxSteps,
+    int OffsetMapSamplingVersion,
+    bool UseAtlas,
+    Texture2D<float4> Relief_Map,
+    SamplerState Relief_MapSampler,
+    Texture2D<float4> Offset_Map,
+    SamplerState Offset_MapSampler,
+    out float3 New_Tangent,
+    out int leapCounter,
+    out int steps,
+    out int DepthTextureSamples,
+    out int DiscriminantDepthTextureSamples,
+    out int OffsetMapTextureSamples)
+{
+    float sigma = 1.0f / maxSteps;
+
+    float3 pos = float3(UV, 0);
+    float3 Starting_Point = pos;
+    float3 invDir = 1.0 / Tangent_Direction;
+
+    float2 leapingPoint = float2(0.0f, 0.0f);
+    float2 landingPoint = float2(0.0f, 0.0f);
+
+    bool jumped = false;
+
+    int numLeaps = 0;
+    int DepthTextureSamplesLocal = 0;
+    int DiscriminantDepthTextureSamplesLocal = 0;
+    int OffsetMapTextureSamplesLocal = 0;
+
+    [loop]
+    for (steps = 0; steps < maxSteps; steps++)
+    {
+        float4 DepthData = Relief_Map.SampleLevel(Relief_MapSampler, pos.xy, 0.0f);
+        DepthTextureSamplesLocal += 1;
+
+        if (UseAtlas)
+        {
+            [flatten]
+            switch (OffsetMapSamplingVersion)
+            {
+            case 1:
+                Island_leap_V1(Offset_Map, Offset_MapSampler, Tangent_Direction, pos, invDir, leapingPoint, landingPoint, jumped, OffsetMapTextureSamplesLocal, numLeaps);
+                break;
+            case 2:
+                Island_leap_V2(Offset_Map, Offset_MapSampler, DepthData, Tangent_Direction, pos, invDir, leapingPoint, landingPoint, jumped, OffsetMapTextureSamplesLocal, numLeaps);
+                break;
+            case 3:
+                Island_leap_V3(Offset_Map, Offset_MapSampler, Relief_Map, Relief_MapSampler, DepthData, Tangent_Direction, pos, invDir, leapingPoint, landingPoint, jumped, OffsetMapTextureSamplesLocal, DiscriminantDepthTextureSamplesLocal, numLeaps);
+                break;
+            }
+        }
+
+        if (pos.z >= DepthData.x)
+            break;
+
+        pos.xy += sigma * Tangent_Direction.xy;
+        pos.z += sigma;
+    }
+
+    New_Tangent = Tangent_Direction;
+    leapCounter = numLeaps;
+
+    DepthTextureSamples = DepthTextureSamplesLocal;
+    DiscriminantDepthTextureSamples = DiscriminantDepthTextureSamplesLocal;
+    OffsetMapTextureSamples = OffsetMapTextureSamplesLocal;
+
+    return (pos);
+}
+
+float2 BinarySearch(float3 Starting_Point, float3 Tangent_Direction, Texture2D<float4> Relief_Map, SamplerState Relief_MapSampler, int Binary_Search_Steps)
+{
+    float3 Current_Position = Starting_Point;
+    float3 New_Tangent_Direction = Tangent_Direction;
+
+    // binary search to refine final texcoord
+    for (int i = 0; i < Binary_Search_Steps; i++)
+    {
+        const float height = Relief_Map.SampleLevel(Relief_MapSampler, Current_Position.xy, 0.0f).x;
+
+        Current_Position = (Current_Position.z < height) ? Current_Position + New_Tangent_Direction : Current_Position - New_Tangent_Direction;
+
+        New_Tangent_Direction *= 0.5;
+    }
+
+    return (Current_Position.xy);
+}
+
+float2 ReliefMapping(
+    float3 Tangent_Direction,
+    float2 UV,
+    float LastMip,
+    float TexelSize,
+    int LinearSteps,
+    int BinarySteps,
+    int ReliefType,
+    int OffsetMapSamplingVersion,
+    bool Filter0,
+    bool UseAtlas,
+    Texture2D<float4> Relief_Map,
+    SamplerState Relief_MapSampler,
+    Texture2D<float4> Offset_Map,
+    SamplerState Offset_MapSampler,
+    SamplerState Linear_Repeat_Sampler,
+    out int leapCounter,
+    out int steps,
+    out int DepthTextureSamples,
+    out int DiscriminantDepthTextureSamples,
+    out int OffsetMapTextureSamples)
+{
+    float3 Tangent = Tangent_Direction, StartingPoint = float3(UV, 0);
+    int numSteps = 0, numLeaps = 0, DepthSamples = 0, DiscriminantSamples = 0, OffsetSamples = 0;
+    float2 FinalUV;
+
+    switch (ReliefType)
+    {
+    case 1:
+        StartingPoint = Linear_Relief(Tangent_Direction, UV, LinearSteps, OffsetMapSamplingVersion, UseAtlas, Relief_Map, Relief_MapSampler, Offset_Map, Offset_MapSampler, Tangent, numLeaps, numSteps, DepthSamples, DiscriminantSamples, OffsetSamples);
+        break;
+    case 2:
+        StartingPoint = Cone_Relief(Tangent_Direction, UV, LinearSteps, OffsetMapSamplingVersion, UseAtlas, Relief_Map, Relief_MapSampler, Offset_Map, Offset_MapSampler, Tangent, numLeaps, numSteps, DepthSamples, DiscriminantSamples, OffsetSamples);
+        break;
+    case 3:
+        StartingPoint = Mip_Relief(Tangent_Direction, UV, LastMip, LinearSteps, OffsetMapSamplingVersion, Filter0, UseAtlas, Relief_Map, Relief_MapSampler, Offset_Map, Offset_MapSampler, Linear_Repeat_Sampler, Tangent, numLeaps, numSteps, DepthSamples, DiscriminantSamples, OffsetSamples);
+        break;
+    }
+
+    Tangent = Tangent * TexelSize;
+
+    if (ReliefType > 0)
+    {
+        FinalUV = BinarySearch(StartingPoint, Tangent, Relief_Map, Relief_MapSampler, BinarySteps);
+    }
+    else
+    {
+        FinalUV = UV;
+    }
+
+    leapCounter = numLeaps;
+    steps = numSteps;
+
+    DepthTextureSamples = DepthSamples;
+    DiscriminantDepthTextureSamples = DiscriminantSamples;
+    OffsetMapTextureSamples = OffsetSamples;
+
+    return (FinalUV);
+}

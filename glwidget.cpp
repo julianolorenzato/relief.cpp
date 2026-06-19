@@ -20,6 +20,8 @@ GLWidget::~GLWidget() {
     if (uvVao.isCreated()) uvVao.destroy();
     if (bgVboData.isCreated()) bgVboData.destroy();
     if (bgVao.isCreated()) bgVao.destroy();
+    if (edgeVbo.isCreated()) edgeVbo.destroy();
+    if (edgeVao.isCreated()) edgeVao.destroy();
     if (textureId) glDeleteTextures(1, &textureId);
     doneCurrent();
 }
@@ -28,6 +30,7 @@ void GLWidget::setMesh(const QEMSimplifier* m) {
     mesh = m;
     makeCurrent();
     updateMeshBuffers();
+    updateEdgeOverlay();
     uploadTexture(m);
     doneCurrent();
     resetCamera();
@@ -90,6 +93,48 @@ void GLWidget::createShaderProgram() {
 
     if (!shaderProgram.link()) {
         std::cerr << "Shader linking error: " << shaderProgram.log().toStdString() << "\n";
+        return;
+    }
+}
+
+void GLWidget::createEdgeShaderProgram() {
+    const char* vertexShader = R"(
+        #version 330 core
+        layout(location = 0) in vec3 position;
+        layout(location = 1) in vec3 color;
+
+        uniform mat4 model;
+        uniform mat4 view;
+        uniform mat4 projection;
+
+        out vec3 vColor;
+
+        void main() {
+            vColor = color;
+            gl_Position = projection * view * model * vec4(position, 1.0);
+        }
+    )";
+
+    const char* fragmentShader = R"(
+        #version 330 core
+        in vec3 vColor;
+        out vec4 FragColor;
+
+        void main() {
+            FragColor = vec4(vColor, 1.0);
+        }
+    )";
+
+    if (!edgeShaderProgram.addShaderFromSourceCode(QOpenGLShader::Vertex, vertexShader)) {
+        std::cerr << "Edge vertex shader error: " << edgeShaderProgram.log().toStdString() << "\n";
+        return;
+    }
+    if (!edgeShaderProgram.addShaderFromSourceCode(QOpenGLShader::Fragment, fragmentShader)) {
+        std::cerr << "Edge fragment shader error: " << edgeShaderProgram.log().toStdString() << "\n";
+        return;
+    }
+    if (!edgeShaderProgram.link()) {
+        std::cerr << "Edge shader linking error: " << edgeShaderProgram.log().toStdString() << "\n";
         return;
     }
 }
@@ -191,6 +236,47 @@ void GLWidget::updateMeshBuffers() {
     updateUVBuffers();
 }
 
+void GLWidget::updateEdgeOverlay() {
+    if (!mesh) return;
+
+    static const float kBoundaryColor[3] = {1.0f, 0.15f, 0.1f};
+    static const float kInternalColor[3] = {0.8f, 0.8f, 0.8f};
+
+    auto edges = mesh->classifyEdges();
+
+    std::vector<float> lineVerts;
+    lineVerts.reserve(edges.size() * 2 * 6);
+
+    for (const auto& e : edges) {
+        const auto& p0 = mesh->vertices[e.v1].pos;
+        const auto& p1 = mesh->vertices[e.v2].pos;
+        const float* c = e.boundary ? kBoundaryColor : kInternalColor;
+
+        lineVerts.push_back((float)p0.x()); lineVerts.push_back((float)p0.y()); lineVerts.push_back((float)p0.z());
+        lineVerts.push_back(c[0]); lineVerts.push_back(c[1]); lineVerts.push_back(c[2]);
+
+        lineVerts.push_back((float)p1.x()); lineVerts.push_back((float)p1.y()); lineVerts.push_back((float)p1.z());
+        lineVerts.push_back(c[0]); lineVerts.push_back(c[1]); lineVerts.push_back(c[2]);
+    }
+
+    edgeVertexCount = (int)(lineVerts.size() / 6);
+
+    if (!edgeVao.isCreated()) edgeVao.create();
+    if (!edgeVbo.isCreated()) edgeVbo.create();
+
+    edgeVao.bind();
+    edgeVbo.bind();
+    edgeVbo.allocate(lineVerts.data(), (int)(lineVerts.size() * sizeof(float)));
+
+    edgeShaderProgram.enableAttributeArray(0);
+    edgeShaderProgram.setAttributeBuffer(0, GL_FLOAT, 0, 3, 6 * sizeof(float));
+
+    edgeShaderProgram.enableAttributeArray(1);
+    edgeShaderProgram.setAttributeBuffer(1, GL_FLOAT, 3 * sizeof(float), 3, 6 * sizeof(float));
+
+    edgeVao.release();
+}
+
 void GLWidget::uploadTexture(const QEMSimplifier* m) {
     if (textureId) {
         glDeleteTextures(1, &textureId);
@@ -211,8 +297,48 @@ void GLWidget::uploadTexture(const QEMSimplifier* m) {
     glBindTexture(GL_TEXTURE_2D, 0);
 }
 
+void GLWidget::setColorTexture(const MipPyramid& pyr) {
+    makeCurrent();
+    if (textureId) {
+        glDeleteTextures(1, &textureId);
+        textureId = 0;
+    }
+    if (!pyr.mips.empty() && pyr.width > 0 && pyr.height > 0) {
+        GLenum internalFormat = pyr.channels == 3 ? GL_RGB32F : GL_RGBA32F;
+        GLenum format         = pyr.channels == 3 ? GL_RGB    : GL_RGBA;
+
+        glGenTextures(1, &textureId);
+        glBindTexture(GL_TEXTURE_2D, textureId);
+        glTexImage2D(GL_TEXTURE_2D, 0, internalFormat, pyr.width, pyr.height,
+                     0, format, GL_FLOAT, pyr.mips[0].data());
+        glGenerateMipmap(GL_TEXTURE_2D);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
+        glBindTexture(GL_TEXTURE_2D, 0);
+    }
+    doneCurrent();
+
+    textured = textureId != 0;
+    update();
+}
+
+void GLWidget::updateMeshData() {
+    makeCurrent();
+    updateMeshBuffers();
+    updateEdgeOverlay();
+    doneCurrent();
+    update();
+}
+
 void GLWidget::setWireframe(bool enabled) {
     wireframe = enabled;
+    update();
+}
+
+void GLWidget::setShowEdgeClassification(bool enabled) {
+    showEdgeClassification = enabled;
     update();
 }
 
@@ -233,6 +359,7 @@ void GLWidget::initializeGL() {
     glEnable(GL_CULL_FACE);
 
     createShaderProgram();
+    createEdgeShaderProgram();
     createUVShaders();
     resetCamera();
 }
@@ -419,6 +546,22 @@ void GLWidget::paintGL() {
 
     if (useTexture) glBindTexture(GL_TEXTURE_2D, 0);
     shaderProgram.release();
+
+    if (showEdgeClassification && edgeVao.isCreated() && edgeVertexCount > 0) {
+        edgeShaderProgram.bind();
+        edgeShaderProgram.setUniformValue("projection", QMatrix4x4(glm::value_ptr(projection)).transposed());
+        edgeShaderProgram.setUniformValue("view", QMatrix4x4(glm::value_ptr(view)).transposed());
+        edgeShaderProgram.setUniformValue("model", QMatrix4x4(glm::value_ptr(model)).transposed());
+
+        glDepthFunc(GL_LEQUAL);
+        glLineWidth(1.5f);
+        edgeVao.bind();
+        glDrawArrays(GL_LINES, 0, edgeVertexCount);
+        edgeVao.release();
+        edgeShaderProgram.release();
+        glDepthFunc(GL_LESS);
+        glLineWidth(1.0f);
+    }
 }
 
 void GLWidget::resetCamera() {

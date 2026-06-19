@@ -1,6 +1,8 @@
 #include "mainwindow.h"
+#include "overlayglwidget.h"
 #include <QVBoxLayout>
 #include <QHBoxLayout>
+#include <QGridLayout>
 #include <QMenuBar>
 #include <QMenu>
 #include <QAction>
@@ -11,15 +13,25 @@
 #include <QCheckBox>
 #include <QStatusBar>
 #include <QSplitter>
+#include <QTabWidget>
+#include <QScrollArea>
+#include <QApplication>
+#include <QImage>
+#include <QPixmap>
+#include <QColor>
+#include <QStackedWidget>
 #include <Qt>
 #include <iostream>
+#include <algorithm>
+
+// ─── Constructor ─────────────────────────────────────────────────────────────
 
 MainWindow::MainWindow(QWidget* parent)
     : QMainWindow(parent) {
     setWindowTitle("QEM Mesh Simplifier");
     setGeometry(100, 100, 1600, 900);
 
-    originalMesh = std::make_unique<QEMSimplifier>();
+    originalMesh   = std::make_unique<QEMSimplifier>();
     simplifiedMesh = std::make_unique<QEMSimplifier>();
 
     setupUI();
@@ -27,20 +39,17 @@ MainWindow::MainWindow(QWidget* parent)
     updateStatusBar();
 }
 
-void MainWindow::setupUI() {
-    // Widget central
-    QWidget* central = new QWidget(this);
-    setCentralWidget(central);
+// ─── Tab builders ─────────────────────────────────────────────────────────────
 
-    // Layout principal
-    QVBoxLayout* mainLayout = new QVBoxLayout(central);
+QWidget* MainWindow::buildSimplifierTab() {
+    QWidget* tab = new QWidget();
+    QVBoxLayout* layout = new QVBoxLayout(tab);
 
-    // ─── Viewports OpenGL ─────────────────────────────────────────────────
+    // ── Viewports ────────────────────────────────────────────────────────────
     QWidget* viewportsWidget = new QWidget();
     QHBoxLayout* viewportsLayout = new QHBoxLayout(viewportsWidget);
 
-    // Viewport esquerdo - Original
-    QGroupBox* originalGroup = new QGroupBox("Original Mesh", this);
+    QGroupBox* originalGroup = new QGroupBox("Original Mesh");
     originalGroup->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
     QVBoxLayout* leftLayout = new QVBoxLayout(originalGroup);
     leftLayout->setContentsMargins(4, 4, 4, 4);
@@ -52,8 +61,7 @@ void MainWindow::setupUI() {
     leftLayout->addWidget(originalStatsLabel);
     viewportsLayout->addWidget(originalGroup);
 
-    // Viewport direito - Simplificado
-    QGroupBox* simplifiedGroup = new QGroupBox("Simplified Mesh", this);
+    QGroupBox* simplifiedGroup = new QGroupBox("Simplified Mesh");
     simplifiedGroup->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
     QVBoxLayout* rightLayout = new QVBoxLayout(simplifiedGroup);
     rightLayout->setContentsMargins(4, 4, 4, 4);
@@ -65,11 +73,20 @@ void MainWindow::setupUI() {
     rightLayout->addWidget(simplifiedStatsLabel);
     viewportsLayout->addWidget(simplifiedGroup);
 
-    viewportsWidget->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
-    mainLayout->addWidget(viewportsWidget, 1);
+    QGroupBox* overlayGroup = new QGroupBox("Overlay  (azul = original · laranja = simplificada)");
+    overlayGroup->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
+    QVBoxLayout* overlayLayout = new QVBoxLayout(overlayGroup);
+    overlayLayout->setContentsMargins(4, 4, 4, 4);
+    glWidgetOverlay = new OverlayGLWidget();
+    glWidgetOverlay->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
+    overlayLayout->addWidget(glWidgetOverlay);
+    viewportsLayout->addWidget(overlayGroup);
 
-    // ─── Controles de simplificação ───────────────────────────────────────
-    QGroupBox* controlsGroup = new QGroupBox("Simplification Controls", this);
+    viewportsWidget->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
+    layout->addWidget(viewportsWidget, 1);
+
+    // ── Controls ─────────────────────────────────────────────────────────────
+    QGroupBox* controlsGroup = new QGroupBox("Simplification Controls");
     QHBoxLayout* controlsLayout = new QHBoxLayout(controlsGroup);
 
     controlsLayout->addWidget(new QLabel("Target Faces:"));
@@ -95,13 +112,13 @@ void MainWindow::setupUI() {
     controlsLayout->addWidget(resetCamBtn);
 
     wireframeCheck = new QCheckBox("Wireframe");
-    connect(wireframeCheck, &QCheckBox::toggled, glWidgetOriginal,  &GLWidget::setWireframe);
+    connect(wireframeCheck, &QCheckBox::toggled, glWidgetOriginal,   &GLWidget::setWireframe);
     connect(wireframeCheck, &QCheckBox::toggled, glWidgetSimplified, &GLWidget::setWireframe);
     controlsLayout->addWidget(wireframeCheck);
 
     cullFaceCheck = new QCheckBox("Backface Culling");
     cullFaceCheck->setChecked(true);
-    connect(cullFaceCheck, &QCheckBox::toggled, glWidgetOriginal,  &GLWidget::setCullFace);
+    connect(cullFaceCheck, &QCheckBox::toggled, glWidgetOriginal,   &GLWidget::setCullFace);
     connect(cullFaceCheck, &QCheckBox::toggled, glWidgetSimplified, &GLWidget::setCullFace);
     controlsLayout->addWidget(cullFaceCheck);
 
@@ -121,14 +138,74 @@ void MainWindow::setupUI() {
     boundaryConstraintCheck->setChecked(true);
     controlsLayout->addWidget(boundaryConstraintCheck);
 
+    edgeClassificationCheck = new QCheckBox("Show Edge Classification");
+    connect(edgeClassificationCheck, &QCheckBox::toggled, glWidgetOriginal,   &GLWidget::setShowEdgeClassification);
+    connect(edgeClassificationCheck, &QCheckBox::toggled, glWidgetSimplified, &GLWidget::setShowEdgeClassification);
+    controlsLayout->addWidget(edgeClassificationCheck);
+
     controlsGroup->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
-    mainLayout->addWidget(controlsGroup);
+    layout->addWidget(controlsGroup);
 
-    // ─── Status bar ───────────────────────────────────────────────────────
-    statusLabel = new QLabel("Ready");
-    statusBar()->addWidget(statusLabel);
+    // ── Inflate / Deflate Controls ────────────────────────────────────────────
+    QGroupBox* inflateGroup = new QGroupBox("Inflate / Deflate (simplified mesh vertex positions)");
+    QHBoxLayout* inflateLayout = new QHBoxLayout(inflateGroup);
 
-    // Conectar sinais
+    inflateLayout->addWidget(new QLabel("Offset:"));
+
+    inflateSlider = new QSlider(Qt::Horizontal);
+    inflateSlider->setMinimum(-1000);
+    inflateSlider->setMaximum(1000);
+    inflateSlider->setValue(0);
+    inflateSlider->setEnabled(false);
+    inflateLayout->addWidget(inflateSlider);
+
+    inflateSpin = new QDoubleSpinBox();
+    inflateSpin->setMinimum(-1e6);
+    inflateSpin->setMaximum(1e6);
+    inflateSpin->setValue(0.0);
+    inflateSpin->setDecimals(5);
+    inflateSpin->setSingleStep(0.001);
+    inflateSpin->setFixedWidth(130);
+    inflateSpin->setEnabled(false);
+    inflateLayout->addWidget(inflateSpin);
+
+    inflateLayout->addSpacing(16);
+
+    minCoverBtn = new QPushButton("Min Cover");
+    minCoverBtn->setEnabled(false);
+    minCoverBtn->setToolTip(
+        "Set the minimum offset at which the simplified mesh fully envelops the original mesh.\n"
+        "Every original vertex will be inside the inflated simplified mesh.");
+    inflateLayout->addWidget(minCoverBtn);
+
+    maxFitBtn = new QPushButton("Max Fit");
+    maxFitBtn->setEnabled(false);
+    maxFitBtn->setToolTip(
+        "Set the maximum offset at which the simplified mesh does not protrude beyond the original mesh.\n"
+        "The inflated simplified mesh stays inside the original surface.");
+    inflateLayout->addWidget(maxFitBtn);
+
+    connect(inflateSlider, &QSlider::valueChanged, this, [this](int val) {
+        double offset = (inflateScale > 1e-10) ? val / 1000.0 * inflateScale : 0.0;
+        inflateSpin->blockSignals(true);
+        inflateSpin->setValue(offset);
+        inflateSpin->blockSignals(false);
+        applyInflate(offset);
+    });
+    connect(inflateSpin, QOverload<double>::of(&QDoubleSpinBox::valueChanged), this, [this](double val) {
+        int sliderVal = (inflateScale > 1e-10) ? (int)(val / inflateScale * 1000.0) : 0;
+        inflateSlider->blockSignals(true);
+        inflateSlider->setValue(std::max(-1000, std::min(1000, sliderVal)));
+        inflateSlider->blockSignals(false);
+        applyInflate(val);
+    });
+    connect(minCoverBtn, &QPushButton::clicked, this, &MainWindow::onMinCover);
+    connect(maxFitBtn,   &QPushButton::clicked, this, &MainWindow::onMaxFit);
+
+    inflateGroup->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
+    layout->addWidget(inflateGroup);
+
+    // ── Signals ───────────────────────────────────────────────────────────────
     connect(targetFacesSpinBox, QOverload<int>::of(&QSpinBox::valueChanged),
             this, &MainWindow::onTargetFacesChanged);
     connect(simplificationSlider, &QSlider::valueChanged, this, [this](int val) {
@@ -138,18 +215,441 @@ void MainWindow::setupUI() {
         targetFacesSpinBox->blockSignals(false);
     });
 
-    // Sincronização de câmeras: cada viewport espelha a outra
+    // Sync cameras: any viewport drives the other two
     connect(glWidgetOriginal,   &GLWidget::cameraChanged,
             glWidgetSimplified, &GLWidget::syncCamera);
+    connect(glWidgetOriginal,   &GLWidget::cameraChanged,
+            glWidgetOverlay,    &OverlayGLWidget::syncCamera);
     connect(glWidgetSimplified, &GLWidget::cameraChanged,
             glWidgetOriginal,   &GLWidget::syncCamera);
+    connect(glWidgetSimplified, &GLWidget::cameraChanged,
+            glWidgetOverlay,    &OverlayGLWidget::syncCamera);
+    connect(glWidgetOverlay,    &OverlayGLWidget::cameraChanged,
+            glWidgetOriginal,   &GLWidget::syncCamera);
+    connect(glWidgetOverlay,    &OverlayGLWidget::cameraChanged,
+            glWidgetSimplified, &GLWidget::syncCamera);
+
+    return tab;
 }
+
+QWidget* MainWindow::buildHeightmapTab() {
+    QWidget* tab = new QWidget();
+    QVBoxLayout* mainLayout = new QVBoxLayout(tab);
+
+    // ── Top controls bar ─────────────────────────────────────────────────────
+    QGroupBox* ctrlGroup = new QGroupBox("Baking Controls");
+    QVBoxLayout* ctrlOuter = new QVBoxLayout(ctrlGroup);
+
+    // Row 1: resolution + cage offset + bake button
+    QHBoxLayout* ctrlRow = new QHBoxLayout();
+
+    ctrlRow->addWidget(new QLabel("Resolution:"));
+    hmResCombo = new QComboBox();
+    hmResCombo->addItem("128 × 128",   128);
+    hmResCombo->addItem("256 × 256",   256);
+    hmResCombo->addItem("512 × 512",   512);
+    hmResCombo->addItem("1024 × 1024", 1024);
+    hmResCombo->setCurrentIndex(2);
+    ctrlRow->addWidget(hmResCombo);
+
+    ctrlRow->addSpacing(16);
+    ctrlRow->addWidget(new QLabel("Cage Offset:"));
+    hmCageOffsetSpin = new QDoubleSpinBox();
+    hmCageOffsetSpin->setMinimum(0.0001);
+    hmCageOffsetSpin->setMaximum(1000.0);
+    hmCageOffsetSpin->setValue(0.05);
+    hmCageOffsetSpin->setSingleStep(0.01);
+    hmCageOffsetSpin->setDecimals(4);
+    hmCageOffsetSpin->setToolTip(
+        "Distance (world units) to inflate the simplified surface to form the cage.\n"
+        "Only affects the Ray Cast + Cage strategy.");
+    ctrlRow->addWidget(hmCageOffsetSpin);
+
+    ctrlRow->addSpacing(16);
+    hmBakeAllBtn = new QPushButton("Bake All");
+    hmBakeAllBtn->setMinimumWidth(120);
+    connect(hmBakeAllBtn, &QPushButton::clicked, this, &MainWindow::onBakeAll);
+    ctrlRow->addWidget(hmBakeAllBtn);
+    ctrlRow->addStretch();
+    ctrlOuter->addLayout(ctrlRow);
+
+    // Row 2: progress bar + label
+    QHBoxLayout* progressRow = new QHBoxLayout();
+    hmProgressBar = new QProgressBar();
+    hmProgressBar->setRange(0, 100);
+    hmProgressBar->setValue(0);
+    hmProgressBar->setTextVisible(true);
+    hmProgressBar->setFixedHeight(18);
+    progressRow->addWidget(hmProgressBar, 1);
+
+    hmProgressLabel = new QLabel("Ready");
+    hmProgressLabel->setFixedWidth(280);
+    progressRow->addWidget(hmProgressLabel);
+    ctrlOuter->addLayout(progressRow);
+
+    ctrlGroup->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
+    mainLayout->addWidget(ctrlGroup);
+
+    // ── Heightmap panels ─────────────────────────────────────────────────────
+    static const char* titles[3] = {
+        "Ray Cast  (no cage — unlimited range)",
+        "Ray Cast + Cage  (bounded by cage offset)",
+        "Normal Map  (tangent space)"
+    };
+    static const char* singleBtnLabels[3] = {
+        "Bake (no cage)", "Bake (cage)", "Bake Normal Map"
+    };
+
+    QWidget* panelsWidget = new QWidget();
+    QHBoxLayout* panelsLayout = new QHBoxLayout(panelsWidget);
+    panelsLayout->setSpacing(12);
+
+    for (int i = 0; i < 3; i++) {
+        QGroupBox* panel = new QGroupBox(titles[i]);
+        QVBoxLayout* pLayout = new QVBoxLayout(panel);
+        panel->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
+
+        hmPreview[i] = new QLabel();
+        hmPreview[i]->setAlignment(Qt::AlignCenter);
+        hmPreview[i]->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
+        hmPreview[i]->setMinimumSize(200, 200);
+        hmPreview[i]->setStyleSheet("background-color: #1e1e1e; border: 1px solid #555;");
+        hmPreview[i]->setText("(not baked)");
+        pLayout->addWidget(hmPreview[i], 1);
+
+        hmInfoLabel[i] = new QLabel(i < 2 ? "Range: —" : "—");
+        hmInfoLabel[i]->setFixedHeight(18);
+        hmInfoLabel[i]->setAlignment(Qt::AlignCenter);
+        pLayout->addWidget(hmInfoLabel[i]);
+
+        QHBoxLayout* btnRow = new QHBoxLayout();
+        int idx = i;
+
+        hmBakeSingleBtn[i] = new QPushButton(singleBtnLabels[i]);
+        connect(hmBakeSingleBtn[i], &QPushButton::clicked, this,
+                [this, idx]() { onBakeSingle(idx); });
+        btnRow->addWidget(hmBakeSingleBtn[i]);
+
+        hmSaveBtn[i] = new QPushButton("Save");
+        hmSaveBtn[i]->setEnabled(false);
+        if (i < 2) {
+            connect(hmSaveBtn[i], &QPushButton::clicked, this,
+                    [this, idx]() { onSaveHeightmap(idx); });
+        } else {
+            connect(hmSaveBtn[i], &QPushButton::clicked, this,
+                    &MainWindow::onSaveNormalmap);
+        }
+        btnRow->addWidget(hmSaveBtn[i]);
+
+        pLayout->addLayout(btnRow);
+        panelsLayout->addWidget(panel);
+    }
+
+    panelsWidget->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
+    mainLayout->addWidget(panelsWidget, 1);
+
+    return tab;
+}
+
+QWidget* MainWindow::buildTexturePrepTab() {
+    QWidget* tab = new QWidget();
+    QVBoxLayout* mainLayout = new QVBoxLayout(tab);
+
+    // ── Top controls ─────────────────────────────────────────────────────────
+    QGroupBox* ctrlGroup = new QGroupBox("Input Textures && Baking Controls");
+    QVBoxLayout* ctrlOuter = new QVBoxLayout(ctrlGroup);
+
+    static const char* loadLabels[3] = {"Load Color…", "Load Depth…", "Load Normal…"};
+    QHBoxLayout* loadRow = new QHBoxLayout();
+    for (int i = 0; i < 3; i++) {
+        QVBoxLayout* col = new QVBoxLayout();
+        tpThumb[i] = new QLabel();
+        tpThumb[i]->setFixedSize(64, 64);
+        tpThumb[i]->setAlignment(Qt::AlignCenter);
+        tpThumb[i]->setStyleSheet("background-color:#1e1e1e;border:1px solid #555;");
+        tpThumb[i]->setText("—");
+        col->addWidget(tpThumb[i]);
+
+        tpLoadBtn[i] = new QPushButton(loadLabels[i]);
+        int idx = i;
+        connect(tpLoadBtn[i], &QPushButton::clicked, this, [this, idx]() { onTpLoad(idx); });
+        col->addWidget(tpLoadBtn[i]);
+        loadRow->addLayout(col);
+    }
+    loadRow->addSpacing(16);
+
+    QVBoxLayout* paramsCol = new QVBoxLayout();
+    QHBoxLayout* resRow = new QHBoxLayout();
+    resRow->addWidget(new QLabel("Working Resolution:"));
+    tpResCombo = new QComboBox();
+    tpResCombo->addItem("128 × 128",   128);
+    tpResCombo->addItem("256 × 256",   256);
+    tpResCombo->addItem("512 × 512",   512);
+    tpResCombo->addItem("1024 × 1024", 1024);
+    tpResCombo->addItem("2048 × 2048", 2048);
+    tpResCombo->setCurrentIndex(2);
+    resRow->addWidget(tpResCombo);
+    paramsCol->addLayout(resRow);
+
+    QHBoxLayout* seamRow = new QHBoxLayout();
+    seamRow->addWidget(new QLabel("Seam Band (texels):"));
+    tpSeamBandSpin = new QSpinBox();
+    tpSeamBandSpin->setRange(1, 32);
+    tpSeamBandSpin->setValue(4);
+    tpSeamBandSpin->setToolTip(
+        "Width (in texels) of the atlas-leap band baked around UV seams.\n"
+        "Wider bands tolerate longer relief-mapping rays crossing islands.");
+    seamRow->addWidget(tpSeamBandSpin);
+    paramsCol->addLayout(seamRow);
+    loadRow->addLayout(paramsCol);
+    loadRow->addStretch();
+
+    tpGenerateBtn = new QPushButton("Generate");
+    tpGenerateBtn->setMinimumWidth(120);
+    tpGenerateBtn->setEnabled(false);
+    connect(tpGenerateBtn, &QPushButton::clicked, this, &MainWindow::onTpGenerate);
+    loadRow->addWidget(tpGenerateBtn);
+
+    ctrlOuter->addLayout(loadRow);
+
+    QHBoxLayout* progressRow = new QHBoxLayout();
+    tpProgressBar = new QProgressBar();
+    tpProgressBar->setRange(0, 100);
+    tpProgressBar->setValue(0);
+    tpProgressBar->setTextVisible(true);
+    tpProgressBar->setFixedHeight(18);
+    progressRow->addWidget(tpProgressBar, 1);
+
+    tpProgressLabel = new QLabel("Ready");
+    tpProgressLabel->setFixedWidth(280);
+    progressRow->addWidget(tpProgressLabel);
+    ctrlOuter->addLayout(progressRow);
+
+    ctrlGroup->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
+    mainLayout->addWidget(ctrlGroup);
+
+    // ── Preview panels ───────────────────────────────────────────────────────
+    static const char* previewTitles[4] = {
+        "Color Map", "Relief Map  (R=depth G=mip-bound B=— A=seam)", "Normal Map", "Offset Map  (atlas leap mask)"
+    };
+
+    QWidget* panelsWidget = new QWidget();
+    QHBoxLayout* panelsLayout = new QHBoxLayout(panelsWidget);
+    panelsLayout->setSpacing(12);
+
+    for (int i = 0; i < 4; i++) {
+        QGroupBox* panel = new QGroupBox(previewTitles[i]);
+        QVBoxLayout* pLayout = new QVBoxLayout(panel);
+        panel->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
+
+        tpPreview[i] = new QLabel();
+        tpPreview[i]->setAlignment(Qt::AlignCenter);
+        tpPreview[i]->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
+        tpPreview[i]->setMinimumSize(180, 180);
+        tpPreview[i]->setStyleSheet("background-color:#1e1e1e;border:1px solid #555;");
+        tpPreview[i]->setText("(not generated)");
+        pLayout->addWidget(tpPreview[i], 1);
+
+        tpInfoLabel[i] = new QLabel("—");
+        tpInfoLabel[i]->setFixedHeight(18);
+        tpInfoLabel[i]->setAlignment(Qt::AlignCenter);
+        pLayout->addWidget(tpInfoLabel[i]);
+
+        QHBoxLayout* btnRow = new QHBoxLayout();
+        btnRow->addWidget(new QLabel("Mip:"));
+        tpMipSpin[i] = new QSpinBox();
+        tpMipSpin[i]->setRange(0, 0);
+        tpMipSpin[i]->setEnabled(false);
+        int idx = i;
+        connect(tpMipSpin[i], QOverload<int>::of(&QSpinBox::valueChanged), this,
+                [this, idx](int) { updateTpPreview(idx); });
+        btnRow->addWidget(tpMipSpin[i]);
+
+        tpSaveBtn[i] = new QPushButton("Save");
+        tpSaveBtn[i]->setEnabled(false);
+        connect(tpSaveBtn[i], &QPushButton::clicked, this, [this, idx]() { onTpSave(idx); });
+        btnRow->addWidget(tpSaveBtn[i]);
+
+        pLayout->addLayout(btnRow);
+        panelsLayout->addWidget(panel);
+    }
+
+    panelsWidget->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
+    mainLayout->addWidget(panelsWidget, 1);
+
+    return tab;
+}
+
+QWidget* MainWindow::buildReliefMappingTab() {
+    QWidget* tab = new QWidget();
+    QHBoxLayout* layout = new QHBoxLayout(tab);
+
+    QWidget* viewportsWidget = new QWidget();
+    QHBoxLayout* viewportsLayout = new QHBoxLayout(viewportsWidget);
+    viewportsLayout->setContentsMargins(0, 0, 0, 0);
+
+    QGroupBox* reliefGroup = new QGroupBox("Relief Mapping");
+    reliefGroup->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
+    QVBoxLayout* reliefGroupLayout = new QVBoxLayout(reliefGroup);
+    reliefGroupLayout->setContentsMargins(4, 4, 4, 4);
+
+    reliefStack = new QStackedWidget();
+    reliefStack->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
+
+    reliefPlaceholder = new QLabel("Run Textures Preparation first to view relief mapping.");
+    reliefPlaceholder->setAlignment(Qt::AlignCenter);
+    reliefPlaceholder->setStyleSheet("color: #888; font-size: 14px;");
+    reliefStack->addWidget(reliefPlaceholder);
+
+    reliefWidget = new ReliefGLWidget();
+    reliefWidget->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
+    reliefStack->addWidget(reliefWidget);
+    reliefStack->setCurrentWidget(reliefPlaceholder);
+
+    reliefGroupLayout->addWidget(reliefStack);
+    viewportsLayout->addWidget(reliefGroup);
+
+    QGroupBox* compareGroup = new QGroupBox("Simplified Mesh (no relief)");
+    compareGroup->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
+    QVBoxLayout* compareGroupLayout = new QVBoxLayout(compareGroup);
+    compareGroupLayout->setContentsMargins(4, 4, 4, 4);
+
+    reliefCompareWidget = new GLWidget();
+    reliefCompareWidget->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
+    compareGroupLayout->addWidget(reliefCompareWidget);
+    viewportsLayout->addWidget(compareGroup);
+
+    layout->addWidget(viewportsWidget, 1);
+
+    // Cameras stay in sync between the two viewports so they can be compared directly.
+    connect(reliefWidget, &ReliefGLWidget::cameraChanged,
+            reliefCompareWidget, &GLWidget::syncCamera);
+    connect(reliefCompareWidget, &GLWidget::cameraChanged,
+            reliefWidget, &ReliefGLWidget::syncCamera);
+
+    // ── Controls panel ───────────────────────────────────────────────────────
+    QGroupBox* ctrlGroup = new QGroupBox("Relief Mapping Parameters");
+    ctrlGroup->setFixedWidth(280);
+    QVBoxLayout* ctrlLayout = new QVBoxLayout(ctrlGroup);
+
+    ctrlLayout->addWidget(new QLabel("Relief Type:"));
+    reliefTypeCombo = new QComboBox();
+    reliefTypeCombo->addItem("Off", 0);
+    reliefTypeCombo->addItem("Linear", 1);
+    reliefTypeCombo->addItem("Mip", 3);
+    reliefTypeCombo->setCurrentIndex(2);
+    connect(reliefTypeCombo, QOverload<int>::of(&QComboBox::currentIndexChanged), this, [this](int) {
+        reliefWidget->setReliefType(reliefTypeCombo->currentData().toInt());
+    });
+    ctrlLayout->addWidget(reliefTypeCombo);
+
+    ctrlLayout->addWidget(new QLabel("Steps:"));
+    reliefStepsSpin = new QSpinBox();
+    reliefStepsSpin->setRange(1, 256);
+    reliefStepsSpin->setValue(64);
+    connect(reliefStepsSpin, QOverload<int>::of(&QSpinBox::valueChanged), reliefWidget, &ReliefGLWidget::setSteps);
+    ctrlLayout->addWidget(reliefStepsSpin);
+
+    ctrlLayout->addWidget(new QLabel("Binary Search Steps:"));
+    reliefBinaryStepsSpin = new QSpinBox();
+    reliefBinaryStepsSpin->setRange(0, 16);
+    reliefBinaryStepsSpin->setValue(5);
+    connect(reliefBinaryStepsSpin, QOverload<int>::of(&QSpinBox::valueChanged), reliefWidget, &ReliefGLWidget::setBinarySteps);
+    ctrlLayout->addWidget(reliefBinaryStepsSpin);
+
+    ctrlLayout->addWidget(new QLabel("Depth Scale:"));
+    reliefDepthScaleSpin = new QDoubleSpinBox();
+    reliefDepthScaleSpin->setRange(0.0, 2.0);
+    reliefDepthScaleSpin->setSingleStep(0.01);
+    reliefDepthScaleSpin->setDecimals(4);
+    reliefDepthScaleSpin->setValue(0.05);
+    connect(reliefDepthScaleSpin, QOverload<double>::of(&QDoubleSpinBox::valueChanged), reliefWidget, &ReliefGLWidget::setDepthScale);
+    ctrlLayout->addWidget(reliefDepthScaleSpin);
+
+    ctrlLayout->addSpacing(8);
+
+    reliefUseAtlasCheck = new QCheckBox("Use Atlas (Island Leaping)");
+    reliefUseAtlasCheck->setChecked(true);
+    connect(reliefUseAtlasCheck, &QCheckBox::toggled, reliefWidget, &ReliefGLWidget::setUseAtlas);
+    ctrlLayout->addWidget(reliefUseAtlasCheck);
+
+    ctrlLayout->addWidget(new QLabel("Offset Map Sampling Version:"));
+    reliefOffsetVersionCombo = new QComboBox();
+    reliefOffsetVersionCombo->addItem("V1", 1);
+    reliefOffsetVersionCombo->addItem("V2", 2);
+    reliefOffsetVersionCombo->addItem("V3", 3);
+    reliefOffsetVersionCombo->setCurrentIndex(2);
+    connect(reliefOffsetVersionCombo, QOverload<int>::of(&QComboBox::currentIndexChanged), this, [this](int) {
+        reliefWidget->setOffsetMapSamplingVersion(reliefOffsetVersionCombo->currentData().toInt());
+    });
+    ctrlLayout->addWidget(reliefOffsetVersionCombo);
+
+    reliefFilter0Check = new QCheckBox("Linear Filter at Mip 0");
+    reliefFilter0Check->setChecked(true);
+    connect(reliefFilter0Check, &QCheckBox::toggled, reliefWidget, &ReliefGLWidget::setFilter0);
+    ctrlLayout->addWidget(reliefFilter0Check);
+
+    ctrlLayout->addSpacing(8);
+
+    ctrlLayout->addWidget(new QLabel("Debug View:"));
+    reliefDebugViewCombo = new QComboBox();
+    reliefDebugViewCombo->addItem("Shaded", 0);
+    reliefDebugViewCombo->addItem("Step Count", 1);
+    reliefDebugViewCombo->addItem("Leap Count", 2);
+    reliefDebugViewCombo->addItem("UV After Relief", 3);
+    connect(reliefDebugViewCombo, QOverload<int>::of(&QComboBox::currentIndexChanged), this, [this](int) {
+        reliefWidget->setDebugView(reliefDebugViewCombo->currentData().toInt());
+    });
+    ctrlLayout->addWidget(reliefDebugViewCombo);
+
+    ctrlLayout->addSpacing(8);
+
+    reliefWireframeCheck = new QCheckBox("Wireframe");
+    connect(reliefWireframeCheck, &QCheckBox::toggled, reliefWidget, &ReliefGLWidget::setWireframe);
+    connect(reliefWireframeCheck, &QCheckBox::toggled, reliefCompareWidget, &GLWidget::setWireframe);
+    ctrlLayout->addWidget(reliefWireframeCheck);
+
+    reliefCullFaceCheck = new QCheckBox("Backface Culling");
+    reliefCullFaceCheck->setChecked(true);
+    connect(reliefCullFaceCheck, &QCheckBox::toggled, reliefWidget, &ReliefGLWidget::setCullFace);
+    connect(reliefCullFaceCheck, &QCheckBox::toggled, reliefCompareWidget, &GLWidget::setCullFace);
+    ctrlLayout->addWidget(reliefCullFaceCheck);
+
+    reliefResetCamBtn = new QPushButton("Reset Camera");
+    connect(reliefResetCamBtn, &QPushButton::clicked, reliefWidget, &ReliefGLWidget::resetCamera);
+    connect(reliefResetCamBtn, &QPushButton::clicked, reliefCompareWidget, &GLWidget::resetCamera);
+    ctrlLayout->addWidget(reliefResetCamBtn);
+
+    ctrlLayout->addStretch();
+    layout->addWidget(ctrlGroup);
+
+    return tab;
+}
+
+// ─── Setup ───────────────────────────────────────────────────────────────────
+
+void MainWindow::setupUI() {
+    QTabWidget* tabs = new QTabWidget(this);
+    setCentralWidget(tabs);
+    tabsWidget = tabs;
+
+    tabs->addTab(buildSimplifierTab(), "Simplifier");
+    tabs->addTab(buildHeightmapTab(), "Heightmap Baking");
+    tabs->addTab(buildTexturePrepTab(), "Textures Preparation");
+    reliefTabIndex = tabs->addTab(buildReliefMappingTab(), "Relief Mapping");
+
+    connect(tabs, &QTabWidget::currentChanged, this, &MainWindow::onTabChanged);
+
+    statusLabel = new QLabel("Ready");
+    statusBar()->addWidget(statusLabel);
+}
+
+// ─── Menu ─────────────────────────────────────────────────────────────────────
 
 void MainWindow::createMenuBar() {
     QMenuBar* menuBar = new QMenuBar(this);
     setMenuBar(menuBar);
 
-    // File menu
     QMenu* fileMenu = menuBar->addMenu("&File");
 
     QAction* loadAction = fileMenu->addAction("&Load Model...");
@@ -163,17 +663,20 @@ void MainWindow::createMenuBar() {
     QAction* exitAction = fileMenu->addAction("E&xit");
     connect(exitAction, &QAction::triggered, this, &QWidget::close);
 
-    // Help menu
     QMenu* helpMenu = menuBar->addMenu("&Help");
     QAction* aboutAction = helpMenu->addAction("&About");
     connect(aboutAction, &QAction::triggered, this, [this]() {
         QMessageBox::about(this, "About QEM Simplifier",
-            "QEM Mesh Simplifier v1.0\n\n"
+            "QEM Mesh Simplifier\n\n"
             "Quadric Error Metrics simplification with Qt GUI\n"
             "Mouse: Drag to rotate, Scroll to zoom\n"
-            "Formats: OBJ, GLTF");
+            "Formats: OBJ, GLTF\n\n"
+            "Heightmap tab: bakes displacement between simplified and original mesh\n"
+            "using ray casting with or without a cage to bound the search distance.");
     });
 }
+
+// ─── Slots ───────────────────────────────────────────────────────────────────
 
 void MainWindow::onLoadModel() {
     QString fileName = QFileDialog::getOpenFileName(this,
@@ -182,24 +685,28 @@ void MainWindow::onLoadModel() {
 
     if (fileName.isEmpty()) return;
 
-    originalMesh = std::make_unique<QEMSimplifier>();
+    originalMesh   = std::make_unique<QEMSimplifier>();
     simplifiedMesh = std::make_unique<QEMSimplifier>();
 
     bool success = false;
-    if (fileName.endsWith(".obj", Qt::CaseInsensitive)) {
+    if (fileName.endsWith(".obj", Qt::CaseInsensitive))
         success = originalMesh->loadOBJ(fileName.toStdString());
-    } else {
+    else
         success = originalMesh->loadGLTF(fileName.toStdString());
-    }
 
     if (!success) {
         QMessageBox::critical(this, "Error", "Failed to load mesh file!");
         return;
     }
 
-    currentFilePath = fileName;
+    // Start "simplified" as a copy of the original so Textures Preparation / Relief
+    // Mapping work even before the user runs Simplify (e.g. baking with an already
+    // low-poly model and pre-existing textures).
+    *simplifiedMesh = *originalMesh;
+
+    currentFilePath  = fileName;
     originalFaceCount = originalMesh->faceCount();
-    targetFaceCount = std::max(4, originalFaceCount / 4);
+    targetFaceCount   = std::max(4, originalFaceCount / 4);
 
     targetFacesSpinBox->blockSignals(true);
     targetFacesSpinBox->setMaximum(originalFaceCount);
@@ -209,6 +716,7 @@ void MainWindow::onLoadModel() {
 
     glWidgetOriginal->setMesh(originalMesh.get());
     glWidgetSimplified->setMesh(originalMesh.get());
+    glWidgetOverlay->setMeshes(originalMesh.get(), originalMesh.get());
 
     bool hasTexture = !originalMesh->textureData.empty();
     texturedCheck->setEnabled(hasTexture);
@@ -220,12 +728,54 @@ void MainWindow::onLoadModel() {
     uvViewCheck->setEnabled(hasUVs);
     if (!hasUVs) uvViewCheck->setChecked(false);
 
+    for (int i = 0; i < 3; i++) {
+        hmPreview[i]->setText("(not baked)");
+        hmPreview[i]->setPixmap(QPixmap());
+        hmInfoLabel[i]->setText(i < 2 ? "Range: —" : "—");
+        hmSaveBtn[i]->setEnabled(false);
+        if (i < 2) hmResults[i] = HeightmapResult{};
+    }
+    nmResult = NormalmapResult{};
+
+    // Reset inflate/deflate controls
+    baseSimplifiedPositions.clear();
+    simplifiedVertexNormals.clear();
+    inflateSlider->blockSignals(true);
+    inflateSlider->setValue(0);
+    inflateSlider->blockSignals(false);
+    inflateSlider->setEnabled(false);
+    inflateSpin->blockSignals(true);
+    inflateSpin->setValue(0.0);
+    inflateSpin->blockSignals(false);
+    inflateSpin->setEnabled(false);
+    minCoverBtn->setEnabled(false);
+    maxFitBtn->setEnabled(false);
+
+    // Reset Textures Preparation / Relief Mapping state — the previous bake was for
+    // the old mesh's UV layout and no longer applies. simplifiedMesh already holds a
+    // copy of the freshly loaded mesh (see above), so the relief widget can pick it
+    // up as soon as its tab is shown.
+    tpResult = TexturePrepResult{};
+    reliefMeshPending = true;
+    reliefTexturesPending = false;
+    tpGenerateBtn->setEnabled(false);
+    for (int i = 0; i < 4; i++) {
+        tpPreview[i]->setText("(not generated)");
+        tpPreview[i]->setPixmap(QPixmap());
+        tpInfoLabel[i]->setText("—");
+        tpSaveBtn[i]->setEnabled(false);
+        tpMipSpin[i]->setEnabled(false);
+        tpMipSpin[i]->setRange(0, 0);
+    }
+    if (reliefStack) reliefStack->setCurrentWidget(reliefPlaceholder);
+
     updateStatusBar();
 }
 
 void MainWindow::onSaveSimplified() {
     if (!simplifiedMesh || simplifiedMesh->faceCount() == 0) {
-        QMessageBox::warning(this, "Warning", "No simplified mesh to save!\nRun simplification first.");
+        QMessageBox::warning(this, "Warning",
+            "No simplified mesh to save!\nRun simplification first.");
         return;
     }
 
@@ -236,11 +786,10 @@ void MainWindow::onSaveSimplified() {
     if (fileName.isEmpty()) return;
 
     bool success = false;
-    if (fileName.endsWith(".obj", Qt::CaseInsensitive)) {
+    if (fileName.endsWith(".obj", Qt::CaseInsensitive))
         success = simplifiedMesh->saveOBJ(fileName.toStdString());
-    } else {
+    else
         success = simplifiedMesh->saveGLTF(fileName.toStdString());
-    }
 
     if (success) {
         statusLabel->setText("Saved: " + fileName);
@@ -257,8 +806,6 @@ void MainWindow::onSimplify() {
     }
 
     int targetFaces = targetFacesSpinBox->value();
-
-    // Copia mesh original para simplificação
     *simplifiedMesh = *originalMesh;
     simplifiedMesh->useBoundaryConstraints = boundaryConstraintCheck->isChecked();
 
@@ -267,8 +814,60 @@ void MainWindow::onSimplify() {
 
     simplifiedMesh->simplify(targetFaces);
 
+    // Capture base positions and compute vertex normals for inflate/deflate
+    baseSimplifiedPositions.resize(simplifiedMesh->vertices.size());
+    for (size_t i = 0; i < simplifiedMesh->vertices.size(); i++)
+        baseSimplifiedPositions[i] = simplifiedMesh->vertices[i].pos;
+
+    simplifiedVertexNormals.assign(simplifiedMesh->vertices.size(), Eigen::Vector3d::Zero());
+    for (const auto& f : simplifiedMesh->faces) {
+        if (f.removed) continue;
+        const auto& p0 = baseSimplifiedPositions[f.v[0]];
+        const auto& p1 = baseSimplifiedPositions[f.v[1]];
+        const auto& p2 = baseSimplifiedPositions[f.v[2]];
+        Eigen::Vector3d n = (p1-p0).cross(p2-p0);
+        simplifiedVertexNormals[f.v[0]] += n;
+        simplifiedVertexNormals[f.v[1]] += n;
+        simplifiedVertexNormals[f.v[2]] += n;
+    }
+    for (size_t i = 0; i < simplifiedMesh->vertices.size(); i++) {
+        double len = simplifiedVertexNormals[i].norm();
+        if (len > 1e-10) simplifiedVertexNormals[i] /= len;
+    }
+
+    // Set inflate range based on original mesh bounding box diagonal
+    {
+        Eigen::Vector3d bmin = Eigen::Vector3d::Constant(1e18);
+        Eigen::Vector3d bmax = Eigen::Vector3d::Constant(-1e18);
+        for (const auto& v : originalMesh->vertices) {
+            if (!v.removed) { bmin = bmin.cwiseMin(v.pos); bmax = bmax.cwiseMax(v.pos); }
+        }
+        inflateScale = std::max((bmax - bmin).norm() * 0.5, 1e-6);
+    }
+
+    inflateSpin->blockSignals(true);
+    inflateSpin->setMinimum(-inflateScale);
+    inflateSpin->setMaximum( inflateScale);
+    inflateSpin->setSingleStep(inflateScale / 1000.0);
+    inflateSpin->setValue(0.0);
+    inflateSpin->blockSignals(false);
+    inflateSlider->blockSignals(true);
+    inflateSlider->setValue(0);
+    inflateSlider->blockSignals(false);
+    inflateSlider->setEnabled(true);
+    inflateSpin->setEnabled(true);
+    minCoverBtn->setEnabled(true);
+    maxFitBtn->setEnabled(true);
+
     glWidgetSimplified->setMesh(simplifiedMesh.get());
+    glWidgetOverlay->setMeshes(originalMesh.get(), simplifiedMesh.get());
     updateStatusBar();
+
+    bool allTexturesLoaded = !tpInputPath[0].isEmpty() && !tpInputPath[1].isEmpty() && !tpInputPath[2].isEmpty();
+    tpGenerateBtn->setEnabled(allTexturesLoaded);
+
+    reliefMeshPending = true;
+    trySyncReliefWidget();
 }
 
 void MainWindow::onTargetFacesChanged(int value) {
@@ -278,7 +877,414 @@ void MainWindow::onTargetFacesChanged(int value) {
 void MainWindow::onResetCameras() {
     glWidgetOriginal->resetCamera();
     glWidgetSimplified->resetCamera();
+    glWidgetOverlay->resetCamera();
 }
+
+// ─── Heightmap baking ────────────────────────────────────────────────────────
+
+void MainWindow::setBakeButtonsEnabled(bool enabled) {
+    hmBakeAllBtn->setEnabled(enabled);
+    for (int i = 0; i < 3; i++)
+        hmBakeSingleBtn[i]->setEnabled(enabled);
+}
+
+void MainWindow::launchBake(QList<int> strategies) {
+    if (hmThread && hmThread->isRunning()) return;
+
+    if (!simplifiedMesh || simplifiedMesh->faceCount() == 0) {
+        QMessageBox::warning(this, "Warning",
+            "Simplify the mesh first before baking a heightmap.");
+        return;
+    }
+    if (!originalMesh || originalMesh->faceCount() == 0) {
+        QMessageBox::warning(this, "Warning", "No original mesh loaded.");
+        return;
+    }
+
+    bool hasUVs = false;
+    for (const auto& v : simplifiedMesh->vertices)
+        if (v.uv.squaredNorm() > 1e-12) { hasUVs = true; break; }
+    if (!hasUVs) {
+        QMessageBox::warning(this, "Warning",
+            "The simplified mesh has no UV coordinates.\n"
+            "Load a mesh with UVs (e.g. a GLTF with texture coordinates).");
+        return;
+    }
+
+    int res = hmResCombo->currentData().toInt();
+
+    setBakeButtonsEnabled(false);
+    hmProgressBar->setValue(0);
+    hmProgressLabel->setText("Starting…");
+
+    for (int s : strategies) {
+        hmPreview[s]->setText("(baking…)");
+        hmPreview[s]->setPixmap(QPixmap());
+        hmInfoLabel[s]->setText("Range: —");
+        hmSaveBtn[s]->setEnabled(false);
+    }
+
+    hmActiveStrategies = strategies;
+
+    hmWorker = new HeightmapWorker();
+    hmWorker->simplified = simplifiedMesh.get();
+    hmWorker->original   = originalMesh.get();
+    hmWorker->width      = res;
+    hmWorker->height     = res;
+    hmWorker->cageOffset = hmCageOffsetSpin->value();
+    hmWorker->strategies = strategies;
+
+    hmThread = new QThread(this);
+    hmWorker->moveToThread(hmThread);
+
+    connect(hmThread, &QThread::started,          hmWorker, &HeightmapWorker::run);
+    connect(hmWorker, &HeightmapWorker::progress, this,     &MainWindow::onBakeProgress);
+    connect(hmWorker, &HeightmapWorker::finished, this,     &MainWindow::onBakeDone);
+    connect(hmWorker, &HeightmapWorker::finished, hmThread, &QThread::quit);
+
+    statusLabel->setText(QString("Baking %1×%1…").arg(res));
+    hmThread->start();
+}
+
+void MainWindow::onBakeAll() {
+    launchBake({0, 1, 2});
+}
+
+void MainWindow::onBakeSingle(int idx) {
+    launchBake({idx});
+}
+
+void MainWindow::onBakeProgress(int overall, const QString& text) {
+    hmProgressBar->setValue(overall);
+    hmProgressLabel->setText(text);
+}
+
+void MainWindow::onBakeDone() {
+    for (int s : hmActiveStrategies) {
+        if (s == 2) {
+            nmResult = hmWorker->nmResult;
+            displayNormalmap(nmResult);
+        } else {
+            hmResults[s] = hmWorker->results[s];
+            displayHeightmap(s, hmResults[s]);
+        }
+    }
+
+    hmWorker->deleteLater();
+    hmWorker = nullptr;
+    hmThread->deleteLater();
+    hmThread = nullptr;
+
+    setBakeButtonsEnabled(true);
+    hmProgressLabel->setText("Done");
+    statusLabel->setText("Bake complete");
+}
+
+void MainWindow::displayHeightmap(int idx, const HeightmapResult& r) {
+    if (!r.valid || r.image.empty()) {
+        hmPreview[idx]->setText("(bake failed)");
+        hmInfoLabel[idx]->setText("Range: —");
+        hmSaveBtn[idx]->setEnabled(false);
+        return;
+    }
+
+    QImage img(r.image.data(), r.width, r.height, r.width, QImage::Format_Grayscale8);
+    img = img.mirrored(false, true);
+
+    QPixmap px = QPixmap::fromImage(img);
+    QSize labelSize = hmPreview[idx]->size();
+    if (labelSize.isEmpty()) labelSize = QSize(300, 300);
+    hmPreview[idx]->setPixmap(
+        px.scaled(labelSize, Qt::KeepAspectRatio, Qt::SmoothTransformation));
+
+    hmInfoLabel[idx]->setText(
+        QString("Range: [%1, %2]")
+            .arg((double)r.minH, 0, 'f', 4)
+            .arg((double)r.maxH, 0, 'f', 4));
+
+    hmSaveBtn[idx]->setEnabled(true);
+}
+
+void MainWindow::displayNormalmap(const NormalmapResult& r) {
+    if (!r.valid || r.image.empty()) {
+        hmPreview[2]->setText("(bake failed)");
+        hmInfoLabel[2]->setText("—");
+        hmSaveBtn[2]->setEnabled(false);
+        return;
+    }
+
+    QImage img(r.image.data(), r.width, r.height, 3 * r.width, QImage::Format_RGB888);
+    img = img.mirrored(false, true);
+
+    QPixmap px = QPixmap::fromImage(img);
+    QSize labelSize = hmPreview[2]->size();
+    if (labelSize.isEmpty()) labelSize = QSize(300, 300);
+    hmPreview[2]->setPixmap(
+        px.scaled(labelSize, Qt::KeepAspectRatio, Qt::SmoothTransformation));
+
+    hmInfoLabel[2]->setText("Tangent-space normal map");
+    hmSaveBtn[2]->setEnabled(true);
+}
+
+void MainWindow::onSaveNormalmap() {
+    if (!nmResult.valid || nmResult.image.empty()) return;
+
+    QString fileName = QFileDialog::getSaveFileName(this,
+        "Save Normal Map", "",
+        "PNG Image (*.png);;All Files (*)");
+    if (fileName.isEmpty()) return;
+
+    QImage img(nmResult.image.data(), nmResult.width, nmResult.height,
+               3 * nmResult.width, QImage::Format_RGB888);
+    img = img.mirrored(false, true);
+
+    if (img.save(fileName)) {
+        statusLabel->setText("Saved: " + fileName);
+        QMessageBox::information(this, "Saved", "Normal map saved as PNG.");
+    } else {
+        QMessageBox::critical(this, "Error", "Failed to save image.");
+    }
+}
+
+void MainWindow::onSaveHeightmap(int idx) {
+    const HeightmapResult& r = hmResults[idx];
+    if (!r.valid || r.image.empty()) return;
+
+    QString fileName = QFileDialog::getSaveFileName(this,
+        QString("Save Heightmap (%1)").arg(idx == 0 ? "No Cage" : "With Cage"), "",
+        "PNG Image (*.png);;All Files (*)");
+
+    if (fileName.isEmpty()) return;
+
+    QImage img(r.image.data(), r.width, r.height, r.width, QImage::Format_Grayscale8);
+    img = img.mirrored(false, true);
+
+    if (img.save(fileName)) {
+        statusLabel->setText("Saved: " + fileName);
+        QMessageBox::information(this, "Saved", "Heightmap saved as PNG.");
+    } else {
+        QMessageBox::critical(this, "Error", "Failed to save image.");
+    }
+}
+
+// ─── Textures Preparation ────────────────────────────────────────────────────
+
+void MainWindow::onTpLoad(int idx) {
+    static const char* titles[3] = {"Load Color Texture", "Load Depth Texture", "Load Normal Texture"};
+
+    QString fileName = QFileDialog::getOpenFileName(this, titles[idx], "",
+        "Images (*.png *.jpg *.jpeg *.bmp *.tga);;All Files (*)");
+    if (fileName.isEmpty()) return;
+
+    QPixmap px(fileName);
+    if (px.isNull()) {
+        QMessageBox::critical(this, "Error", "Failed to load image.");
+        return;
+    }
+    tpThumb[idx]->setPixmap(px.scaled(tpThumb[idx]->size(), Qt::KeepAspectRatio, Qt::SmoothTransformation));
+    tpInputPath[idx] = fileName;
+
+    bool allLoaded = !tpInputPath[0].isEmpty() && !tpInputPath[1].isEmpty() && !tpInputPath[2].isEmpty();
+    bool hasMesh = simplifiedMesh && simplifiedMesh->faceCount() > 0;
+    tpGenerateBtn->setEnabled(allLoaded && hasMesh);
+}
+
+void MainWindow::onTpGenerate() {
+    if (tpThread && tpThread->isRunning()) return;
+    if (!simplifiedMesh || simplifiedMesh->faceCount() == 0) {
+        QMessageBox::warning(this, "Warning", "Simplify the mesh first before preparing textures.");
+        return;
+    }
+
+    bool hasUVs = false;
+    for (const auto& v : simplifiedMesh->vertices)
+        if (v.uv.squaredNorm() > 1e-12) { hasUVs = true; break; }
+    if (!hasUVs) {
+        QMessageBox::warning(this, "Warning",
+            "The simplified mesh has no UV coordinates.\n"
+            "Load a mesh with UVs (e.g. a GLTF with texture coordinates).");
+        return;
+    }
+
+    int res = tpResCombo->currentData().toInt();
+    int seamBand = tpSeamBandSpin->value();
+
+    tpGenerateBtn->setEnabled(false);
+    tpProgressBar->setValue(0);
+    tpProgressLabel->setText("Starting…");
+    for (int i = 0; i < 4; i++) {
+        tpPreview[i]->setText("(generating…)");
+        tpPreview[i]->setPixmap(QPixmap());
+        tpInfoLabel[i]->setText("—");
+        tpSaveBtn[i]->setEnabled(false);
+        tpMipSpin[i]->setEnabled(false);
+    }
+
+    tpWorker = new TexturePrepWorker();
+    tpWorker->mesh           = simplifiedMesh.get();
+    tpWorker->colorPath      = tpInputPath[0].toStdString();
+    tpWorker->depthPath      = tpInputPath[1].toStdString();
+    tpWorker->normalPath     = tpInputPath[2].toStdString();
+    tpWorker->workRes        = res;
+    tpWorker->seamBandTexels = seamBand;
+
+    tpThread = new QThread(this);
+    tpWorker->moveToThread(tpThread);
+
+    connect(tpThread, &QThread::started,           tpWorker, &TexturePrepWorker::run);
+    connect(tpWorker, &TexturePrepWorker::progress, this,     &MainWindow::onTpProgress);
+    connect(tpWorker, &TexturePrepWorker::finished,  this,     &MainWindow::onTpDone);
+    connect(tpWorker, &TexturePrepWorker::finished,  tpThread, &QThread::quit);
+
+    statusLabel->setText(QString("Baking textures %1×%1…").arg(res));
+    tpThread->start();
+}
+
+void MainWindow::onTpProgress(int overall, const QString& text) {
+    tpProgressBar->setValue(overall);
+    tpProgressLabel->setText(text);
+}
+
+void MainWindow::onTpDone() {
+    tpResult = tpWorker->result;
+
+    tpWorker->deleteLater();
+    tpWorker = nullptr;
+    tpThread->deleteLater();
+    tpThread = nullptr;
+
+    if (!tpResult.valid) {
+        QMessageBox::critical(this, "Error", "Failed to generate textures (could not load one of the input images).");
+        for (int i = 0; i < 4; i++) tpPreview[i]->setText("(failed)");
+    } else {
+        int levels[4] = {
+            tpResult.colorMap.levelCount(), tpResult.reliefMap.levelCount(),
+            tpResult.normalMap.levelCount(), 1
+        };
+        for (int i = 0; i < 4; i++) {
+            tpMipSpin[i]->setRange(0, std::max(0, levels[i] - 1));
+            tpMipSpin[i]->setValue(0);
+            tpMipSpin[i]->setEnabled(levels[i] > 1);
+            tpSaveBtn[i]->setEnabled(true);
+            updateTpPreview(i);
+        }
+
+        reliefTexturesPending = true;
+        trySyncReliefWidget();
+    }
+
+    tpGenerateBtn->setEnabled(true);
+    tpProgressLabel->setText("Done");
+    statusLabel->setText("Texture preparation complete");
+}
+
+QImage MainWindow::mipLevelToQImage(const std::vector<float>& data, int w, int h, int channels, bool remapSigned) const {
+    QImage::Format fmt = (channels == 3) ? QImage::Format_RGB888 : QImage::Format_RGBA8888;
+    QImage img(w, h, fmt);
+    auto remap = [&](float v) { return remapSigned ? v * 0.5f + 0.5f : v; };
+    for (int y = 0; y < h; y++) {
+        for (int x = 0; x < w; x++) {
+            size_t i = ((size_t)y * w + x) * channels;
+            float r = std::clamp(remap(data[i + 0]), 0.0f, 1.0f);
+            float g = std::clamp(remap(data[i + 1]), 0.0f, 1.0f);
+            float b = std::clamp(remap(data[i + 2]), 0.0f, 1.0f);
+            float a = (channels == 4) ? std::clamp(remap(data[i + 3]), 0.0f, 1.0f) : 1.0f;
+            img.setPixelColor(x, y, QColor::fromRgbF(r, g, b, a));
+        }
+    }
+    return img;
+}
+
+QImage MainWindow::offsetMapMaskImage() const {
+    const OffsetMapResult& o = tpResult.offsetMap;
+    QImage img(std::max(1, o.width), std::max(1, o.height), QImage::Format_RGB888);
+    for (int y = 0; y < o.height; y++) {
+        for (int x = 0; x < o.width; x++) {
+            float valid = o.data[((size_t)y * o.width + x) * 4 + 3];
+            img.setPixelColor(x, y, valid > 0.0f ? QColor(255, 60, 60) : QColor(20, 20, 20));
+        }
+    }
+    return img;
+}
+
+void MainWindow::updateTpPreview(int idx) {
+    if (!tpResult.valid) return;
+
+    QImage img;
+    QString info;
+
+    if (idx == 3) {
+        img = offsetMapMaskImage();
+        info = QString("%1×%2 (seam mask)").arg(tpResult.offsetMap.width).arg(tpResult.offsetMap.height);
+    } else {
+        const MipPyramid& p = (idx == 0) ? tpResult.colorMap : (idx == 1) ? tpResult.reliefMap : tpResult.normalMap;
+        int level = std::min(tpMipSpin[idx]->value(), p.levelCount() - 1);
+        if (level < 0) return;
+        int w = std::max(1, p.width >> level), h = std::max(1, p.height >> level);
+        img = mipLevelToQImage(p.mips[level], w, h, p.channels, /*remapSigned=*/idx == 2);
+        info = QString("%1×%2, %3 mips").arg(w).arg(h).arg(p.levelCount());
+    }
+
+    img = img.mirrored(false, true);
+    QPixmap px = QPixmap::fromImage(img);
+    QSize labelSize = tpPreview[idx]->size();
+    if (labelSize.isEmpty()) labelSize = QSize(220, 220);
+    tpPreview[idx]->setPixmap(px.scaled(labelSize, Qt::KeepAspectRatio, Qt::FastTransformation));
+    tpInfoLabel[idx]->setText(info);
+}
+
+void MainWindow::onTpSave(int idx) {
+    if (!tpResult.valid) return;
+    static const char* names[4] = {"Color Map", "Relief Map", "Normal Map", "Offset Map"};
+
+    QString fileName = QFileDialog::getSaveFileName(this, QString("Save %1").arg(names[idx]), "",
+        "PNG Image (*.png);;All Files (*)");
+    if (fileName.isEmpty()) return;
+
+    QImage img;
+    if (idx == 3) {
+        img = offsetMapMaskImage();
+    } else {
+        const MipPyramid& p = (idx == 0) ? tpResult.colorMap : (idx == 1) ? tpResult.reliefMap : tpResult.normalMap;
+        img = mipLevelToQImage(p.mips[0], p.width, p.height, p.channels, /*remapSigned=*/idx == 2);
+    }
+    img = img.mirrored(false, true);
+
+    if (img.save(fileName)) {
+        statusLabel->setText("Saved: " + fileName);
+    } else {
+        QMessageBox::critical(this, "Error", "Failed to save image.");
+    }
+}
+
+// ─── Relief Mapping ──────────────────────────────────────────────────────────
+
+void MainWindow::showReliefViewport() {
+    if (reliefStack && reliefWidget) reliefStack->setCurrentWidget(reliefWidget);
+}
+
+void MainWindow::trySyncReliefWidget() {
+    if (!reliefWidget || !tabsWidget || tabsWidget->currentIndex() != reliefTabIndex) return;
+
+    if (reliefMeshPending && simplifiedMesh && simplifiedMesh->faceCount() > 0) {
+        reliefWidget->setMesh(simplifiedMesh.get());
+        reliefCompareWidget->setMesh(simplifiedMesh.get());
+        reliefMeshPending = false;
+    }
+    if (reliefTexturesPending && tpResult.valid) {
+        reliefWidget->setTextures(tpResult);
+        reliefCompareWidget->setColorTexture(tpResult.colorMap);
+        reliefTexturesPending = false;
+    }
+    if (tpResult.valid) showReliefViewport();
+}
+
+void MainWindow::onTabChanged(int index) {
+    if (index != reliefTabIndex) return;
+    trySyncReliefWidget();
+}
+
+// ─── Status / helpers ────────────────────────────────────────────────────────
 
 void MainWindow::updateStatusBar() {
     QString originalStats = QString("Original: %1 faces, %2 vertices")
@@ -293,16 +1299,141 @@ void MainWindow::updateStatusBar() {
     simplifiedStatsLabel->setText(simplifiedStats);
 
     if (simplifiedMesh->faceCount() > 0) {
-        double reduction = 100.0 * (1.0 - (double)simplifiedMesh->faceCount() / originalMesh->faceCount());
-        statusLabel->setText(QString("Reduction: %.1f%").arg(reduction));
+        double reduction = 100.0 *
+            (1.0 - (double)simplifiedMesh->faceCount() / originalMesh->faceCount());
+        statusLabel->setText(QString("Reduction: %1%").arg(reduction, 0, 'f', 1));
     } else {
         statusLabel->setText("Ready");
     }
 }
 
+// ─── Inflate / Deflate ───────────────────────────────────────────────────────
+
+namespace {
+bool rayTriangleHit(
+    const Eigen::Vector3d& orig, const Eigen::Vector3d& dir,
+    const Eigen::Vector3d& a,    const Eigen::Vector3d& b, const Eigen::Vector3d& c,
+    double& t)
+{
+    constexpr double EPS = 1e-8;
+    Eigen::Vector3d e1 = b-a, e2 = c-a;
+    Eigen::Vector3d h = dir.cross(e2);
+    double det = e1.dot(h);
+    if (std::abs(det) < EPS) return false;
+    double inv = 1.0/det;
+    Eigen::Vector3d s = orig-a;
+    double u = inv*s.dot(h);
+    if (u < 0.0 || u > 1.0) return false;
+    Eigen::Vector3d q = s.cross(e1);
+    double v = inv*dir.dot(q);
+    if (v < 0.0 || u+v > 1.0) return false;
+    t = inv*e2.dot(q);
+    return true;
+}
+} // namespace
+
+void MainWindow::applyInflate(double offset) {
+    if (baseSimplifiedPositions.empty()) return;
+    for (size_t i = 0; i < simplifiedMesh->vertices.size(); i++) {
+        if (!simplifiedMesh->vertices[i].removed)
+            simplifiedMesh->vertices[i].pos =
+                baseSimplifiedPositions[i] + offset * simplifiedVertexNormals[i];
+    }
+    glWidgetSimplified->updateMeshData();
+    glWidgetOverlay->updateSimplifiedMesh();
+}
+
+// For each original vertex, find the nearest simplified face (by centroid) and compute
+// the signed distance from the vertex to that face plane (positive = vertex is "outside"
+// the simplified surface). The minimum inflate to cover all original vertices is the
+// maximum of these positive signed distances.
+double MainWindow::computeMinCoverOffset() const {
+    if (!originalMesh || !simplifiedMesh || baseSimplifiedPositions.empty()) return 0.0;
+
+    struct SFace { Eigen::Vector3d v0, normal, centroid; };
+    std::vector<SFace> sFaces;
+    for (const auto& f : simplifiedMesh->faces) {
+        if (f.removed) continue;
+        const auto& p0 = baseSimplifiedPositions[f.v[0]];
+        const auto& p1 = baseSimplifiedPositions[f.v[1]];
+        const auto& p2 = baseSimplifiedPositions[f.v[2]];
+        Eigen::Vector3d n = (p1-p0).cross(p2-p0);
+        if (n.norm() < 1e-10) continue;
+        n.normalize();
+        sFaces.push_back({p0, n, (p0+p1+p2)/3.0});
+    }
+    if (sFaces.empty()) return 0.0;
+
+    double maxDist = 0.0;
+    for (const auto& v : originalMesh->vertices) {
+        if (v.removed) continue;
+        double minD2 = std::numeric_limits<double>::max();
+        int nearest = 0;
+        for (int fi = 0; fi < (int)sFaces.size(); fi++) {
+            double d2 = (v.pos - sFaces[fi].centroid).squaredNorm();
+            if (d2 < minD2) { minD2 = d2; nearest = fi; }
+        }
+        double signedDist = (v.pos - sFaces[nearest].v0).dot(sFaces[nearest].normal);
+        maxDist = std::max(maxDist, signedDist);
+    }
+    return maxDist;
+}
+
+// For each simplified vertex, cast a ray along its outward normal and find the closest
+// intersection with the original mesh. The maximum inflate before any simplified vertex
+// pierces through the original is the minimum of these intersection distances.
+double MainWindow::computeMaxFitOffset() const {
+    if (!originalMesh || !simplifiedMesh || baseSimplifiedPositions.empty()) return 0.0;
+
+    struct OTri { Eigen::Vector3d a, b, c; };
+    std::vector<OTri> otris;
+    for (const auto& f : originalMesh->faces) {
+        if (f.removed) continue;
+        otris.push_back({
+            originalMesh->vertices[f.v[0]].pos,
+            originalMesh->vertices[f.v[1]].pos,
+            originalMesh->vertices[f.v[2]].pos
+        });
+    }
+    if (otris.empty()) return 0.0;
+
+    double minFit = std::numeric_limits<double>::max();
+    for (size_t i = 0; i < simplifiedMesh->vertices.size(); i++) {
+        if (simplifiedMesh->vertices[i].removed) continue;
+        const auto& n = simplifiedVertexNormals[i];
+        if (n.squaredNorm() < 0.5) continue;
+        const auto& p = baseSimplifiedPositions[i];
+
+        double bestT = std::numeric_limits<double>::max();
+        for (const auto& tri : otris) {
+            double t;
+            if (rayTriangleHit(p, n, tri.a, tri.b, tri.c, t) && t > 1e-5)
+                bestT = std::min(bestT, t);
+        }
+        if (bestT < std::numeric_limits<double>::max())
+            minFit = std::min(minFit, bestT);
+    }
+    return minFit == std::numeric_limits<double>::max() ? 0.0 : minFit;
+}
+
+void MainWindow::onMinCover() {
+    double offset = computeMinCoverOffset();
+    if (offset > inflateSpin->maximum())
+        inflateSpin->setMaximum(offset * 1.5 + 1e-9);
+    inflateSpin->setValue(offset);
+}
+
+void MainWindow::onMaxFit() {
+    double offset = computeMaxFitOffset();
+    if (offset > inflateSpin->maximum())
+        inflateSpin->setMaximum(offset * 1.5 + 1e-9);
+    inflateSpin->setValue(offset);
+}
+
 void MainWindow::computeAutoTarget() {
     if (originalFaceCount > 0) {
-        int target = std::max(4, (int)(originalFaceCount * simplificationSlider->value() / 100.0));
+        int target = std::max(4,
+            (int)(originalFaceCount * simplificationSlider->value() / 100.0));
         targetFacesSpinBox->blockSignals(true);
         targetFacesSpinBox->setValue(target);
         targetFacesSpinBox->blockSignals(false);

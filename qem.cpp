@@ -229,10 +229,9 @@ void QEMSimplifier::applyCollapse(const EdgeCollapse& ec) {
     }
 }
 
-// ─── Passo 3/4: Penalidade para arestas de fronteira (seams e bordas) ───────
+// ─── Classificação de arestas (boundary = referenciada por exatamente 1 face) ─
 
-void QEMSimplifier::addBoundaryConstraints(double weight) {
-    // Contar quantas faces cada aresta tem: fronteira = 1 face
+std::vector<QEMSimplifier::EdgeInfo> QEMSimplifier::classifyEdges() const {
     std::map<std::pair<int,int>, std::vector<int>> edgeFaces;
     for (int fi = 0; fi < (int)faces.size(); fi++) {
         if (faces[fi].removed) continue;
@@ -243,11 +242,24 @@ void QEMSimplifier::addBoundaryConstraints(double weight) {
         }
     }
 
-    int count = 0;
+    std::vector<EdgeInfo> result;
+    result.reserve(edgeFaces.size());
     for (auto& [edge, faceList] : edgeFaces) {
-        if (faceList.size() != 1) continue;
-        int a = edge.first, b = edge.second;
-        int fi = faceList[0];
+        result.push_back({edge.first, edge.second, faceList.size() == 1, faceList[0]});
+    }
+    return result;
+}
+
+// ─── Passo 3/4: Penalidade para arestas de fronteira (seams e bordas) ───────
+
+void QEMSimplifier::addBoundaryConstraints(double weight) {
+    auto edges = classifyEdges();
+
+    int count = 0;
+    for (auto& e : edges) {
+        if (!e.boundary) continue;
+        int a = e.v1, b = e.v2;
+        int fi = e.faceId;
 
         const Eigen::Vector3d& p0 = vertices[faces[fi].v[0]].pos;
         const Eigen::Vector3d& p1 = vertices[faces[fi].v[1]].pos;
@@ -280,6 +292,7 @@ void QEMSimplifier::simplify(int targetFaces, double threshold) {
     {
         using PosUVKey = std::tuple<double,double,double,double,double>;
         std::map<PosUVKey, int> posToIdx;
+        int mergedCount = 0;
         for (int i = 0; i < (int)vertices.size(); i++) {
             if (vertices[i].removed) continue;
             PosUVKey key{vertices[i].pos.x(), vertices[i].pos.y(), vertices[i].pos.z(),
@@ -288,6 +301,7 @@ void QEMSimplifier::simplify(int targetFaces, double threshold) {
             if (!res.second) {
                 int keep = res.first->second;
                 vertices[i].removed = true;
+                ++mergedCount;
                 for (auto& fc : faces) {
                     if (fc.removed) continue;
                     bool ref = false;
@@ -298,6 +312,7 @@ void QEMSimplifier::simplify(int targetFaces, double threshold) {
                 }
             }
         }
+        std::cout << "Fusao de vertices coincidentes (pos+UV): " << mergedCount << " vertices fundidos\n";
     }
 #endif
 

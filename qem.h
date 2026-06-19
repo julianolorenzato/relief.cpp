@@ -85,9 +85,19 @@ public:
     int textureHeight = 0;
 
     void simplify(int targetFaces, double threshold = 0.0);
-                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        
+
     int faceCount() const;
     int vertexCount() const;
+
+    // Classificação de arestas: boundary = referenciada por exatamente 1 face
+    // (mesmo critério usado por addBoundaryConstraints). Usado tanto internamente
+    // quanto pela visualização (GLWidget) para que ambos enxerguem a mesma coisa.
+    struct EdgeInfo {
+        int  v1, v2;
+        bool boundary;
+        int  faceId; // face de referência (sempre válida; única quando boundary == true)
+    };
+    std::vector<EdgeInfo> classifyEdges() const;
 
 private:
     std::map<std::pair<int,int>, EdgeCollapse> edgeMap;

@@ -1,0 +1,46 @@
+#pragma once
+#include "qem.h"
+#include "uv_atlas.h"
+#include <vector>
+#include <string>
+#include <functional>
+
+using TexturePrepProgressCb = std::function<void(int)>;
+
+// One channel-set mip pyramid: mips[0] is full res (width x height), each
+// subsequent level is half the resolution of the previous (down to 1x1).
+// Each level stores `channels` floats per texel, row-major.
+// Normal-map pyramids store raw unit-vector components in [-1,1] (not
+// remapped to [0,1]) — remap on upload/export.
+struct MipPyramid {
+    std::vector<std::vector<float>> mips;
+    int width  = 0; // mip 0 dimensions
+    int height = 0;
+    int channels = 4;
+
+    int levelCount() const { return (int)mips.size(); }
+};
+
+struct TexturePrepResult {
+    MipPyramid colorMap;      // RGBA, average-downsampled
+    MipPyramid reliefMap;     // R=avg depth, G=max depth (mip bound), B=reserved(0), A=seam discriminant (max/OR)
+    MipPyramid normalMap;     // XYZ unit vector in [-1,1], average-downsampled + renormalized per level
+    OffsetMapResult offsetMap; // mip0 only — see uv_atlas.h
+
+    bool valid = false;
+};
+
+class TexturePrepBaker {
+public:
+    // colorPath/depthPath/normalPath: file paths to the 3 input textures.
+    // workRes: square working resolution the output textures are baked at.
+    // seamBandTexels: width (in texels) of the atlas-leap band baked around UV seams.
+    static TexturePrepResult bake(
+        const QEMSimplifier& mesh,
+        const std::string& colorPath,
+        const std::string& depthPath,
+        const std::string& normalPath,
+        int workRes,
+        int seamBandTexels,
+        TexturePrepProgressCb cb = {});
+};

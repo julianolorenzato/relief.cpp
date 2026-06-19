@@ -2,11 +2,25 @@
 #include <QMainWindow>
 #include <QSlider>
 #include <QSpinBox>
+#include <QDoubleSpinBox>
 #include <QLabel>
 #include <QCheckBox>
+#include <QComboBox>
+#include <QPushButton>
+#include <QProgressBar>
+#include <QThread>
+#include <QList>
+#include <QImage>
+#include <QTabWidget>
+#include <QStackedWidget>
 #include <memory>
 #include "qem.h"
 #include "glwidget.h"
+#include "overlayglwidget.h"
+#include "heightmap.h"
+#include "heightmap_worker.h"
+#include "texture_prep_worker.h"
+#include "reliefglwidget.h"
 
 class MainWindow : public QMainWindow {
     Q_OBJECT
@@ -22,33 +36,140 @@ private slots:
     void onTargetFacesChanged(int value);
     void onResetCameras();
 
+    void onMinCover();
+    void onMaxFit();
+
+    void onBakeAll();
+    void onBakeSingle(int idx);
+    void onSaveHeightmap(int idx);
+    void onSaveNormalmap();
+    void onBakeProgress(int overall, const QString& text);
+    void onBakeDone();
+
+    void onTpLoad(int idx);
+    void onTpGenerate();
+    void onTpProgress(int overall, const QString& text);
+    void onTpDone();
+    void onTpSave(int idx);
+
 private:
     void setupUI();
     void createMenuBar();
     void updateStatusBar();
     void computeAutoTarget();
 
-    // Dados
+    QWidget* buildSimplifierTab();
+    QWidget* buildHeightmapTab();
+    QWidget* buildTexturePrepTab();
+    QWidget* buildReliefMappingTab();
+
+    void updateTpPreview(int idx);
+    QImage mipLevelToQImage(const std::vector<float>& data, int w, int h, int channels, bool remapSigned) const;
+    QImage offsetMapMaskImage() const;
+    void showReliefViewport();
+    void trySyncReliefWidget();
+    void onTabChanged(int index);
+
+    void applyInflate(double offset);
+    double computeMinCoverOffset() const;
+    double computeMaxFitOffset() const;
+
+    void displayHeightmap(int idx, const HeightmapResult& r);
+    void displayNormalmap(const NormalmapResult& r);
+    void launchBake(QList<int> strategies);
+    void setBakeButtonsEnabled(bool enabled);
+
+    // ── Mesh data ────────────────────────────────────────────────────────────
     std::unique_ptr<QEMSimplifier> originalMesh;
     std::unique_ptr<QEMSimplifier> simplifiedMesh;
 
-    // UI
-    GLWidget* glWidgetOriginal = nullptr;
-    GLWidget* glWidgetSimplified = nullptr;
-    QSlider* simplificationSlider = nullptr;
-    QSpinBox* targetFacesSpinBox = nullptr;
-    QLabel* statusLabel = nullptr;
-    QLabel* originalStatsLabel = nullptr;
-    QLabel* simplifiedStatsLabel = nullptr;
+    // ── Simplifier tab ───────────────────────────────────────────────────────
+    GLWidget*        glWidgetOriginal   = nullptr;
+    GLWidget*        glWidgetSimplified = nullptr;
+    OverlayGLWidget* glWidgetOverlay    = nullptr;
+    QSlider*  simplificationSlider  = nullptr;
+    QSpinBox* targetFacesSpinBox    = nullptr;
+    QLabel*   statusLabel           = nullptr;
+    QLabel*   originalStatsLabel    = nullptr;
+    QLabel*   simplifiedStatsLabel  = nullptr;
 
     QCheckBox* wireframeCheck          = nullptr;
     QCheckBox* cullFaceCheck           = nullptr;
     QCheckBox* texturedCheck           = nullptr;
     QCheckBox* uvViewCheck             = nullptr;
     QCheckBox* boundaryConstraintCheck = nullptr;
+    QCheckBox* edgeClassificationCheck = nullptr;
 
-    // Controle
+    QSlider*        inflateSlider = nullptr;
+    QDoubleSpinBox* inflateSpin   = nullptr;
+    QPushButton*    minCoverBtn   = nullptr;
+    QPushButton*    maxFitBtn     = nullptr;
+
+    std::vector<Eigen::Vector3d> baseSimplifiedPositions;
+    std::vector<Eigen::Vector3d> simplifiedVertexNormals;
+    double inflateScale = 1.0;
+
+    // ── Heightmap tab ────────────────────────────────────────────────────────
+    QComboBox*       hmResCombo       = nullptr;
+    QDoubleSpinBox*  hmCageOffsetSpin = nullptr;
+    QPushButton*     hmBakeAllBtn     = nullptr;
+    QProgressBar*    hmProgressBar    = nullptr;
+    QLabel*          hmProgressLabel  = nullptr;
+
+    // index 0 = Ray Cast (no cage), index 1 = Ray Cast + Cage, index 2 = Normal Map
+    QLabel*      hmPreview[3]       = {};
+    QLabel*      hmInfoLabel[3]     = {};
+    QPushButton* hmBakeSingleBtn[3] = {};
+    QPushButton* hmSaveBtn[3]       = {};
+
+    HeightmapResult   hmResults[2];
+    NormalmapResult   nmResult;
+    QList<int>        hmActiveStrategies;
+    HeightmapWorker*  hmWorker = nullptr;
+    QThread*          hmThread = nullptr;
+
+    // ── Textures Preparation tab ─────────────────────────────────────────────
+    // index 0 = Color, 1 = Depth, 2 = Normal (inputs); preview/save panels are
+    // 0 = Color Map, 1 = Relief Map, 2 = Normal Map, 3 = Offset Map (outputs).
+    QString          tpInputPath[3];
+    QLabel*          tpThumb[3]    = {};
+    QPushButton*     tpLoadBtn[3]  = {};
+    QComboBox*       tpResCombo       = nullptr;
+    QSpinBox*        tpSeamBandSpin   = nullptr;
+    QPushButton*     tpGenerateBtn    = nullptr;
+    QProgressBar*    tpProgressBar    = nullptr;
+    QLabel*          tpProgressLabel  = nullptr;
+    QLabel*          tpPreview[4]     = {};
+    QLabel*          tpInfoLabel[4]   = {};
+    QSpinBox*        tpMipSpin[4]     = {};
+    QPushButton*     tpSaveBtn[4]     = {};
+    TexturePrepWorker* tpWorker = nullptr;
+    QThread*           tpThread = nullptr;
+    TexturePrepResult  tpResult;
+
+    // ── Relief Mapping tab ───────────────────────────────────────────────────
+    QTabWidget*      tabsWidget       = nullptr;
+    int              reliefTabIndex   = -1;
+    QStackedWidget*  reliefStack      = nullptr;
+    QLabel*          reliefPlaceholder = nullptr;
+    ReliefGLWidget*  reliefWidget     = nullptr;
+    GLWidget*        reliefCompareWidget = nullptr;
+    QComboBox*       reliefTypeCombo          = nullptr;
+    QSpinBox*        reliefStepsSpin          = nullptr;
+    QSpinBox*        reliefBinaryStepsSpin    = nullptr;
+    QDoubleSpinBox*  reliefDepthScaleSpin     = nullptr;
+    QCheckBox*       reliefUseAtlasCheck      = nullptr;
+    QComboBox*       reliefOffsetVersionCombo = nullptr;
+    QCheckBox*       reliefFilter0Check       = nullptr;
+    QComboBox*       reliefDebugViewCombo     = nullptr;
+    QCheckBox*       reliefWireframeCheck     = nullptr;
+    QCheckBox*       reliefCullFaceCheck      = nullptr;
+    QPushButton*     reliefResetCamBtn        = nullptr;
+    bool             reliefMeshPending     = false;
+    bool             reliefTexturesPending = false;
+
+    // ── State ────────────────────────────────────────────────────────────────
     QString currentFilePath;
     int originalFaceCount = 0;
-    int targetFaceCount = 0;
+    int targetFaceCount   = 0;
 };
