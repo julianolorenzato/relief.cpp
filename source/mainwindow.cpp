@@ -90,7 +90,11 @@ QWidget* MainWindow::buildSimplifierTab() {
 
     // ── Controls ─────────────────────────────────────────────────────────────
     QGroupBox* controlsGroup = new QGroupBox("Simplification Controls");
-    QHBoxLayout* controlsLayout = new QHBoxLayout(controlsGroup);
+    QVBoxLayout* controlsRows = new QVBoxLayout(controlsGroup);
+    QHBoxLayout* controlsLayout = new QHBoxLayout();
+    QHBoxLayout* controlsLayout2 = new QHBoxLayout();
+    controlsRows->addLayout(controlsLayout);
+    controlsRows->addLayout(controlsLayout2);
 
     controlsLayout->addWidget(new QLabel("Target Faces:"));
 
@@ -137,24 +141,33 @@ QWidget* MainWindow::buildSimplifierTab() {
     connect(uvViewCheck, &QCheckBox::toggled, glWidgetSimplified, &GLWidget::setUVMode);
     controlsLayout->addWidget(uvViewCheck);
 
-    controlsLayout->addWidget(new QLabel("Boundary:"));
+    controlsLayout2->addWidget(new QLabel("Boundary:"));
     boundaryModeCombo = new QComboBox();
     boundaryModeCombo->addItem("No constraint",                (int)BoundaryMode::None);
     boundaryModeCombo->addItem("Boundary constraint",          (int)BoundaryMode::Constraint);
     boundaryModeCombo->addItem("Lock seam edges",               (int)BoundaryMode::LockSeamVertices);
     boundaryModeCombo->addItem("Sync seam twins",                (int)BoundaryMode::SyncSeamTwins);
     boundaryModeCombo->setCurrentIndex(1);
-    controlsLayout->addWidget(boundaryModeCombo);
+    controlsLayout2->addWidget(boundaryModeCombo);
+
+    envelopeConstraintCheck = new QCheckBox("Envelope Constraint");
+    envelopeConstraintCheck->setToolTip(
+        "Garante que a malha simplificada fique sempre do lado de fora (ou sobre)\n"
+        "a malha original. Pode travar colapsos em regioes muito concavas, entao\n"
+        "a malha final pode nao atingir a contagem de faces alvo.");
+    controlsLayout2->addWidget(envelopeConstraintCheck);
 
     showBoundaryEdgesCheck = new QCheckBox("Show Boundary Edges");
     connect(showBoundaryEdgesCheck, &QCheckBox::toggled, glWidgetOriginal,   &GLWidget::setShowBoundaryEdges);
     connect(showBoundaryEdgesCheck, &QCheckBox::toggled, glWidgetSimplified, &GLWidget::setShowBoundaryEdges);
-    controlsLayout->addWidget(showBoundaryEdgesCheck);
+    controlsLayout2->addWidget(showBoundaryEdgesCheck);
 
     showInternalEdgesCheck = new QCheckBox("Show Internal Edges");
     connect(showInternalEdgesCheck, &QCheckBox::toggled, glWidgetOriginal,   &GLWidget::setShowInternalEdges);
     connect(showInternalEdgesCheck, &QCheckBox::toggled, glWidgetSimplified, &GLWidget::setShowInternalEdges);
-    controlsLayout->addWidget(showInternalEdgesCheck);
+    controlsLayout2->addWidget(showInternalEdgesCheck);
+
+    controlsLayout2->addStretch();
 
     controlsGroup->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
     layout->addWidget(controlsGroup);
@@ -816,6 +829,7 @@ void MainWindow::onSimplify() {
     int targetFaces = targetFacesSpinBox->value();
     *simplifiedMesh = *originalMesh;
     simplifiedMesh->boundaryMode = (BoundaryMode)boundaryModeCombo->currentData().toInt();
+    simplifiedMesh->envelopeConstraint = envelopeConstraintCheck->isChecked();
 
     statusLabel->setText("Simplifying...");
     statusBar()->repaint();

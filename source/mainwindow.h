@@ -96,6 +96,7 @@ private:
     QCheckBox* texturedCheck           = nullptr;
     QCheckBox* uvViewCheck             = nullptr;
     QComboBox* boundaryModeCombo       = nullptr;
+    QCheckBox* envelopeConstraintCheck = nullptr;
     QCheckBox* showBoundaryEdgesCheck  = nullptr;
     QCheckBox* showInternalEdgesCheck  = nullptr;
 

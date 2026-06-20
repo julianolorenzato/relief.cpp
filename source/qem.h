@@ -47,6 +47,12 @@ struct Vertex {
     Eigen::Matrix4d Q    = Eigen::Matrix4d::Zero();
     Eigen::Vector2d uv   = Eigen::Vector2d::Zero();
     bool            removed = false;
+
+    // Planos (n.x,n.y,n.z,d), orientados outward, das faces originais já
+    // absorvidas por este vértice ao longo dos colapsos (ver
+    // QEMSimplifier::envelopeConstraint). Vazio quando a restrição de
+    // envelope está desligada.
+    std::vector<Eigen::Vector4d> envelope;
 };
 
 struct Face {
@@ -87,6 +93,12 @@ public:
 
     BoundaryMode boundaryMode = BoundaryMode::Constraint;
 
+    // Quando true, nenhum colapso pode produzir um vértice que viole os
+    // planos de envelope acumulados de v1/v2: garante que a malha
+    // simplificada fique sempre do lado de fora (ou sobre) a original.
+    // Ver docs/envelope-simplification-plan.md.
+    bool envelopeConstraint = false;
+
     bool loadOBJ(const std::string& path);
     bool saveOBJ(const std::string& path) const;
     bool loadGLTF(const std::string& path);
@@ -116,10 +128,17 @@ private:
     std::map<std::pair<int,int>, EdgeCollapse> edgeMap;
 
     void computeQ();
-    EdgeCollapse computeCollapse(int v1, int v2) const;
+    // Calcula vertices[i].envelope a partir das faces atuais (uma vez, antes
+    // do laço de colapsos). Só chamada quando envelopeConstraint == true.
+    void computeEnvelope();
+    // Monta o candidato de colapso entre os 3 pontos de sempre (v1, v2,
+    // ponto médio). Quando envelopeConstraint == true, descarta candidatos
+    // que violem os planos acumulados de v1/v2 e retorna false se nenhum dos
+    // 3 for viável (aresta não pode colapsar nesse passo).
+    bool computeCollapse(int v1, int v2, EdgeCollapse& out) const;
     // Versão sincronizada: combina as quádricas de (v1,v2) e do par espelhado
     // (tv1,tv2) para escolher uma única posição-alvo compartilhada pelos dois.
-    EdgeCollapse computeCollapse(int v1, int v2, int tv1, int tv2) const;
+    bool computeCollapse(int v1, int v2, int tv1, int tv2, EdgeCollapse& out) const;
     void applyCollapse(const EdgeCollapse& ec);
     void mergeVertexPair(int keep, int remove, const Eigen::Vector3d& pos, const Eigen::Vector2d& uv);
     void rebuildQueue(std::priority_queue<EdgeCollapse,

@@ -1,4 +1,5 @@
 #include "qem.h"
+#include <limits>
 
 // ─── Utilitário ──────────────────────────────────────────────────────────────
 
@@ -139,32 +140,80 @@ void QEMSimplifier::computeQ() {
     }
 }
 
-// ─── Passo 2: Avaliar custo de colapso de aresta ────────────────────────────
+// ─── Restrição de envelope (half-spaces) ────────────────────────────────────
+// Um ponto satisfaz um plano (n,d) orientado outward quando n·p + d ≥ -eps.
+// Como essa desigualdade é afim em p, se os 3 cantos de um triângulo a
+// satisfazem, todo ponto interno também satisfaz — é isso que permite usar
+// os planos acumulados por vértice como restrição de colapso e ainda assim
+// garantir a footprint inteira (ver docs/envelope-simplification-plan.md).
 
-EdgeCollapse QEMSimplifier::computeCollapse(int v1, int v2) const {
-    EdgeCollapse ec;
+static bool pointSatisfiesPlanes(const Eigen::Vector3d& p,
+                                  const std::vector<Eigen::Vector4d>& planes,
+                                  double eps = 1e-6) {
+    for (const auto& pl : planes) {
+        double val = pl.x()*p.x() + pl.y()*p.y() + pl.z()*p.z() + pl.w();
+        if (val < -eps) return false;
+    }
+    return true;
+}
+
+void QEMSimplifier::computeEnvelope() {
+    for (auto& vx : vertices) vx.envelope.clear();
+
+    for (auto& fc : faces) {
+        if (fc.removed) continue;
+        const Eigen::Vector3d& p0 = vertices[fc.v[0]].pos;
+        const Eigen::Vector3d& p1 = vertices[fc.v[1]].pos;
+        const Eigen::Vector3d& p2 = vertices[fc.v[2]].pos;
+
+        Eigen::Vector3d n = (p1 - p0).cross(p2 - p0).normalized();
+        double d = -n.dot(p0);
+        Eigen::Vector4d plane(n.x(), n.y(), n.z(), d);
+
+        vertices[fc.v[0]].envelope.push_back(plane);
+        vertices[fc.v[1]].envelope.push_back(plane);
+        vertices[fc.v[2]].envelope.push_back(plane);
+    }
+}
+
+// ─── Passo 2: Avaliar custo de colapso de aresta ────────────────────────────
+// Retorna false (sem preencher 'out') quando envelopeConstraint == true e
+// nenhum dos 3 candidatos de sempre satisfaz os planos acumulados de v1/v2:
+// a aresta não pode colapsar nesse passo.
+
+bool QEMSimplifier::computeCollapse(int v1, int v2, EdgeCollapse& ec) const {
     ec.v1 = v1; ec.v2 = v2;
 
     Eigen::Matrix4d Qbar = vertices[v1].Q + vertices[v2].Q;
-    double ox, oy, oz;
 
-    // if (solveQuadric(Qbar, ox, oy, oz)) {
-    //     ec.target = Eigen::Vector3d(ox, oy, oz);
-    // } else {
-        // Fallback: testar v1, v2 e ponto médio
-        Eigen::Vector3d mid   = (vertices[v1].pos + vertices[v2].pos) * 0.5;
-        Eigen::Vector2d midUV = (vertices[v1].uv  + vertices[v2].uv)  * 0.5;
-        double c1 = evalQuadric(Qbar, vertices[v1].pos.x(), vertices[v1].pos.y(), vertices[v1].pos.z());
-        double c2 = evalQuadric(Qbar, vertices[v2].pos.x(), vertices[v2].pos.y(), vertices[v2].pos.z());
-        double cm = evalQuadric(Qbar, mid.x(), mid.y(), mid.z());
+    // Fallback: testar v1, v2 e ponto médio
+    Eigen::Vector3d mid   = (vertices[v1].pos + vertices[v2].pos) * 0.5;
+    Eigen::Vector2d midUV = (vertices[v1].uv  + vertices[v2].uv)  * 0.5;
+    double c1 = evalQuadric(Qbar, vertices[v1].pos.x(), vertices[v1].pos.y(), vertices[v1].pos.z());
+    double c2 = evalQuadric(Qbar, vertices[v2].pos.x(), vertices[v2].pos.y(), vertices[v2].pos.z());
+    double cm = evalQuadric(Qbar, mid.x(), mid.y(), mid.z());
+
+    if (!envelopeConstraint) {
         if (c1 <= c2 && c1 <= cm)      { ec.target = vertices[v1].pos; ec.targetUV = vertices[v1].uv; ec.cost = c1; }
         else if (c2 <= c1 && c2 <= cm) { ec.target = vertices[v2].pos; ec.targetUV = vertices[v2].uv; ec.cost = c2; }
         else                           { ec.target = mid;               ec.targetUV = midUV;           ec.cost = cm; }
-        return ec;
-    // }
+        return true;
+    }
 
-    ec.cost = evalQuadric(Qbar, ec.target.x(), ec.target.y(), ec.target.z());
-    return ec;
+    bool feas1 = pointSatisfiesPlanes(vertices[v1].pos, vertices[v1].envelope) &&
+                 pointSatisfiesPlanes(vertices[v1].pos, vertices[v2].envelope);
+    bool feas2 = pointSatisfiesPlanes(vertices[v2].pos, vertices[v1].envelope) &&
+                 pointSatisfiesPlanes(vertices[v2].pos, vertices[v2].envelope);
+    bool feasM = pointSatisfiesPlanes(mid, vertices[v1].envelope) &&
+                 pointSatisfiesPlanes(mid, vertices[v2].envelope);
+
+    double bestCost = std::numeric_limits<double>::infinity();
+    bool found = false;
+    if (feas1 && c1 < bestCost) { ec.target = vertices[v1].pos; ec.targetUV = vertices[v1].uv; ec.cost = c1; bestCost = c1; found = true; }
+    if (feas2 && c2 < bestCost) { ec.target = vertices[v2].pos; ec.targetUV = vertices[v2].uv; ec.cost = c2; bestCost = c2; found = true; }
+    if (feasM && cm < bestCost) { ec.target = mid;              ec.targetUV = midUV;           ec.cost = cm; bestCost = cm; found = true; }
+
+    return found;
 }
 
 // ─── Colapso sincronizado de um par de arestas-espelho de seam ──────────────
@@ -173,8 +222,7 @@ EdgeCollapse QEMSimplifier::computeCollapse(int v1, int v2) const {
 // (pos v1, pos v2, ponto médio) já são idênticos nos dois lados. A UV de cada
 // lado é interpolada independentemente.
 
-EdgeCollapse QEMSimplifier::computeCollapse(int v1, int v2, int tv1, int tv2) const {
-    EdgeCollapse ec;
+bool QEMSimplifier::computeCollapse(int v1, int v2, int tv1, int tv2, EdgeCollapse& ec) const {
     ec.v1 = v1; ec.v2 = v2; ec.tv1 = tv1; ec.tv2 = tv2;
 
     Eigen::Matrix4d Qbar = vertices[v1].Q + vertices[v2].Q + vertices[tv1].Q + vertices[tv2].Q;
@@ -187,14 +235,42 @@ EdgeCollapse QEMSimplifier::computeCollapse(int v1, int v2, int tv1, int tv2) co
     double c2 = evalQuadric(Qbar, vertices[v2].pos.x(), vertices[v2].pos.y(), vertices[v2].pos.z());
     double cm = evalQuadric(Qbar, mid.x(), mid.y(), mid.z());
 
-    if (c1 <= c2 && c1 <= cm) {
-        ec.target = vertices[v1].pos; ec.targetUV = vertices[v1].uv; ec.targetUV2 = vertices[tv1].uv; ec.cost = c1;
-    } else if (c2 <= c1 && c2 <= cm) {
-        ec.target = vertices[v2].pos; ec.targetUV = vertices[v2].uv; ec.targetUV2 = vertices[tv2].uv; ec.cost = c2;
-    } else {
-        ec.target = mid; ec.targetUV = midUV1; ec.targetUV2 = midUV2; ec.cost = cm;
+    if (!envelopeConstraint) {
+        if (c1 <= c2 && c1 <= cm) {
+            ec.target = vertices[v1].pos; ec.targetUV = vertices[v1].uv; ec.targetUV2 = vertices[tv1].uv; ec.cost = c1;
+        } else if (c2 <= c1 && c2 <= cm) {
+            ec.target = vertices[v2].pos; ec.targetUV = vertices[v2].uv; ec.targetUV2 = vertices[tv2].uv; ec.cost = c2;
+        } else {
+            ec.target = mid; ec.targetUV = midUV1; ec.targetUV2 = midUV2; ec.cost = cm;
+        }
+        return true;
     }
-    return ec;
+
+    // As 4 quádricas combinadas vêm de v1, v2, tv1 e tv2 — então o ponto-alvo
+    // precisa respeitar os planos acumulados pelos 4, não só pelo par (v1,v2).
+    auto feasible = [&](const Eigen::Vector3d& p) {
+        return pointSatisfiesPlanes(p, vertices[v1].envelope)  &&
+               pointSatisfiesPlanes(p, vertices[v2].envelope)  &&
+               pointSatisfiesPlanes(p, vertices[tv1].envelope) &&
+               pointSatisfiesPlanes(p, vertices[tv2].envelope);
+    };
+    bool feas1 = feasible(vertices[v1].pos);
+    bool feas2 = feasible(vertices[v2].pos);
+    bool feasM = feasible(mid);
+
+    double bestCost = std::numeric_limits<double>::infinity();
+    bool found = false;
+    if (feas1 && c1 < bestCost) {
+        ec.target = vertices[v1].pos; ec.targetUV = vertices[v1].uv; ec.targetUV2 = vertices[tv1].uv; ec.cost = c1; bestCost = c1; found = true;
+    }
+    if (feas2 && c2 < bestCost) {
+        ec.target = vertices[v2].pos; ec.targetUV = vertices[v2].uv; ec.targetUV2 = vertices[tv2].uv; ec.cost = c2; bestCost = c2; found = true;
+    }
+    if (feasM && cm < bestCost) {
+        ec.target = mid; ec.targetUV = midUV1; ec.targetUV2 = midUV2; ec.cost = cm; bestCost = cm; found = true;
+    }
+
+    return found;
 }
 
 // ─── Marcação de vértices de boundary (para BoundaryMode::LockSeamVertices) ──
@@ -252,13 +328,11 @@ bool QEMSimplifier::buildCandidate(int p, int q, EdgeCollapse& out) const {
         auto keyTT = std::minmax(tp, tq);
         if (keyTT < keyPQ) return false;
 
-        out = computeCollapse(p, q, tp, tq);
-        return true;
+        return computeCollapse(p, q, tp, tq, out);
     }
 
     if (edgeLocked(p, q)) return false;
-    out = computeCollapse(p, q);
-    return true;
+    return computeCollapse(p, q, out);
 }
 
 // ─── Adjacência ──────────────────────────────────────────────────────────────
@@ -306,6 +380,9 @@ void QEMSimplifier::mergeVertexPair(int keep, int remove, const Eigen::Vector3d&
     vertices[keep].pos = pos;
     vertices[keep].uv  = uv;
     vertices[keep].Q  += vertices[remove].Q;
+    vertices[keep].envelope.insert(vertices[keep].envelope.end(),
+                                    vertices[remove].envelope.begin(),
+                                    vertices[remove].envelope.end());
     vertices[remove].removed = true;
 
     for (auto& fc : faces) {
@@ -426,6 +503,7 @@ void QEMSimplifier::simplify(int targetFaces, double threshold) {
 #endif
 
     computeQ();
+    if (envelopeConstraint) computeEnvelope();
     syncSeamTwins = (boundaryMode == BoundaryMode::SyncSeamTwins);
     lockSeamEdges = (boundaryMode == BoundaryMode::LockSeamVertices || syncSeamTwins);
     if (boundaryMode == BoundaryMode::Constraint || syncSeamTwins) addBoundaryConstraints();
@@ -462,9 +540,11 @@ void QEMSimplifier::simplify(int targetFaces, double threshold) {
                 if (edgeLocked(a, b)) continue;
                 auto key = std::make_pair(a, b);
                 if (!edgeMap.count(key)) {
-                    EdgeCollapse ec = computeCollapse(a, b);
-                    edgeMap[key] = ec;
-                    pq.push(ec);
+                    EdgeCollapse ec;
+                    if (computeCollapse(a, b, ec)) {
+                        edgeMap[key] = ec;
+                        pq.push(ec);
+                    }
                 }
             }
         }
