@@ -23,6 +23,9 @@
 #include <Qt>
 #include <iostream>
 #include <algorithm>
+#include <map>
+#include <tuple>
+#include <cmath>
 
 // ─── Constructor ─────────────────────────────────────────────────────────────
 
@@ -139,6 +142,7 @@ QWidget* MainWindow::buildSimplifierTab() {
     boundaryModeCombo->addItem("No constraint",                (int)BoundaryMode::None);
     boundaryModeCombo->addItem("Boundary constraint",          (int)BoundaryMode::Constraint);
     boundaryModeCombo->addItem("Lock seam edges",               (int)BoundaryMode::LockSeamVertices);
+    boundaryModeCombo->addItem("Sync seam twins",                (int)BoundaryMode::SyncSeamTwins);
     boundaryModeCombo->setCurrentIndex(1);
     controlsLayout->addWidget(boundaryModeCombo);
 
@@ -180,19 +184,13 @@ QWidget* MainWindow::buildSimplifierTab() {
 
     inflateLayout->addSpacing(16);
 
-    minCoverBtn = new QPushButton("Min Cover");
-    minCoverBtn->setEnabled(false);
-    minCoverBtn->setToolTip(
-        "Set the minimum offset at which the simplified mesh fully envelops the original mesh.\n"
-        "Every original vertex will be inside the inflated simplified mesh.");
-    inflateLayout->addWidget(minCoverBtn);
-
-    maxFitBtn = new QPushButton("Max Fit");
-    maxFitBtn->setEnabled(false);
-    maxFitBtn->setToolTip(
-        "Set the maximum offset at which the simplified mesh does not protrude beyond the original mesh.\n"
-        "The inflated simplified mesh stays inside the original surface.");
-    inflateLayout->addWidget(maxFitBtn);
+    smoothCoverBtn = new QPushButton("Smooth Cover");
+    smoothCoverBtn->setEnabled(false);
+    smoothCoverBtn->setToolTip(
+        "Computes a smooth, per-vertex offset field so the inflated cage fully\n"
+        "encloses the original mesh, instead of one uniform worst-case offset.\n"
+        "The Offset slider/spin then adds a uniform extra margin on top.");
+    inflateLayout->addWidget(smoothCoverBtn);
 
     connect(inflateSlider, &QSlider::valueChanged, this, [this](int val) {
         double offset = (inflateScale > 1e-10) ? val / 1000.0 * inflateScale : 0.0;
@@ -208,8 +206,7 @@ QWidget* MainWindow::buildSimplifierTab() {
         inflateSlider->blockSignals(false);
         applyInflate(val);
     });
-    connect(minCoverBtn, &QPushButton::clicked, this, &MainWindow::onMinCover);
-    connect(maxFitBtn,   &QPushButton::clicked, this, &MainWindow::onMaxFit);
+    connect(smoothCoverBtn, &QPushButton::clicked, this, &MainWindow::onSmoothCover);
 
     inflateGroup->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
     layout->addWidget(inflateGroup);
@@ -749,6 +746,9 @@ void MainWindow::onLoadModel() {
     // Reset inflate/deflate controls
     baseSimplifiedPositions.clear();
     simplifiedVertexNormals.clear();
+    simplifiedVertexGroup.clear();
+    simplifiedVertexGroupCount = 0;
+    simplifiedCoverOffsets.clear();
     inflateSlider->blockSignals(true);
     inflateSlider->setValue(0);
     inflateSlider->blockSignals(false);
@@ -757,8 +757,7 @@ void MainWindow::onLoadModel() {
     inflateSpin->setValue(0.0);
     inflateSpin->blockSignals(false);
     inflateSpin->setEnabled(false);
-    minCoverBtn->setEnabled(false);
-    maxFitBtn->setEnabled(false);
+    smoothCoverBtn->setEnabled(false);
 
     // Reset Textures Preparation / Relief Mapping state — the previous bake was for
     // the old mesh's UV layout and no longer applies. simplifiedMesh already holds a
@@ -839,10 +838,53 @@ void MainWindow::onSimplify() {
         simplifiedVertexNormals[f.v[1]] += n;
         simplifiedVertexNormals[f.v[2]] += n;
     }
+
+    // Vértices duplicados na mesma posição 3D (ex.: costuras de UV, separadas
+    // em vertices distintos no loadOBJ) devem inflar juntos. Caso contrário,
+    // cada cópia usa só suas próprias faces incidentes, as normais divergem,
+    // e a costura abre um buraco ao inflar mesmo com seam vertices travados.
+    // O group id também é reaproveitado pelo Smooth Cover para manter o
+    // campo de offset sincronizado entre as cópias.
+    {
+        Eigen::Vector3d bmin = Eigen::Vector3d::Constant(1e18);
+        Eigen::Vector3d bmax = Eigen::Vector3d::Constant(-1e18);
+        for (const auto& p : baseSimplifiedPositions) { bmin = bmin.cwiseMin(p); bmax = bmax.cwiseMax(p); }
+        double cell = std::max((bmax - bmin).norm() * 1e-7, 1e-9);
+
+        auto quantize = [cell](const Eigen::Vector3d& p) {
+            return std::make_tuple(
+                (long long)std::llround(p.x() / cell),
+                (long long)std::llround(p.y() / cell),
+                (long long)std::llround(p.z() / cell));
+        };
+
+        std::map<std::tuple<long long,long long,long long>, int> groupId;
+        simplifiedVertexGroup.assign(simplifiedMesh->vertices.size(), -1);
+        for (size_t i = 0; i < simplifiedMesh->vertices.size(); i++) {
+            if (simplifiedMesh->vertices[i].removed) continue;
+            auto key = quantize(baseSimplifiedPositions[i]);
+            auto [it, inserted] = groupId.try_emplace(key, (int)groupId.size());
+            simplifiedVertexGroup[i] = it->second;
+        }
+        simplifiedVertexGroupCount = (int)groupId.size();
+
+        std::vector<Eigen::Vector3d> groupNormal(simplifiedVertexGroupCount, Eigen::Vector3d::Zero());
+        for (size_t i = 0; i < simplifiedMesh->vertices.size(); i++) {
+            if (simplifiedMesh->vertices[i].removed) continue;
+            groupNormal[simplifiedVertexGroup[i]] += simplifiedVertexNormals[i];
+        }
+        for (size_t i = 0; i < simplifiedMesh->vertices.size(); i++) {
+            if (simplifiedMesh->vertices[i].removed) continue;
+            simplifiedVertexNormals[i] = groupNormal[simplifiedVertexGroup[i]];
+        }
+    }
+
     for (size_t i = 0; i < simplifiedMesh->vertices.size(); i++) {
         double len = simplifiedVertexNormals[i].norm();
         if (len > 1e-10) simplifiedVertexNormals[i] /= len;
     }
+
+    simplifiedCoverOffsets.assign(simplifiedMesh->vertices.size(), 0.0);
 
     // Set inflate range based on original mesh bounding box diagonal
     {
@@ -865,8 +907,7 @@ void MainWindow::onSimplify() {
     inflateSlider->blockSignals(false);
     inflateSlider->setEnabled(true);
     inflateSpin->setEnabled(true);
-    minCoverBtn->setEnabled(true);
-    maxFitBtn->setEnabled(true);
+    smoothCoverBtn->setEnabled(true);
 
     glWidgetSimplified->setMesh(simplifiedMesh.get());
     glWidgetOverlay->setMeshes(originalMesh.get(), simplifiedMesh.get());
@@ -1318,125 +1359,117 @@ void MainWindow::updateStatusBar() {
 
 // ─── Inflate / Deflate ───────────────────────────────────────────────────────
 
-namespace {
-bool rayTriangleHit(
-    const Eigen::Vector3d& orig, const Eigen::Vector3d& dir,
-    const Eigen::Vector3d& a,    const Eigen::Vector3d& b, const Eigen::Vector3d& c,
-    double& t)
-{
-    constexpr double EPS = 1e-8;
-    Eigen::Vector3d e1 = b-a, e2 = c-a;
-    Eigen::Vector3d h = dir.cross(e2);
-    double det = e1.dot(h);
-    if (std::abs(det) < EPS) return false;
-    double inv = 1.0/det;
-    Eigen::Vector3d s = orig-a;
-    double u = inv*s.dot(h);
-    if (u < 0.0 || u > 1.0) return false;
-    Eigen::Vector3d q = s.cross(e1);
-    double v = inv*dir.dot(q);
-    if (v < 0.0 || u+v > 1.0) return false;
-    t = inv*e2.dot(q);
-    return true;
-}
-} // namespace
-
 void MainWindow::applyInflate(double offset) {
     if (baseSimplifiedPositions.empty()) return;
     for (size_t i = 0; i < simplifiedMesh->vertices.size(); i++) {
         if (!simplifiedMesh->vertices[i].removed)
             simplifiedMesh->vertices[i].pos =
-                baseSimplifiedPositions[i] + offset * simplifiedVertexNormals[i];
+                baseSimplifiedPositions[i] + (simplifiedCoverOffsets[i] + offset) * simplifiedVertexNormals[i];
     }
     glWidgetSimplified->updateMeshData();
     glWidgetOverlay->updateSimplifiedMesh();
 }
 
-// For each original vertex, find the nearest simplified face (by centroid) and compute
-// the signed distance from the vertex to that face plane (positive = vertex is "outside"
-// the simplified surface). The minimum inflate to cover all original vertices is the
-// maximum of these positive signed distances.
-double MainWindow::computeMinCoverOffset() const {
-    if (!originalMesh || !simplifiedMesh || baseSimplifiedPositions.empty()) return 0.0;
+// Computa um campo de offset por vértice (simplifiedCoverOffsets) para que a
+// cage cubra toda a malha original com uma folga suave, em vez de um único
+// offset global de pior caso (que infla demais regiões planas só para cobrir
+// uma região côncava difícil em outro lugar).
+//
+// 1) Para cada vértice original, acha o vértice da cage mais próximo e mede
+//    a distância assinada (ao longo da normal desse vértice) necessária para
+//    cobri-lo; agrega por grupo (vértices duplicados de costura comparti-
+//    lham normal, então devem compartilhar offset).
+// 2) Suaviza esse campo entre grupos vizinhos (média com os vizinhos da
+//    malha) para tirar picos/facetamento.
+// 3) A suavização pode "comer" picos necessários para cobertura total: mede
+//    quanto ainda falta (mesma lógica do antigo Min Cover, mas sobre a cage
+//    já deslocada) e soma essa folga uniformemente a todos os offsets.
+void MainWindow::computeSmoothCoverOffsets() {
+    simplifiedCoverOffsets.assign(simplifiedMesh->vertices.size(), 0.0);
+    if (!originalMesh || !simplifiedMesh || baseSimplifiedPositions.empty()
+        || simplifiedVertexGroupCount == 0) return;
+
+    std::vector<int> activeVerts;
+    for (size_t i = 0; i < simplifiedMesh->vertices.size(); i++)
+        if (!simplifiedMesh->vertices[i].removed) activeVerts.push_back((int)i);
+    if (activeVerts.empty()) return;
+
+    std::vector<double> groupOffset(simplifiedVertexGroupCount, 0.0);
+    for (const auto& v : originalMesh->vertices) {
+        if (v.removed) continue;
+        double bestD2 = std::numeric_limits<double>::max();
+        int nearest = activeVerts[0];
+        for (int vi : activeVerts) {
+            double d2 = (v.pos - baseSimplifiedPositions[vi]).squaredNorm();
+            if (d2 < bestD2) { bestD2 = d2; nearest = vi; }
+        }
+        double signedDist = (v.pos - baseSimplifiedPositions[nearest]).dot(simplifiedVertexNormals[nearest]);
+        int g = simplifiedVertexGroup[nearest];
+        groupOffset[g] = std::max(groupOffset[g], signedDist);
+    }
+    for (auto& o : groupOffset) o = std::max(o, 0.0);
+
+    std::vector<std::set<int>> groupAdj(simplifiedVertexGroupCount);
+    for (const auto& f : simplifiedMesh->faces) {
+        if (f.removed) continue;
+        for (int i = 0; i < 3; i++) {
+            int ga = simplifiedVertexGroup[f.v[i]];
+            int gb = simplifiedVertexGroup[f.v[(i + 1) % 3]];
+            if (ga != gb) { groupAdj[ga].insert(gb); groupAdj[gb].insert(ga); }
+        }
+    }
+
+    constexpr int    kSmoothIters = 12;
+    constexpr double kSmoothAlpha = 0.5;
+    std::vector<double> smoothed = groupOffset;
+    for (int iter = 0; iter < kSmoothIters; iter++) {
+        std::vector<double> next = smoothed;
+        for (int g = 0; g < simplifiedVertexGroupCount; g++) {
+            if (groupAdj[g].empty()) continue;
+            double avg = 0.0;
+            for (int n : groupAdj[g]) avg += smoothed[n];
+            avg /= (double)groupAdj[g].size();
+            next[g] = smoothed[g] + kSmoothAlpha * (avg - smoothed[g]);
+        }
+        smoothed.swap(next);
+    }
+
+    for (size_t i = 0; i < simplifiedMesh->vertices.size(); i++)
+        if (!simplifiedMesh->vertices[i].removed)
+            simplifiedCoverOffsets[i] = smoothed[simplifiedVertexGroup[i]];
 
     struct SFace { Eigen::Vector3d v0, normal, centroid; };
     std::vector<SFace> sFaces;
     for (const auto& f : simplifiedMesh->faces) {
         if (f.removed) continue;
-        const auto& p0 = baseSimplifiedPositions[f.v[0]];
-        const auto& p1 = baseSimplifiedPositions[f.v[1]];
-        const auto& p2 = baseSimplifiedPositions[f.v[2]];
-        Eigen::Vector3d n = (p1-p0).cross(p2-p0);
+        Eigen::Vector3d p0 = baseSimplifiedPositions[f.v[0]] + simplifiedCoverOffsets[f.v[0]] * simplifiedVertexNormals[f.v[0]];
+        Eigen::Vector3d p1 = baseSimplifiedPositions[f.v[1]] + simplifiedCoverOffsets[f.v[1]] * simplifiedVertexNormals[f.v[1]];
+        Eigen::Vector3d p2 = baseSimplifiedPositions[f.v[2]] + simplifiedCoverOffsets[f.v[2]] * simplifiedVertexNormals[f.v[2]];
+        Eigen::Vector3d n = (p1 - p0).cross(p2 - p0);
         if (n.norm() < 1e-10) continue;
         n.normalize();
-        sFaces.push_back({p0, n, (p0+p1+p2)/3.0});
+        sFaces.push_back({p0, n, (p0 + p1 + p2) / 3.0});
     }
-    if (sFaces.empty()) return 0.0;
 
-    double maxDist = 0.0;
+    double residual = 0.0;
     for (const auto& v : originalMesh->vertices) {
-        if (v.removed) continue;
-        double minD2 = std::numeric_limits<double>::max();
+        if (v.removed || sFaces.empty()) continue;
+        double bestD2 = std::numeric_limits<double>::max();
         int nearest = 0;
         for (int fi = 0; fi < (int)sFaces.size(); fi++) {
             double d2 = (v.pos - sFaces[fi].centroid).squaredNorm();
-            if (d2 < minD2) { minD2 = d2; nearest = fi; }
+            if (d2 < bestD2) { bestD2 = d2; nearest = fi; }
         }
         double signedDist = (v.pos - sFaces[nearest].v0).dot(sFaces[nearest].normal);
-        maxDist = std::max(maxDist, signedDist);
+        residual = std::max(residual, signedDist);
     }
-    return maxDist;
+    if (residual > 0.0)
+        for (auto& o : simplifiedCoverOffsets) o += residual;
 }
 
-// For each simplified vertex, cast a ray along its outward normal and find the closest
-// intersection with the original mesh. The maximum inflate before any simplified vertex
-// pierces through the original is the minimum of these intersection distances.
-double MainWindow::computeMaxFitOffset() const {
-    if (!originalMesh || !simplifiedMesh || baseSimplifiedPositions.empty()) return 0.0;
-
-    struct OTri { Eigen::Vector3d a, b, c; };
-    std::vector<OTri> otris;
-    for (const auto& f : originalMesh->faces) {
-        if (f.removed) continue;
-        otris.push_back({
-            originalMesh->vertices[f.v[0]].pos,
-            originalMesh->vertices[f.v[1]].pos,
-            originalMesh->vertices[f.v[2]].pos
-        });
-    }
-    if (otris.empty()) return 0.0;
-
-    double minFit = std::numeric_limits<double>::max();
-    for (size_t i = 0; i < simplifiedMesh->vertices.size(); i++) {
-        if (simplifiedMesh->vertices[i].removed) continue;
-        const auto& n = simplifiedVertexNormals[i];
-        if (n.squaredNorm() < 0.5) continue;
-        const auto& p = baseSimplifiedPositions[i];
-
-        double bestT = std::numeric_limits<double>::max();
-        for (const auto& tri : otris) {
-            double t;
-            if (rayTriangleHit(p, n, tri.a, tri.b, tri.c, t) && t > 1e-5)
-                bestT = std::min(bestT, t);
-        }
-        if (bestT < std::numeric_limits<double>::max())
-            minFit = std::min(minFit, bestT);
-    }
-    return minFit == std::numeric_limits<double>::max() ? 0.0 : minFit;
-}
-
-void MainWindow::onMinCover() {
-    double offset = computeMinCoverOffset();
-    if (offset > inflateSpin->maximum())
-        inflateSpin->setMaximum(offset * 1.5 + 1e-9);
-    inflateSpin->setValue(offset);
-}
-
-void MainWindow::onMaxFit() {
-    double offset = computeMaxFitOffset();
-    if (offset > inflateSpin->maximum())
-        inflateSpin->setMaximum(offset * 1.5 + 1e-9);
-    inflateSpin->setValue(offset);
+void MainWindow::onSmoothCover() {
+    computeSmoothCoverOffsets();
+    applyInflate(inflateSpin->value());
 }
 
 void MainWindow::computeAutoTarget() {

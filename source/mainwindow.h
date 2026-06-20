@@ -36,8 +36,7 @@ private slots:
     void onTargetFacesChanged(int value);
     void onResetCameras();
 
-    void onMinCover();
-    void onMaxFit();
+    void onSmoothCover();
 
     void onBakeAll();
     void onBakeSingle(int idx);
@@ -71,8 +70,7 @@ private:
     void onTabChanged(int index);
 
     void applyInflate(double offset);
-    double computeMinCoverOffset() const;
-    double computeMaxFitOffset() const;
+    void computeSmoothCoverOffsets();
 
     void displayHeightmap(int idx, const HeightmapResult& r);
     void displayNormalmap(const NormalmapResult& r);
@@ -101,13 +99,22 @@ private:
     QCheckBox* showBoundaryEdgesCheck  = nullptr;
     QCheckBox* showInternalEdgesCheck  = nullptr;
 
-    QSlider*        inflateSlider = nullptr;
-    QDoubleSpinBox* inflateSpin   = nullptr;
-    QPushButton*    minCoverBtn   = nullptr;
-    QPushButton*    maxFitBtn     = nullptr;
+    QSlider*        inflateSlider  = nullptr;
+    QDoubleSpinBox* inflateSpin    = nullptr;
+    QPushButton*    smoothCoverBtn = nullptr;
 
     std::vector<Eigen::Vector3d> baseSimplifiedPositions;
     std::vector<Eigen::Vector3d> simplifiedVertexNormals;
+    // Vértices que ocupam a mesma posição 3D (duplicados em costuras de UV)
+    // recebem o mesmo group id, para que normais e cover offsets fiquem
+    // sincronizados entre as cópias e a costura não se abra ao inflar.
+    std::vector<int> simplifiedVertexGroup;
+    int simplifiedVertexGroupCount = 0;
+    // Offset por vértice (na direção da normal) calculado por computeSmoothCoverOffsets,
+    // para que a cage cubra a malha original com uma folga suave em vez de um
+    // único offset global de pior caso. O slider/spin de inflate soma uma
+    // margem manual uniforme em cima deste campo.
+    std::vector<double> simplifiedCoverOffsets;
     double inflateScale = 1.0;
 
     // ── Heightmap tab ────────────────────────────────────────────────────────

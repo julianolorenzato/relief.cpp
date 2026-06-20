@@ -62,6 +62,12 @@ struct EdgeCollapse {
     Eigen::Vector2d targetUV = Eigen::Vector2d::Zero();
     double          cost     = 0.0;
 
+    // Quando v1/v2 é uma aresta de seam com par sincronizado (SyncSeamTwins),
+    // tv1/tv2 é a aresta espelhada do outro lado da seam, colapsada junto
+    // para a mesma posição 'target' (mas com UV própria, em targetUV2).
+    int             tv1 = -1, tv2 = -1;
+    Eigen::Vector2d targetUV2 = Eigen::Vector2d::Zero();
+
     bool operator>(const EdgeCollapse& o) const { return cost > o.cost; }
 };
 
@@ -70,7 +76,8 @@ struct EdgeCollapse {
 enum class BoundaryMode {
     None,             // nenhuma restrição de boundary/seam
     Constraint,        // penalidade suave (quadrica de plano perpendicular)
-    LockSeamVertices    // trava: nunca colapsa aresta com vértice de boundary
+    LockSeamVertices,   // trava: nunca colapsa aresta com vértice de boundary
+    SyncSeamTwins       // colapsa arestas de seam em sincronia com seu par no outro lado
 };
 
 class QEMSimplifier {
@@ -110,7 +117,11 @@ private:
 
     void computeQ();
     EdgeCollapse computeCollapse(int v1, int v2) const;
+    // Versão sincronizada: combina as quádricas de (v1,v2) e do par espelhado
+    // (tv1,tv2) para escolher uma única posição-alvo compartilhada pelos dois.
+    EdgeCollapse computeCollapse(int v1, int v2, int tv1, int tv2) const;
     void applyCollapse(const EdgeCollapse& ec);
+    void mergeVertexPair(int keep, int remove, const Eigen::Vector3d& pos, const Eigen::Vector2d& uv);
     void rebuildQueue(std::priority_queue<EdgeCollapse,
                                          std::vector<EdgeCollapse>,
                                          std::greater<EdgeCollapse>>& pq);
@@ -119,12 +130,24 @@ private:
     void buildAdjacency();
     void addBoundaryConstraints(double weight = 1000.0);
 
-    // Usado quando boundaryMode == LockSeamVertices: nenhuma aresta com
-    // endpoint marcado aqui pode ser candidata a colapso.
+    // Usado quando boundaryMode == LockSeamVertices ou SyncSeamTwins: nenhuma
+    // aresta boundary-interior pode ser candidata a colapso.
     bool lockSeamEdges = false;
     std::vector<bool> boundaryVertex;
     void markBoundaryVertices();
     bool edgeLocked(int a, int b) const {
         return lockSeamEdges && (boundaryVertex[a] || boundaryVertex[b]);
     }
+
+    // Usado quando boundaryMode == SyncSeamTwins.
+    // seamTwin[i] = vértice no outro lado da seam, mesma posição 3D, UV
+    // diferente; -1 se não houver par único (boundary aberta ou junção de
+    // 3+ seams), caso em que o vértice permanece travado como antes.
+    bool syncSeamTwins = false;
+    std::vector<int> seamTwin;
+    void buildSeamTwins();
+    // Monta o candidato de colapso para a aresta (p,q), já decidindo se ela
+    // deve ser travada, sincronizada com seu par, ou tratada normalmente.
+    // Retorna false se a aresta não pode ser colapsada (travada).
+    bool buildCandidate(int p, int q, EdgeCollapse& out) const;
 };

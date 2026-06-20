@@ -14,7 +14,7 @@ endif()
 add_compile_options(-Wall -Wextra -O2)
 
 # Suprime warnings de terceiros (stb_image dentro do tinygltf)
-set_source_files_properties(qem_gltf.cpp PROPERTIES COMPILE_FLAGS "-w")
+set_source_files_properties(source/qem_gltf.cpp PROPERTIES COMPILE_FLAGS "-w")
 
 # ─── Dependências ─────────────────────────────────────────────────────────────
 
@@ -64,18 +64,18 @@ FetchContent_MakeAvailable(tinygltf)
 # ─── Executável GUI ───────────────────────────────────────────────────────────
 
 add_executable(qem_gui
-    main_gui.cpp
-    qem.cpp
-    qem_gltf.cpp
-    glwidget.cpp
-    overlayglwidget.cpp
-    reliefglwidget.cpp
-    mainwindow.cpp
-    heightmap.cpp
-    heightmap_worker.cpp
-    uv_atlas.cpp
-    texture_prep.cpp
-    texture_prep_worker.cpp
+    source/main_gui.cpp
+    source/qem.cpp
+    source/qem_gltf.cpp
+    source/glwidget.cpp
+    source/overlayglwidget.cpp
+    source/reliefglwidget.cpp
+    source/mainwindow.cpp
+    source/heightmap.cpp
+    source/heightmap_worker.cpp
+    source/uv_atlas.cpp
+    source/texture_prep.cpp
+    source/texture_prep_worker.cpp
 )
 
 target_link_libraries(qem_gui
