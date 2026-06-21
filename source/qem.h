@@ -110,10 +110,14 @@ public:
     bool loadGLTF(const std::string& path);
     bool saveGLTF(const std::string& path) const;
 
-    // Textura extraída do GLTF (RGBA, linha a linha)
+    // Texturas extraídas do GLTF (RGBA, linha a linha)
     std::vector<uint8_t> textureData;
     int textureWidth  = 0;
     int textureHeight = 0;
+
+    std::vector<uint8_t> normalTextureData;
+    int normalTextureWidth  = 0;
+    int normalTextureHeight = 0;
 
     void simplify(int targetFaces, double threshold = 0.0);
 

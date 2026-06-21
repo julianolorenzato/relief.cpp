@@ -1,7 +1,7 @@
 #pragma once
 #include <QObject>
 #include <QString>
-#include <string>
+#include <QImage>
 #include "texture_prep.h"
 #include "qem.h"
 
@@ -15,7 +15,7 @@ class TexturePrepWorker : public QObject {
 public:
     // ── Inputs — set before moving to thread ─────────────────────────────────
     const QEMSimplifier* mesh = nullptr;
-    std::string colorPath, depthPath, normalPath;
+    QImage colorImg, depthImg, normalImg;
     int workRes        = 512;
     int seamBandTexels = 4;
 
@@ -34,9 +34,9 @@ public slots:
             emit progress(pct, "Baking textures…");
         };
 
-        result = TexturePrepBaker::bake(*mesh, colorPath, depthPath, normalPath, workRes, seamBandTexels, cb);
+        result = TexturePrepBaker::bake(*mesh, colorImg, depthImg, normalImg, workRes, seamBandTexels, cb);
 
-        emit progress(100, result.valid ? "Done" : "Failed to load input textures");
+        emit progress(100, result.valid ? "Done" : "Failed to prepare textures");
         emit finished();
     }
 };

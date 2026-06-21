@@ -1,6 +1,7 @@
 #pragma once
 #include "qem.h"
 #include "uv_atlas.h"
+#include <QImage>
 #include <vector>
 #include <string>
 #include <functional>
@@ -32,14 +33,16 @@ struct TexturePrepResult {
 
 class TexturePrepBaker {
 public:
-    // colorPath/depthPath/normalPath: file paths to the 3 input textures.
+    // colorImg/depthImg/normalImg: the 3 input textures, already in memory —
+    // the model's own color/normal maps and the baked heightmap, so no
+    // separate file loading is needed.
     // workRes: square working resolution the output textures are baked at.
     // seamBandTexels: width (in texels) of the atlas-leap band baked around UV seams.
     static TexturePrepResult bake(
         const QEMSimplifier& mesh,
-        const std::string& colorPath,
-        const std::string& depthPath,
-        const std::string& normalPath,
+        const QImage& colorImg,
+        const QImage& depthImg,
+        const QImage& normalImg,
         int workRes,
         int seamBandTexels,
         TexturePrepProgressCb cb = {});

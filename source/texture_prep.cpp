@@ -181,18 +181,15 @@ MipPyramid buildReliefPyramid(const std::vector<float>& mip0, int w, int h) {
 
 TexturePrepResult TexturePrepBaker::bake(
     const QEMSimplifier& mesh,
-    const std::string& colorPath,
-    const std::string& depthPath,
-    const std::string& normalPath,
+    const QImage& colorImg,
+    const QImage& depthImg,
+    const QImage& normalImg,
     int workRes,
     int seamBandTexels,
     TexturePrepProgressCb cb) {
     TexturePrepResult result;
     auto progress = [&](int p) { if (cb) cb(p); };
 
-    QImage colorImg(QString::fromStdString(colorPath));
-    QImage depthImg(QString::fromStdString(depthPath));
-    QImage normalImg(QString::fromStdString(normalPath));
     if (colorImg.isNull() || depthImg.isNull() || normalImg.isNull()) {
         result.valid = false;
         return result;

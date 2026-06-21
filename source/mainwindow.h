@@ -43,7 +43,6 @@ private slots:
     void onBakeProgress(int overall, const QString& text);
     void onBakeDone();
 
-    void onTpLoad(int idx);
     void onTpGenerate();
     void onTpProgress(int overall, const QString& text);
     void onTpDone();
@@ -73,6 +72,8 @@ private:
     void displayHeightmap(const HeightmapResult& r);
     void launchBake();
     void setBakeButtonsEnabled(bool enabled);
+    void updateTpThumbnails();
+    void updateTpGenerateEnabled();
 
     // ── Mesh data ────────────────────────────────────────────────────────────
     std::unique_ptr<QEMSimplifier> originalMesh;
@@ -131,11 +132,10 @@ private:
     QThread*          hmThread = nullptr;
 
     // ── Textures Preparation tab ─────────────────────────────────────────────
-    // index 0 = Color, 1 = Depth, 2 = Normal (inputs); preview/save panels are
+    // index 0 = Color, 1 = Depth, 2 = Normal (inputs, sourced automatically from
+    // the model's own textures and the baked heightmap); preview/save panels are
     // 0 = Color Map, 1 = Relief Map, 2 = Normal Map, 3 = Offset Map (outputs).
-    QString          tpInputPath[3];
     QLabel*          tpThumb[3]    = {};
-    QPushButton*     tpLoadBtn[3]  = {};
     QComboBox*       tpResCombo       = nullptr;
     QSpinBox*        tpSeamBandSpin   = nullptr;
     QPushButton*     tpGenerateBtn    = nullptr;

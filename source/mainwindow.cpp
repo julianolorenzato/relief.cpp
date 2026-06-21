@@ -27,6 +27,14 @@
 #include <tuple>
 #include <cmath>
 
+namespace {
+QImage rgbaTextureToQImage(const std::vector<uint8_t>& data, int w, int h) {
+    if (data.empty() || w <= 0 || h <= 0) return QImage();
+    QImage img(data.data(), w, h, w * 4, QImage::Format_RGBA8888);
+    return img.copy(); // detach from the mesh's buffer
+}
+} // namespace
+
 // ─── Constructor ─────────────────────────────────────────────────────────────
 
 MainWindow::MainWindow(QWidget* parent)
@@ -339,7 +347,7 @@ QWidget* MainWindow::buildTexturePrepTab() {
     QGroupBox* ctrlGroup = new QGroupBox("Input Textures && Baking Controls");
     QVBoxLayout* ctrlOuter = new QVBoxLayout(ctrlGroup);
 
-    static const char* loadLabels[3] = {"Load Color…", "Load Depth…", "Load Normal…"};
+    static const char* thumbCaptions[3] = {"Color (model)", "Depth (bake)", "Normal (model)"};
     QHBoxLayout* loadRow = new QHBoxLayout();
     for (int i = 0; i < 3; i++) {
         QVBoxLayout* col = new QVBoxLayout();
@@ -350,10 +358,9 @@ QWidget* MainWindow::buildTexturePrepTab() {
         tpThumb[i]->setText("—");
         col->addWidget(tpThumb[i]);
 
-        tpLoadBtn[i] = new QPushButton(loadLabels[i]);
-        int idx = i;
-        connect(tpLoadBtn[i], &QPushButton::clicked, this, [this, idx]() { onTpLoad(idx); });
-        col->addWidget(tpLoadBtn[i]);
+        QLabel* caption = new QLabel(thumbCaptions[i]);
+        caption->setAlignment(Qt::AlignCenter);
+        col->addWidget(caption);
         loadRow->addLayout(col);
     }
     loadRow->addSpacing(16);
@@ -737,7 +744,8 @@ void MainWindow::onLoadModel() {
     tpResult = TexturePrepResult{};
     reliefMeshPending = true;
     reliefTexturesPending = false;
-    tpGenerateBtn->setEnabled(false);
+    updateTpThumbnails();
+    updateTpGenerateEnabled();
     for (int i = 0; i < 4; i++) {
         tpPreview[i]->setText("(not generated)");
         tpPreview[i]->setPixmap(QPixmap());
@@ -886,8 +894,8 @@ void MainWindow::onSimplify() {
     glWidgetOverlay->setMeshes(originalMesh.get(), simplifiedMesh.get());
     updateStatusBar();
 
-    bool allTexturesLoaded = !tpInputPath[0].isEmpty() && !tpInputPath[1].isEmpty() && !tpInputPath[2].isEmpty();
-    tpGenerateBtn->setEnabled(allTexturesLoaded);
+    updateTpThumbnails();
+    updateTpGenerateEnabled();
 
     reliefMeshPending = true;
     trySyncReliefWidget();
@@ -956,6 +964,19 @@ void MainWindow::launchBake() {
     connect(hmWorker, &HeightmapWorker::progress, this,     &MainWindow::onBakeProgress);
     connect(hmWorker, &HeightmapWorker::finished, this,     &MainWindow::onBakeDone);
     connect(hmWorker, &HeightmapWorker::finished, hmThread, &QThread::quit);
+    // hmWorker is deleted explicitly in onBakeDone(), after it has read the results —
+    // NOT via a finished->deleteLater connection on hmWorker itself. That connection
+    // would be direct (hmWorker and the finished() emitter share hmThread's affinity),
+    // so it'd race the queued, cross-thread delivery of finished() to onBakeDone():
+    // hmThread could process the deferred delete and free hmWorker's result vectors
+    // before/while onBakeDone() reads them from the main thread, corrupting the heap
+    // (manifesting later as a stray std::bad_alloc).
+    // Only delete the QThread once it has actually wound down (QThread::finished,
+    // fired when its event loop really exits) — deleting it right after quit() is
+    // merely requested races the real thread teardown and aborts the app
+    // (QThread: Destroyed while thread is still running). This races much more
+    // reliably on fast bakes (e.g. 128×128) where there's almost no delay.
+    connect(hmThread, &QThread::finished,         hmThread, &QObject::deleteLater);
 
     statusLabel->setText(QString("Baking %1×%1…").arg(res));
     hmThread->start();
@@ -974,14 +995,18 @@ void MainWindow::onBakeDone() {
     hmResult = hmWorker->results[0];
     displayHeightmap(hmResult);
 
+    // Read of hmWorker's results is done — safe to delete it now. hmThread
+    // self-deletes once truly idle (see QThread::finished connection in launchBake).
     hmWorker->deleteLater();
     hmWorker = nullptr;
-    hmThread->deleteLater();
     hmThread = nullptr;
 
     setBakeButtonsEnabled(true);
     hmProgressLabel->setText("Done");
     statusLabel->setText("Bake complete");
+
+    updateTpThumbnails();
+    updateTpGenerateEnabled();
 }
 
 void MainWindow::displayHeightmap(const HeightmapResult& r) {
@@ -1032,30 +1057,58 @@ void MainWindow::onSaveHeightmap() {
 
 // ─── Textures Preparation ────────────────────────────────────────────────────
 
-void MainWindow::onTpLoad(int idx) {
-    static const char* titles[3] = {"Load Color Texture", "Load Depth Texture", "Load Normal Texture"};
+void MainWindow::updateTpThumbnails() {
+    auto setThumb = [this](int idx, const QImage& img, const char* emptyText) {
+        if (img.isNull()) {
+            tpThumb[idx]->setPixmap(QPixmap());
+            tpThumb[idx]->setText(emptyText);
+        } else {
+            tpThumb[idx]->setPixmap(QPixmap::fromImage(img)
+                .scaled(tpThumb[idx]->size(), Qt::KeepAspectRatio, Qt::SmoothTransformation));
+        }
+    };
 
-    QString fileName = QFileDialog::getOpenFileName(this, titles[idx], "",
-        "Images (*.png *.jpg *.jpeg *.bmp *.tga);;All Files (*)");
-    if (fileName.isEmpty()) return;
-
-    QPixmap px(fileName);
-    if (px.isNull()) {
-        QMessageBox::critical(this, "Error", "Failed to load image.");
-        return;
+    QImage colorImg, normalImg;
+    if (simplifiedMesh) {
+        colorImg  = rgbaTextureToQImage(simplifiedMesh->textureData,
+                                         simplifiedMesh->textureWidth, simplifiedMesh->textureHeight);
+        normalImg = rgbaTextureToQImage(simplifiedMesh->normalTextureData,
+                                         simplifiedMesh->normalTextureWidth, simplifiedMesh->normalTextureHeight);
     }
-    tpThumb[idx]->setPixmap(px.scaled(tpThumb[idx]->size(), Qt::KeepAspectRatio, Qt::SmoothTransformation));
-    tpInputPath[idx] = fileName;
+    setThumb(0, colorImg, "(none)");
+    setThumb(2, normalImg, "(none)");
 
-    bool allLoaded = !tpInputPath[0].isEmpty() && !tpInputPath[1].isEmpty() && !tpInputPath[2].isEmpty();
-    bool hasMesh = simplifiedMesh && simplifiedMesh->faceCount() > 0;
-    tpGenerateBtn->setEnabled(allLoaded && hasMesh);
+    QImage depthImg;
+    if (hmResult.valid && !hmResult.image.empty()) {
+        depthImg = QImage(hmResult.image.data(), hmResult.width, hmResult.height,
+                           hmResult.width, QImage::Format_Grayscale8).mirrored(false, true);
+    }
+    setThumb(1, depthImg, "(not baked)");
+}
+
+void MainWindow::updateTpGenerateEnabled() {
+    bool hasMesh   = simplifiedMesh && simplifiedMesh->faceCount() > 0;
+    bool hasColor  = simplifiedMesh && !simplifiedMesh->textureData.empty();
+    bool hasNormal = simplifiedMesh && !simplifiedMesh->normalTextureData.empty();
+    bool hasDepth  = hmResult.valid && !hmResult.image.empty();
+    tpGenerateBtn->setEnabled(hasMesh && hasColor && hasNormal && hasDepth);
 }
 
 void MainWindow::onTpGenerate() {
     if (tpThread && tpThread->isRunning()) return;
     if (!simplifiedMesh || simplifiedMesh->faceCount() == 0) {
         QMessageBox::warning(this, "Warning", "Simplify the mesh first before preparing textures.");
+        return;
+    }
+    if (simplifiedMesh->textureData.empty() || simplifiedMesh->normalTextureData.empty()) {
+        QMessageBox::warning(this, "Warning",
+            "The model has no embedded color and/or normal texture.\n"
+            "Load a GLTF with a baseColorTexture and normalTexture.");
+        return;
+    }
+    if (!hmResult.valid || hmResult.image.empty()) {
+        QMessageBox::warning(this, "Warning",
+            "Bake a heightmap first (Heightmap Baking tab) — it is used as the depth input.");
         return;
     }
 
@@ -1084,10 +1137,13 @@ void MainWindow::onTpGenerate() {
     }
 
     tpWorker = new TexturePrepWorker();
-    tpWorker->mesh           = simplifiedMesh.get();
-    tpWorker->colorPath      = tpInputPath[0].toStdString();
-    tpWorker->depthPath      = tpInputPath[1].toStdString();
-    tpWorker->normalPath     = tpInputPath[2].toStdString();
+    tpWorker->mesh      = simplifiedMesh.get();
+    tpWorker->colorImg  = rgbaTextureToQImage(simplifiedMesh->textureData,
+                                               simplifiedMesh->textureWidth, simplifiedMesh->textureHeight);
+    tpWorker->normalImg = rgbaTextureToQImage(simplifiedMesh->normalTextureData,
+                                               simplifiedMesh->normalTextureWidth, simplifiedMesh->normalTextureHeight);
+    tpWorker->depthImg  = QImage(hmResult.image.data(), hmResult.width, hmResult.height,
+                                  hmResult.width, QImage::Format_Grayscale8).mirrored(false, true);
     tpWorker->workRes        = res;
     tpWorker->seamBandTexels = seamBand;
 
@@ -1098,6 +1154,13 @@ void MainWindow::onTpGenerate() {
     connect(tpWorker, &TexturePrepWorker::progress, this,     &MainWindow::onTpProgress);
     connect(tpWorker, &TexturePrepWorker::finished,  this,     &MainWindow::onTpDone);
     connect(tpWorker, &TexturePrepWorker::finished,  tpThread, &QThread::quit);
+    // tpWorker is deleted explicitly in onTpDone(), after it has read tpWorker->result —
+    // see the comment on the equivalent hmWorker connection in launchBake() for why a
+    // finished->deleteLater connection on tpWorker itself would race the cross-thread
+    // delivery of finished() to onTpDone().
+    // See launchBake(): only delete the QThread once it has actually finished, not
+    // right after quit() is merely requested.
+    connect(tpThread, &QThread::finished,            tpThread, &QObject::deleteLater);
 
     statusLabel->setText(QString("Baking textures %1×%1…").arg(res));
     tpThread->start();
@@ -1111,9 +1174,10 @@ void MainWindow::onTpProgress(int overall, const QString& text) {
 void MainWindow::onTpDone() {
     tpResult = tpWorker->result;
 
+    // Read of tpWorker->result is done — safe to delete it now. tpThread
+    // self-deletes once truly idle (see QThread::finished connection in onTpGenerate).
     tpWorker->deleteLater();
     tpWorker = nullptr;
-    tpThread->deleteLater();
     tpThread = nullptr;
 
     if (!tpResult.valid) {

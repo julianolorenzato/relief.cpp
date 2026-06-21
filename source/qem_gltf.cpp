@@ -25,6 +25,28 @@ static const T* accessorData(const tinygltf::Model& model, int accessorIdx) {
         buf.data.data() + view.byteOffset + acc.byteOffset);
 }
 
+// Copia a imagem GLTF de uma textura para um buffer RGBA8 linear.
+static bool extractTexture(const tinygltf::Model& model, int texIdx,
+                            std::vector<uint8_t>& outData, int& outW, int& outH) {
+    if (texIdx < 0 || texIdx >= (int)model.textures.size()) return false;
+    int imgIdx = model.textures[texIdx].source;
+    if (imgIdx < 0 || imgIdx >= (int)model.images.size()) return false;
+    const auto& img = model.images[imgIdx];
+    if (img.image.empty() || img.width <= 0 || img.height <= 0) return false;
+
+    outW = img.width;
+    outH = img.height;
+    int comp = img.component; // 3=RGB, 4=RGBA
+    outData.resize((size_t)img.width * img.height * 4);
+    for (int p = 0; p < img.width * img.height; p++) {
+        outData[p*4+0] = img.image[p*comp+0];
+        outData[p*4+1] = img.image[p*comp+1];
+        outData[p*4+2] = img.image[p*comp+2];
+        outData[p*4+3] = (comp == 4) ? img.image[p*comp+3] : 255;
+    }
+    return true;
+}
+
 // ─── loadGLTF ────────────────────────────────────────────────────────────────
 
 bool QEMSimplifier::loadGLTF(const std::string& path) {
@@ -44,6 +66,8 @@ bool QEMSimplifier::loadGLTF(const std::string& path) {
 
     textureData.clear();
     textureWidth = textureHeight = 0;
+    normalTextureData.clear();
+    normalTextureWidth = normalTextureHeight = 0;
 
     for (const auto& mesh : model.meshes) {
         for (const auto& prim : mesh.primitives) {
@@ -129,33 +153,29 @@ bool QEMSimplifier::loadGLTF(const std::string& path) {
         }
     }
 
-    // ── Extrai textura base (primeiro material) ──────────────────────────────
-    for (const auto& mesh : model.meshes) {
-        for (const auto& prim : mesh.primitives) {
-            if (prim.material < 0 || prim.material >= (int)model.materials.size()) continue;
-            const auto& mat = model.materials[prim.material];
-            int texIdx = mat.pbrMetallicRoughness.baseColorTexture.index;
-            if (texIdx < 0 || texIdx >= (int)model.textures.size()) continue;
-            int imgIdx = model.textures[texIdx].source;
-            if (imgIdx < 0 || imgIdx >= (int)model.images.size()) continue;
-            const auto& img = model.images[imgIdx];
-            if (img.image.empty() || img.width <= 0 || img.height <= 0) continue;
+    // ── Extrai texturas de cor base e de normal (primeiro material que as tiver) ──
+    {
+        bool gotColor = false, gotNormal = false;
+        for (const auto& mesh : model.meshes) {
+            for (const auto& prim : mesh.primitives) {
+                if (prim.material < 0 || prim.material >= (int)model.materials.size()) continue;
+                const auto& mat = model.materials[prim.material];
 
-            textureWidth  = img.width;
-            textureHeight = img.height;
-            int comp = img.component; // 3=RGB, 4=RGBA
-            textureData.resize(img.width * img.height * 4);
-            for (int p = 0; p < img.width * img.height; p++) {
-                textureData[p*4+0] = img.image[p*comp+0];
-                textureData[p*4+1] = img.image[p*comp+1];
-                textureData[p*4+2] = img.image[p*comp+2];
-                textureData[p*4+3] = (comp == 4) ? img.image[p*comp+3] : 255;
+                if (!gotColor && extractTexture(model, mat.pbrMetallicRoughness.baseColorTexture.index,
+                                                 textureData, textureWidth, textureHeight)) {
+                    gotColor = true;
+                    std::cout << "GLTF textura de cor: " << textureWidth << "x" << textureHeight << "\n";
+                }
+                if (!gotNormal && extractTexture(model, mat.normalTexture.index,
+                                                  normalTextureData, normalTextureWidth, normalTextureHeight)) {
+                    gotNormal = true;
+                    std::cout << "GLTF textura de normal: " << normalTextureWidth << "x" << normalTextureHeight << "\n";
+                }
+                if (gotColor && gotNormal) goto textures_done;
             }
-            std::cout << "GLTF textura: " << img.width << "x" << img.height << "\n";
-            goto texture_done;
         }
+        textures_done:;
     }
-    texture_done:;
 
     std::cout << "GLTF carregado: " << vertices.size()
               << " vértices, " << faces.size() << " faces\n";
