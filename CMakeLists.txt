@@ -27,6 +27,7 @@ else()
 endif()
 
 find_package(OpenGL REQUIRED)
+find_package(Threads REQUIRED)
 
 find_package(glm CONFIG QUIET)
 if(NOT glm_FOUND)
@@ -83,6 +84,7 @@ target_link_libraries(qem_gui
     OpenGL::GL
     tinygltf
     Eigen3::Eigen
+    Threads::Threads
 )
 
 target_include_directories(qem_gui PRIVATE

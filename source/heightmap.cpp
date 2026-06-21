@@ -1,8 +1,10 @@
 #include "heightmap.h"
 #include <algorithm>
+#include <atomic>
 #include <cmath>
 #include <limits>
 #include <iostream>
+#include <thread>
 
 using V3 = Eigen::Vector3d;
 
@@ -165,48 +167,67 @@ HeightmapResult HeightmapBaker::bakeRayCast(
                          original.vertices[fc.v[2]].pos});
     }
 
-    int hits  = 0;
     int total = W * H;
     int step  = std::max(1, total / 100);
+    std::atomic<int> hits{0};
+    std::atomic<int> processed{0};
 
-    for (int i = 0; i < total; i++) {
-        const auto& s = samples[i];
-        if (!s.valid) { if (cb && i % step == 0) cb(i * 100 / total); continue; }
+    // Each texel is independent and writes only its own slot in result.heights,
+    // so threads need no locking around the ray-cast work itself — only the
+    // hit/progress counters are shared, via atomics.
+    auto worker = [&](int begin, int end) {
+        for (int i = begin; i < end; i++) {
+            const auto& s = samples[i];
+            if (s.valid) {
+                V3 orig = s.pos + s.normal * 1e-5;
 
-        V3 orig = s.pos + s.normal * 1e-5;
+                // Track fwd/bwd separately so a nearby backface hit in one direction
+                // cannot steal bestT from the correct hit in the other direction.
+                double bestFwdT = std::numeric_limits<double>::max();
+                double bestBwdT = std::numeric_limits<double>::max();
 
-        // Track fwd/bwd separately so a nearby backface hit in one direction
-        // cannot steal bestT from the correct hit in the other direction.
-        double bestFwdT = std::numeric_limits<double>::max();
-        double bestBwdT = std::numeric_limits<double>::max();
+                for (const auto& tri : otris) {
+                    double t;
+                    if (rayTriangle(orig,  s.normal, tri.a, tri.b, tri.c, t) && t > 0.0)
+                        bestFwdT = std::min(bestFwdT, t);
+                    if (rayTriangle(orig, -s.normal, tri.a, tri.b, tri.c, t) && t > 0.0)
+                        bestBwdT = std::min(bestBwdT, t);
+                }
 
-        for (const auto& tri : otris) {
-            double t;
-            if (rayTriangle(orig,  s.normal, tri.a, tri.b, tri.c, t) && t > 0.0)
-                bestFwdT = std::min(bestFwdT, t);
-            if (rayTriangle(orig, -s.normal, tri.a, tri.b, tri.c, t) && t > 0.0)
-                bestBwdT = std::min(bestBwdT, t);
+                bool hasFwd = bestFwdT < 1e15;
+                bool hasBwd = bestBwdT < 1e15;
+                if (hasFwd || hasBwd) {
+                    float h;
+                    if (hasFwd && hasBwd)
+                        h = (bestFwdT <= bestBwdT) ? (float)bestFwdT : -(float)bestBwdT;
+                    else if (hasFwd)
+                        h = (float)bestFwdT;
+                    else
+                        h = -(float)bestBwdT;
+                    result.heights[i] = h;
+                    hits.fetch_add(1, std::memory_order_relaxed);
+                }
+            }
+
+            int done = processed.fetch_add(1, std::memory_order_relaxed) + 1;
+            if (cb && done % step == 0) cb(done * 100 / total);
         }
+    };
 
-        bool hasFwd = bestFwdT < 1e15;
-        bool hasBwd = bestBwdT < 1e15;
-        if (hasFwd || hasBwd) {
-            float h;
-            if (hasFwd && hasBwd)
-                h = (bestFwdT <= bestBwdT) ? (float)bestFwdT : -(float)bestBwdT;
-            else if (hasFwd)
-                h = (float)bestFwdT;
-            else
-                h = -(float)bestBwdT;
-            result.heights[i] = h;
-            ++hits;
-        }
-
-        if (cb && i % step == 0) cb(i * 100 / total);
+    unsigned nThreads = std::max(1u, std::thread::hardware_concurrency());
+    int chunk = (total + (int)nThreads - 1) / (int)nThreads;
+    std::vector<std::thread> pool;
+    for (unsigned t = 0; t < nThreads; t++) {
+        int begin = (int)t * chunk;
+        int end   = std::min(total, begin + chunk);
+        if (begin >= end) break;
+        pool.emplace_back(worker, begin, end);
     }
+    for (auto& th : pool) th.join();
+
     if (cb) cb(100);
 
-    std::cout << "RayCast: " << hits << " texels hit\n";
+    std::cout << "RayCast: " << hits.load() << " texels hit\n";
     normalize(result);
     result.valid = true;
     return result;
