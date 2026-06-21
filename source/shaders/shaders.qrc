@@ -1,0 +1,6 @@
+<RCC>
+    <qresource prefix="/shaders">
+        <file alias="relief.vert">relief.vert</file>
+        <file alias="relief.frag">relief.frag</file>
+    </qresource>
+</RCC>

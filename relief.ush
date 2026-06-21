@@ -1,0 +1,129 @@
+// Common shader utilities for RMDemo project.
+// Include this file in your shaders with: #include "/Project/Common_Clean.usf"
+
+#define eps 1e-3
+
+float3 IntersectTheBox(float3 rayOrigin, float3 rayDir, float3 aabbMin, float3 aabbMax, out bool bottomHit)
+{
+    float3 invRayDir = 1.0 / rayDir;
+
+    float3 t0 = (aabbMin - rayOrigin) * invRayDir;
+    float3 t1 = (aabbMax - rayOrigin) * invRayDir;
+
+    float3 tSlabExit = max(t0, t1);
+
+    float tFar = min(tSlabExit.x, min(tSlabExit.y, tSlabExit.z));
+    bottomHit = (tSlabExit.z <= tSlabExit.x) && (tSlabExit.z <= tSlabExit.y);
+
+    return clamp(rayOrigin + tFar * rayDir, aabbMin, aabbMax);
+}
+
+void BuildPixelAABB(float2 uv, float depth, float pixelSize, out float3 aabbMin, out float3 aabbMax)
+{
+    float2 pixelCoord = floor(uv / pixelSize) * pixelSize;
+
+    aabbMin = float3(pixelCoord - eps, depth);
+    aabbMax = float3(pixelCoord + pixelSize + eps, 0);
+}
+
+float2 Relief(float2 UV, Texture2D<float4> ReliefMap, SamplerState ReliefMapSampler, uint MaxSteps, float3 TangentDirection)
+{
+    uint width, height, numberOfMipLevels;
+    ReliefMap.GetDimensions(0, width, height, numberOfMipLevels);
+    float3 pos = float3(UV, 0);
+
+    int maxMipLevel = (int)numberOfMipLevels - 1;
+    int mipLevel = 0;
+    float pixelSize = pow(2, -(float)maxMipLevel);
+    int wallCount = 0;
+
+    [loop]
+    for (int steps = 0; steps < MaxSteps; steps++)
+    {
+        float depth = -ReliefMap.SampleLevel(ReliefMapSampler, pos.xy, mipLevel).a;
+
+        float3 aabbMin, aabbMax;
+        BuildPixelAABB(pos.xy, depth, pixelSize, aabbMin, aabbMax);
+
+        // Not so deep, need to advance the ray
+        if (pos.z > depth + eps)
+        {
+            bool bottomHit;
+            pos = IntersectTheBox(pos, TangentDirection, aabbMin, aabbMax, bottomHit);
+
+            if (bottomHit)
+            {
+                if (mipLevel == 0) break;
+                mipLevel--;
+                pixelSize *= 0.5;
+                wallCount = 0;
+            }
+            else
+            {
+                wallCount++;
+                if (wallCount >= 3)
+                {
+                    mipLevel = mipLevel + 1;
+                    pixelSize = pixelSize * 2.0;
+                }
+            }
+        }
+        else
+        {
+            if (mipLevel == 0)
+                break;
+            mipLevel--;
+            pixelSize *= 0.5;
+            wallCount = 0;
+        }
+    }
+
+    return pos.xy;
+}
+
+float2 CleanerRelief(float2 UV, Texture2D<float4> ReliefMap, SamplerState ReliefMapSampler, uint MaxSteps, float3 TangentDirection)
+{
+    uint width, height, numberOfMipLevels;
+    ReliefMap.GetDimensions(0, width, height, numberOfMipLevels);
+    float3 pos = float3(UV, 0);
+
+    int maxMipLevel = (int)numberOfMipLevels - 1;
+    int mipLevel = 0;
+    float pixelSize = pow(2, -(float)maxMipLevel);
+    int wallCount = 0;
+
+    [loop]
+    for (int steps = 0; steps < MaxSteps; steps++)
+    {
+        float depth = -ReliefMap.SampleLevel(ReliefMapSampler, pos.xy, mipLevel).a;
+
+        float3 aabbMin, aabbMax;
+        BuildPixelAABB(pos.xy, depth, pixelSize, aabbMin, aabbMax);
+
+        // Not so deep, need to advance the ray
+        if (pos.z > depth + eps)
+        {
+            bool bottomHit;
+            pos = IntersectTheBox(pos, TangentDirection, aabbMin, aabbMax, bottomHit);
+
+            if (!bottomHit)
+            {
+                wallCount++;
+                if (wallCount >= 3)
+                {
+                    mipLevel++;
+                    pixelSize *= 2.0;
+                }
+                continue;
+            }
+        }
+
+        // Mip-down (reached by: depth pass OR bottom hit)
+        if (mipLevel == 0) break;
+        mipLevel--;
+        pixelSize *= 0.5;
+        wallCount = 0;
+    }
+
+    return pos.xy;
+}

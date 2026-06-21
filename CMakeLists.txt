@@ -77,6 +77,7 @@ add_executable(qem_gui
     source/uv_atlas.cpp
     source/texture_prep.cpp
     source/texture_prep_worker.cpp
+    source/shaders/shaders.qrc
 )
 
 target_link_libraries(qem_gui

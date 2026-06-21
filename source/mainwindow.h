@@ -155,7 +155,8 @@ private:
     QStackedWidget*  reliefStack      = nullptr;
     QLabel*          reliefPlaceholder = nullptr;
     ReliefGLWidget*  reliefWidget     = nullptr;
-    GLWidget*        reliefCompareWidget = nullptr;
+    GLWidget*        reliefCompareWidget  = nullptr;
+    GLWidget*        reliefOriginalWidget = nullptr;
     QComboBox*       reliefTypeCombo          = nullptr;
     QSpinBox*        reliefStepsSpin          = nullptr;
     QSpinBox*        reliefBinaryStepsSpin    = nullptr;

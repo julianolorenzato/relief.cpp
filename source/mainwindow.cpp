@@ -503,16 +503,36 @@ QWidget* MainWindow::buildReliefMappingTab() {
 
     reliefCompareWidget = new GLWidget();
     reliefCompareWidget->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
+    reliefCompareWidget->setTextured(true);
     compareGroupLayout->addWidget(reliefCompareWidget);
     viewportsLayout->addWidget(compareGroup);
 
+    QGroupBox* originalGroup = new QGroupBox("Original Model");
+    originalGroup->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
+    QVBoxLayout* originalGroupLayout = new QVBoxLayout(originalGroup);
+    originalGroupLayout->setContentsMargins(4, 4, 4, 4);
+
+    reliefOriginalWidget = new GLWidget();
+    reliefOriginalWidget->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
+    reliefOriginalWidget->setTextured(true);
+    originalGroupLayout->addWidget(reliefOriginalWidget);
+    viewportsLayout->addWidget(originalGroup);
+
     layout->addWidget(viewportsWidget, 1);
 
-    // Cameras stay in sync between the two viewports so they can be compared directly.
+    // Cameras stay in sync across the three viewports so they can be compared directly.
     connect(reliefWidget, &ReliefGLWidget::cameraChanged,
             reliefCompareWidget, &GLWidget::syncCamera);
+    connect(reliefWidget, &ReliefGLWidget::cameraChanged,
+            reliefOriginalWidget, &GLWidget::syncCamera);
     connect(reliefCompareWidget, &GLWidget::cameraChanged,
             reliefWidget, &ReliefGLWidget::syncCamera);
+    connect(reliefCompareWidget, &GLWidget::cameraChanged,
+            reliefOriginalWidget, &GLWidget::syncCamera);
+    connect(reliefOriginalWidget, &GLWidget::cameraChanged,
+            reliefWidget, &ReliefGLWidget::syncCamera);
+    connect(reliefOriginalWidget, &GLWidget::cameraChanged,
+            reliefCompareWidget, &GLWidget::syncCamera);
 
     // ── Controls panel ───────────────────────────────────────────────────────
     QGroupBox* ctrlGroup = new QGroupBox("Relief Mapping Parameters");
@@ -594,17 +614,20 @@ QWidget* MainWindow::buildReliefMappingTab() {
     reliefWireframeCheck = new QCheckBox("Wireframe");
     connect(reliefWireframeCheck, &QCheckBox::toggled, reliefWidget, &ReliefGLWidget::setWireframe);
     connect(reliefWireframeCheck, &QCheckBox::toggled, reliefCompareWidget, &GLWidget::setWireframe);
+    connect(reliefWireframeCheck, &QCheckBox::toggled, reliefOriginalWidget, &GLWidget::setWireframe);
     ctrlLayout->addWidget(reliefWireframeCheck);
 
     reliefCullFaceCheck = new QCheckBox("Backface Culling");
     reliefCullFaceCheck->setChecked(true);
     connect(reliefCullFaceCheck, &QCheckBox::toggled, reliefWidget, &ReliefGLWidget::setCullFace);
     connect(reliefCullFaceCheck, &QCheckBox::toggled, reliefCompareWidget, &GLWidget::setCullFace);
+    connect(reliefCullFaceCheck, &QCheckBox::toggled, reliefOriginalWidget, &GLWidget::setCullFace);
     ctrlLayout->addWidget(reliefCullFaceCheck);
 
     reliefResetCamBtn = new QPushButton("Reset Camera");
     connect(reliefResetCamBtn, &QPushButton::clicked, reliefWidget, &ReliefGLWidget::resetCamera);
     connect(reliefResetCamBtn, &QPushButton::clicked, reliefCompareWidget, &GLWidget::resetCamera);
+    connect(reliefResetCamBtn, &QPushButton::clicked, reliefOriginalWidget, &GLWidget::resetCamera);
     ctrlLayout->addWidget(reliefResetCamBtn);
 
     ctrlLayout->addStretch();
@@ -1296,6 +1319,7 @@ void MainWindow::trySyncReliefWidget() {
     if (reliefMeshPending && simplifiedMesh && simplifiedMesh->faceCount() > 0) {
         reliefWidget->setMesh(simplifiedMesh.get());
         reliefCompareWidget->setMesh(simplifiedMesh.get());
+        if (originalMesh) reliefOriginalWidget->setMesh(originalMesh.get());
         reliefMeshPending = false;
     }
     if (reliefTexturesPending && tpResult.valid) {
