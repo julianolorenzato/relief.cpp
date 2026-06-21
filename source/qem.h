@@ -99,6 +99,12 @@ public:
     // Ver docs/envelope-simplification-plan.md.
     bool envelopeConstraint = false;
 
+    // Quando true, soma o ótimo irrestrito da quádrica (solveQuadric) como
+    // mais um candidato de posição, além de v1, v2 e ponto médio. Com
+    // envelopeConstraint também ligado, o ótimo só é aceito se respeitar os
+    // planos acumulados; senão cai nos outros 3 candidatos como antes.
+    bool useOptimalCandidate = false;
+
     bool loadOBJ(const std::string& path);
     bool saveOBJ(const std::string& path) const;
     bool loadGLTF(const std::string& path);
@@ -131,10 +137,11 @@ private:
     // Calcula vertices[i].envelope a partir das faces atuais (uma vez, antes
     // do laço de colapsos). Só chamada quando envelopeConstraint == true.
     void computeEnvelope();
-    // Monta o candidato de colapso entre os 3 pontos de sempre (v1, v2,
-    // ponto médio). Quando envelopeConstraint == true, descarta candidatos
-    // que violem os planos acumulados de v1/v2 e retorna false se nenhum dos
-    // 3 for viável (aresta não pode colapsar nesse passo).
+    // Monta o candidato de colapso entre v1, v2, ponto médio e (se
+    // useOptimalCandidate) o ótimo irrestrito da quádrica. Quando
+    // envelopeConstraint == true, descarta candidatos que violem os planos
+    // acumulados de v1/v2 e retorna false se nenhum for viável (aresta não
+    // pode colapsar nesse passo).
     bool computeCollapse(int v1, int v2, EdgeCollapse& out) const;
     // Versão sincronizada: combina as quádricas de (v1,v2) e do par espelhado
     // (tv1,tv2) para escolher uma única posição-alvo compartilhada pelos dois.

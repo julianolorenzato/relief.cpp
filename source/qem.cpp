@@ -157,6 +157,19 @@ static bool pointSatisfiesPlanes(const Eigen::Vector3d& p,
     return true;
 }
 
+// Para um candidato de posição que não é nem v1, nem v2, nem o ponto médio
+// (caso do ótimo irrestrito da quádrica), não há UV "natural" — projeta p
+// sobre o segmento a-b e interpola a UV por esse parâmetro, clampado a [0,1].
+static Eigen::Vector2d interpolateUVAlongSegment(const Eigen::Vector3d& p,
+                                                  const Eigen::Vector3d& a, const Eigen::Vector2d& uvA,
+                                                  const Eigen::Vector3d& b, const Eigen::Vector2d& uvB) {
+    Eigen::Vector3d ab = b - a;
+    double len2 = ab.squaredNorm();
+    double t = (len2 > 1e-12) ? (p - a).dot(ab) / len2 : 0.5;
+    t = std::clamp(t, 0.0, 1.0);
+    return uvA + t * (uvB - uvA);
+}
+
 void QEMSimplifier::computeEnvelope() {
     for (auto& vx : vertices) vx.envelope.clear();
 
@@ -186,17 +199,29 @@ bool QEMSimplifier::computeCollapse(int v1, int v2, EdgeCollapse& ec) const {
 
     Eigen::Matrix4d Qbar = vertices[v1].Q + vertices[v2].Q;
 
-    // Fallback: testar v1, v2 e ponto médio
     Eigen::Vector3d mid   = (vertices[v1].pos + vertices[v2].pos) * 0.5;
     Eigen::Vector2d midUV = (vertices[v1].uv  + vertices[v2].uv)  * 0.5;
     double c1 = evalQuadric(Qbar, vertices[v1].pos.x(), vertices[v1].pos.y(), vertices[v1].pos.z());
     double c2 = evalQuadric(Qbar, vertices[v2].pos.x(), vertices[v2].pos.y(), vertices[v2].pos.z());
     double cm = evalQuadric(Qbar, mid.x(), mid.y(), mid.z());
 
+    bool hasOpt = false;
+    Eigen::Vector3d opt = Eigen::Vector3d::Zero(); Eigen::Vector2d optUV = Eigen::Vector2d::Zero(); double cOpt = 0.0;
+    if (useOptimalCandidate) {
+        double ox, oy, oz;
+        if (solveQuadric(Qbar, ox, oy, oz)) {
+            opt   = Eigen::Vector3d(ox, oy, oz);
+            optUV = interpolateUVAlongSegment(opt, vertices[v1].pos, vertices[v1].uv, vertices[v2].pos, vertices[v2].uv);
+            cOpt  = evalQuadric(Qbar, ox, oy, oz);
+            hasOpt = true;
+        }
+    }
+
     if (!envelopeConstraint) {
-        if (c1 <= c2 && c1 <= cm)      { ec.target = vertices[v1].pos; ec.targetUV = vertices[v1].uv; ec.cost = c1; }
-        else if (c2 <= c1 && c2 <= cm) { ec.target = vertices[v2].pos; ec.targetUV = vertices[v2].uv; ec.cost = c2; }
-        else                           { ec.target = mid;               ec.targetUV = midUV;           ec.cost = cm; }
+        double bestCost = c1; ec.target = vertices[v1].pos; ec.targetUV = vertices[v1].uv; ec.cost = c1;
+        if (c2 < bestCost)              { bestCost = c2;   ec.target = vertices[v2].pos; ec.targetUV = vertices[v2].uv; ec.cost = c2; }
+        if (cm < bestCost)              { bestCost = cm;   ec.target = mid;              ec.targetUV = midUV;           ec.cost = cm; }
+        if (hasOpt && cOpt < bestCost)  {                  ec.target = opt;              ec.targetUV = optUV;           ec.cost = cOpt; }
         return true;
     }
 
@@ -206,12 +231,16 @@ bool QEMSimplifier::computeCollapse(int v1, int v2, EdgeCollapse& ec) const {
                  pointSatisfiesPlanes(vertices[v2].pos, vertices[v2].envelope);
     bool feasM = pointSatisfiesPlanes(mid, vertices[v1].envelope) &&
                  pointSatisfiesPlanes(mid, vertices[v2].envelope);
+    bool feasOpt = hasOpt &&
+                   pointSatisfiesPlanes(opt, vertices[v1].envelope) &&
+                   pointSatisfiesPlanes(opt, vertices[v2].envelope);
 
     double bestCost = std::numeric_limits<double>::infinity();
     bool found = false;
-    if (feas1 && c1 < bestCost) { ec.target = vertices[v1].pos; ec.targetUV = vertices[v1].uv; ec.cost = c1; bestCost = c1; found = true; }
-    if (feas2 && c2 < bestCost) { ec.target = vertices[v2].pos; ec.targetUV = vertices[v2].uv; ec.cost = c2; bestCost = c2; found = true; }
-    if (feasM && cm < bestCost) { ec.target = mid;              ec.targetUV = midUV;           ec.cost = cm; bestCost = cm; found = true; }
+    if (feas1 && c1 < bestCost)   { ec.target = vertices[v1].pos; ec.targetUV = vertices[v1].uv; ec.cost = c1;   bestCost = c1;   found = true; }
+    if (feas2 && c2 < bestCost)   { ec.target = vertices[v2].pos; ec.targetUV = vertices[v2].uv; ec.cost = c2;   bestCost = c2;   found = true; }
+    if (feasM && cm < bestCost)   { ec.target = mid;              ec.targetUV = midUV;           ec.cost = cm;   bestCost = cm;   found = true; }
+    if (feasOpt && cOpt < bestCost) { ec.target = opt;            ec.targetUV = optUV;            ec.cost = cOpt; bestCost = cOpt; found = true; }
 
     return found;
 }
@@ -235,13 +264,29 @@ bool QEMSimplifier::computeCollapse(int v1, int v2, int tv1, int tv2, EdgeCollap
     double c2 = evalQuadric(Qbar, vertices[v2].pos.x(), vertices[v2].pos.y(), vertices[v2].pos.z());
     double cm = evalQuadric(Qbar, mid.x(), mid.y(), mid.z());
 
+    bool hasOpt = false;
+    Eigen::Vector3d opt = Eigen::Vector3d::Zero(); Eigen::Vector2d optUV1 = Eigen::Vector2d::Zero(), optUV2 = Eigen::Vector2d::Zero(); double cOpt = 0.0;
+    if (useOptimalCandidate) {
+        double ox, oy, oz;
+        if (solveQuadric(Qbar, ox, oy, oz)) {
+            opt    = Eigen::Vector3d(ox, oy, oz);
+            optUV1 = interpolateUVAlongSegment(opt, vertices[v1].pos,  vertices[v1].uv,  vertices[v2].pos,  vertices[v2].uv);
+            optUV2 = interpolateUVAlongSegment(opt, vertices[tv1].pos, vertices[tv1].uv, vertices[tv2].pos, vertices[tv2].uv);
+            cOpt   = evalQuadric(Qbar, ox, oy, oz);
+            hasOpt = true;
+        }
+    }
+
     if (!envelopeConstraint) {
-        if (c1 <= c2 && c1 <= cm) {
-            ec.target = vertices[v1].pos; ec.targetUV = vertices[v1].uv; ec.targetUV2 = vertices[tv1].uv; ec.cost = c1;
-        } else if (c2 <= c1 && c2 <= cm) {
-            ec.target = vertices[v2].pos; ec.targetUV = vertices[v2].uv; ec.targetUV2 = vertices[tv2].uv; ec.cost = c2;
-        } else {
-            ec.target = mid; ec.targetUV = midUV1; ec.targetUV2 = midUV2; ec.cost = cm;
+        double bestCost = c1; ec.target = vertices[v1].pos; ec.targetUV = vertices[v1].uv; ec.targetUV2 = vertices[tv1].uv; ec.cost = c1;
+        if (c2 < bestCost) {
+            bestCost = c2; ec.target = vertices[v2].pos; ec.targetUV = vertices[v2].uv; ec.targetUV2 = vertices[tv2].uv; ec.cost = c2;
+        }
+        if (cm < bestCost) {
+            bestCost = cm; ec.target = mid; ec.targetUV = midUV1; ec.targetUV2 = midUV2; ec.cost = cm;
+        }
+        if (hasOpt && cOpt < bestCost) {
+            ec.target = opt; ec.targetUV = optUV1; ec.targetUV2 = optUV2; ec.cost = cOpt;
         }
         return true;
     }
@@ -254,9 +299,10 @@ bool QEMSimplifier::computeCollapse(int v1, int v2, int tv1, int tv2, EdgeCollap
                pointSatisfiesPlanes(p, vertices[tv1].envelope) &&
                pointSatisfiesPlanes(p, vertices[tv2].envelope);
     };
-    bool feas1 = feasible(vertices[v1].pos);
-    bool feas2 = feasible(vertices[v2].pos);
-    bool feasM = feasible(mid);
+    bool feas1   = feasible(vertices[v1].pos);
+    bool feas2   = feasible(vertices[v2].pos);
+    bool feasM   = feasible(mid);
+    bool feasOpt = hasOpt && feasible(opt);
 
     double bestCost = std::numeric_limits<double>::infinity();
     bool found = false;
@@ -268,6 +314,9 @@ bool QEMSimplifier::computeCollapse(int v1, int v2, int tv1, int tv2, EdgeCollap
     }
     if (feasM && cm < bestCost) {
         ec.target = mid; ec.targetUV = midUV1; ec.targetUV2 = midUV2; ec.cost = cm; bestCost = cm; found = true;
+    }
+    if (feasOpt && cOpt < bestCost) {
+        ec.target = opt; ec.targetUV = optUV1; ec.targetUV2 = optUV2; ec.cost = cOpt; bestCost = cOpt; found = true;
     }
 
     return found;

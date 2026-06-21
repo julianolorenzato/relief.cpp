@@ -157,6 +157,12 @@ QWidget* MainWindow::buildSimplifierTab() {
         "a malha final pode nao atingir a contagem de faces alvo.");
     controlsLayout2->addWidget(envelopeConstraintCheck);
 
+    useOptimalCandidateCheck = new QCheckBox("Use Optimal Candidate");
+    useOptimalCandidateCheck->setToolTip(
+        "Soma o otimo irrestrito da quadrica como mais um candidato de posicao\n"
+        "de colapso, alem de v1, v2 e ponto medio.");
+    controlsLayout2->addWidget(useOptimalCandidateCheck);
+
     showBoundaryEdgesCheck = new QCheckBox("Show Boundary Edges");
     connect(showBoundaryEdgesCheck, &QCheckBox::toggled, glWidgetOriginal,   &GLWidget::setShowBoundaryEdges);
     connect(showBoundaryEdgesCheck, &QCheckBox::toggled, glWidgetSimplified, &GLWidget::setShowBoundaryEdges);
@@ -830,6 +836,7 @@ void MainWindow::onSimplify() {
     *simplifiedMesh = *originalMesh;
     simplifiedMesh->boundaryMode = (BoundaryMode)boundaryModeCombo->currentData().toInt();
     simplifiedMesh->envelopeConstraint = envelopeConstraintCheck->isChecked();
+    simplifiedMesh->useOptimalCandidate = useOptimalCandidateCheck->isChecked();
 
     statusLabel->setText("Simplifying...");
     statusBar()->repaint();
