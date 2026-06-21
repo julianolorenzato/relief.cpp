@@ -38,10 +38,8 @@ private slots:
 
     void onSmoothCover();
 
-    void onBakeAll();
-    void onBakeSingle(int idx);
-    void onSaveHeightmap(int idx);
-    void onSaveNormalmap();
+    void onBake();
+    void onSaveHeightmap();
     void onBakeProgress(int overall, const QString& text);
     void onBakeDone();
 
@@ -72,9 +70,8 @@ private:
     void applyInflate(double offset);
     void computeSmoothCoverOffsets();
 
-    void displayHeightmap(int idx, const HeightmapResult& r);
-    void displayNormalmap(const NormalmapResult& r);
-    void launchBake(QList<int> strategies);
+    void displayHeightmap(const HeightmapResult& r);
+    void launchBake();
     void setBakeButtonsEnabled(bool enabled);
 
     // ── Mesh data ────────────────────────────────────────────────────────────
@@ -121,20 +118,15 @@ private:
 
     // ── Heightmap tab ────────────────────────────────────────────────────────
     QComboBox*       hmResCombo       = nullptr;
-    QDoubleSpinBox*  hmCageOffsetSpin = nullptr;
-    QPushButton*     hmBakeAllBtn     = nullptr;
+    QPushButton*     hmBakeBtn        = nullptr;
     QProgressBar*    hmProgressBar    = nullptr;
     QLabel*          hmProgressLabel  = nullptr;
 
-    // index 0 = Ray Cast (no cage), index 1 = Ray Cast + Cage, index 2 = Normal Map
-    QLabel*      hmPreview[3]       = {};
-    QLabel*      hmInfoLabel[3]     = {};
-    QPushButton* hmBakeSingleBtn[3] = {};
-    QPushButton* hmSaveBtn[3]       = {};
+    QLabel*          hmPreview        = nullptr;
+    QLabel*          hmInfoLabel      = nullptr;
+    QPushButton*     hmSaveBtn        = nullptr;
 
-    HeightmapResult   hmResults[2];
-    NormalmapResult   nmResult;
-    QList<int>        hmActiveStrategies;
+    HeightmapResult   hmResult;
     HeightmapWorker*  hmWorker = nullptr;
     QThread*          hmThread = nullptr;
 

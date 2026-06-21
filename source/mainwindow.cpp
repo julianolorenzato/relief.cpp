@@ -265,7 +265,7 @@ QWidget* MainWindow::buildHeightmapTab() {
     QGroupBox* ctrlGroup = new QGroupBox("Baking Controls");
     QVBoxLayout* ctrlOuter = new QVBoxLayout(ctrlGroup);
 
-    // Row 1: resolution + cage offset + bake button
+    // Row 1: resolution + bake button
     QHBoxLayout* ctrlRow = new QHBoxLayout();
 
     ctrlRow->addWidget(new QLabel("Resolution:"));
@@ -278,23 +278,10 @@ QWidget* MainWindow::buildHeightmapTab() {
     ctrlRow->addWidget(hmResCombo);
 
     ctrlRow->addSpacing(16);
-    ctrlRow->addWidget(new QLabel("Cage Offset:"));
-    hmCageOffsetSpin = new QDoubleSpinBox();
-    hmCageOffsetSpin->setMinimum(0.0001);
-    hmCageOffsetSpin->setMaximum(1000.0);
-    hmCageOffsetSpin->setValue(0.05);
-    hmCageOffsetSpin->setSingleStep(0.01);
-    hmCageOffsetSpin->setDecimals(4);
-    hmCageOffsetSpin->setToolTip(
-        "Distance (world units) to inflate the simplified surface to form the cage.\n"
-        "Only affects the Ray Cast + Cage strategy.");
-    ctrlRow->addWidget(hmCageOffsetSpin);
-
-    ctrlRow->addSpacing(16);
-    hmBakeAllBtn = new QPushButton("Bake All");
-    hmBakeAllBtn->setMinimumWidth(120);
-    connect(hmBakeAllBtn, &QPushButton::clicked, this, &MainWindow::onBakeAll);
-    ctrlRow->addWidget(hmBakeAllBtn);
+    hmBakeBtn = new QPushButton("Bake");
+    hmBakeBtn->setMinimumWidth(120);
+    connect(hmBakeBtn, &QPushButton::clicked, this, &MainWindow::onBake);
+    ctrlRow->addWidget(hmBakeBtn);
     ctrlRow->addStretch();
     ctrlOuter->addLayout(ctrlRow);
 
@@ -315,63 +302,31 @@ QWidget* MainWindow::buildHeightmapTab() {
     ctrlGroup->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
     mainLayout->addWidget(ctrlGroup);
 
-    // ── Heightmap panels ─────────────────────────────────────────────────────
-    static const char* titles[3] = {
-        "Ray Cast  (no cage — unlimited range)",
-        "Ray Cast + Cage  (bounded by cage offset)",
-        "Normal Map  (tangent space)"
-    };
-    static const char* singleBtnLabels[3] = {
-        "Bake (no cage)", "Bake (cage)", "Bake Normal Map"
-    };
+    // ── Heightmap panel ───────────────────────────────────────────────────────
+    QGroupBox* panel = new QGroupBox("Ray Cast  (unlimited range)");
+    QVBoxLayout* pLayout = new QVBoxLayout(panel);
+    panel->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
 
-    QWidget* panelsWidget = new QWidget();
-    QHBoxLayout* panelsLayout = new QHBoxLayout(panelsWidget);
-    panelsLayout->setSpacing(12);
+    hmPreview = new QLabel();
+    hmPreview->setAlignment(Qt::AlignCenter);
+    hmPreview->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
+    hmPreview->setMinimumSize(200, 200);
+    hmPreview->setStyleSheet("background-color: #1e1e1e; border: 1px solid #555;");
+    hmPreview->setText("(not baked)");
+    pLayout->addWidget(hmPreview, 1);
 
-    for (int i = 0; i < 3; i++) {
-        QGroupBox* panel = new QGroupBox(titles[i]);
-        QVBoxLayout* pLayout = new QVBoxLayout(panel);
-        panel->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
+    hmInfoLabel = new QLabel("Range: —");
+    hmInfoLabel->setFixedHeight(18);
+    hmInfoLabel->setAlignment(Qt::AlignCenter);
+    pLayout->addWidget(hmInfoLabel);
 
-        hmPreview[i] = new QLabel();
-        hmPreview[i]->setAlignment(Qt::AlignCenter);
-        hmPreview[i]->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
-        hmPreview[i]->setMinimumSize(200, 200);
-        hmPreview[i]->setStyleSheet("background-color: #1e1e1e; border: 1px solid #555;");
-        hmPreview[i]->setText("(not baked)");
-        pLayout->addWidget(hmPreview[i], 1);
+    hmSaveBtn = new QPushButton("Save");
+    hmSaveBtn->setEnabled(false);
+    connect(hmSaveBtn, &QPushButton::clicked, this, &MainWindow::onSaveHeightmap);
+    pLayout->addWidget(hmSaveBtn);
 
-        hmInfoLabel[i] = new QLabel(i < 2 ? "Range: —" : "—");
-        hmInfoLabel[i]->setFixedHeight(18);
-        hmInfoLabel[i]->setAlignment(Qt::AlignCenter);
-        pLayout->addWidget(hmInfoLabel[i]);
-
-        QHBoxLayout* btnRow = new QHBoxLayout();
-        int idx = i;
-
-        hmBakeSingleBtn[i] = new QPushButton(singleBtnLabels[i]);
-        connect(hmBakeSingleBtn[i], &QPushButton::clicked, this,
-                [this, idx]() { onBakeSingle(idx); });
-        btnRow->addWidget(hmBakeSingleBtn[i]);
-
-        hmSaveBtn[i] = new QPushButton("Save");
-        hmSaveBtn[i]->setEnabled(false);
-        if (i < 2) {
-            connect(hmSaveBtn[i], &QPushButton::clicked, this,
-                    [this, idx]() { onSaveHeightmap(idx); });
-        } else {
-            connect(hmSaveBtn[i], &QPushButton::clicked, this,
-                    &MainWindow::onSaveNormalmap);
-        }
-        btnRow->addWidget(hmSaveBtn[i]);
-
-        pLayout->addLayout(btnRow);
-        panelsLayout->addWidget(panel);
-    }
-
-    panelsWidget->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
-    mainLayout->addWidget(panelsWidget, 1);
+    panel->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
+    mainLayout->addWidget(panel, 1);
 
     return tab;
 }
@@ -697,7 +652,7 @@ void MainWindow::createMenuBar() {
             "Mouse: Drag to rotate, Scroll to zoom\n"
             "Formats: OBJ, GLTF\n\n"
             "Heightmap tab: bakes displacement between simplified and original mesh\n"
-            "using ray casting with or without a cage to bound the search distance.");
+            "using ray casting.");
     });
 }
 
@@ -753,14 +708,11 @@ void MainWindow::onLoadModel() {
     uvViewCheck->setEnabled(hasUVs);
     if (!hasUVs) uvViewCheck->setChecked(false);
 
-    for (int i = 0; i < 3; i++) {
-        hmPreview[i]->setText("(not baked)");
-        hmPreview[i]->setPixmap(QPixmap());
-        hmInfoLabel[i]->setText(i < 2 ? "Range: —" : "—");
-        hmSaveBtn[i]->setEnabled(false);
-        if (i < 2) hmResults[i] = HeightmapResult{};
-    }
-    nmResult = NormalmapResult{};
+    hmPreview->setText("(not baked)");
+    hmPreview->setPixmap(QPixmap());
+    hmInfoLabel->setText("Range: —");
+    hmSaveBtn->setEnabled(false);
+    hmResult = HeightmapResult{};
 
     // Reset inflate/deflate controls
     baseSimplifiedPositions.clear();
@@ -954,12 +906,10 @@ void MainWindow::onResetCameras() {
 // ─── Heightmap baking ────────────────────────────────────────────────────────
 
 void MainWindow::setBakeButtonsEnabled(bool enabled) {
-    hmBakeAllBtn->setEnabled(enabled);
-    for (int i = 0; i < 3; i++)
-        hmBakeSingleBtn[i]->setEnabled(enabled);
+    hmBakeBtn->setEnabled(enabled);
 }
 
-void MainWindow::launchBake(QList<int> strategies) {
+void MainWindow::launchBake() {
     if (hmThread && hmThread->isRunning()) return;
 
     if (!simplifiedMesh || simplifiedMesh->faceCount() == 0) {
@@ -988,22 +938,16 @@ void MainWindow::launchBake(QList<int> strategies) {
     hmProgressBar->setValue(0);
     hmProgressLabel->setText("Starting…");
 
-    for (int s : strategies) {
-        hmPreview[s]->setText("(baking…)");
-        hmPreview[s]->setPixmap(QPixmap());
-        hmInfoLabel[s]->setText("Range: —");
-        hmSaveBtn[s]->setEnabled(false);
-    }
-
-    hmActiveStrategies = strategies;
+    hmPreview->setText("(baking…)");
+    hmPreview->setPixmap(QPixmap());
+    hmInfoLabel->setText("Range: —");
+    hmSaveBtn->setEnabled(false);
 
     hmWorker = new HeightmapWorker();
     hmWorker->simplified = simplifiedMesh.get();
     hmWorker->original   = originalMesh.get();
     hmWorker->width      = res;
     hmWorker->height     = res;
-    hmWorker->cageOffset = hmCageOffsetSpin->value();
-    hmWorker->strategies = strategies;
 
     hmThread = new QThread(this);
     hmWorker->moveToThread(hmThread);
@@ -1017,12 +961,8 @@ void MainWindow::launchBake(QList<int> strategies) {
     hmThread->start();
 }
 
-void MainWindow::onBakeAll() {
-    launchBake({0, 1, 2});
-}
-
-void MainWindow::onBakeSingle(int idx) {
-    launchBake({idx});
+void MainWindow::onBake() {
+    launchBake();
 }
 
 void MainWindow::onBakeProgress(int overall, const QString& text) {
@@ -1031,15 +971,8 @@ void MainWindow::onBakeProgress(int overall, const QString& text) {
 }
 
 void MainWindow::onBakeDone() {
-    for (int s : hmActiveStrategies) {
-        if (s == 2) {
-            nmResult = hmWorker->nmResult;
-            displayNormalmap(nmResult);
-        } else {
-            hmResults[s] = hmWorker->results[s];
-            displayHeightmap(s, hmResults[s]);
-        }
-    }
+    hmResult = hmWorker->results[0];
+    displayHeightmap(hmResult);
 
     hmWorker->deleteLater();
     hmWorker = nullptr;
@@ -1051,11 +984,11 @@ void MainWindow::onBakeDone() {
     statusLabel->setText("Bake complete");
 }
 
-void MainWindow::displayHeightmap(int idx, const HeightmapResult& r) {
+void MainWindow::displayHeightmap(const HeightmapResult& r) {
     if (!r.valid || r.image.empty()) {
-        hmPreview[idx]->setText("(bake failed)");
-        hmInfoLabel[idx]->setText("Range: —");
-        hmSaveBtn[idx]->setEnabled(false);
+        hmPreview->setText("(bake failed)");
+        hmInfoLabel->setText("Range: —");
+        hmSaveBtn->setEnabled(false);
         return;
     }
 
@@ -1063,71 +996,30 @@ void MainWindow::displayHeightmap(int idx, const HeightmapResult& r) {
     img = img.mirrored(false, true);
 
     QPixmap px = QPixmap::fromImage(img);
-    QSize labelSize = hmPreview[idx]->size();
+    QSize labelSize = hmPreview->size();
     if (labelSize.isEmpty()) labelSize = QSize(300, 300);
-    hmPreview[idx]->setPixmap(
+    hmPreview->setPixmap(
         px.scaled(labelSize, Qt::KeepAspectRatio, Qt::SmoothTransformation));
 
-    hmInfoLabel[idx]->setText(
+    hmInfoLabel->setText(
         QString("Range: [%1, %2]")
             .arg((double)r.minH, 0, 'f', 4)
             .arg((double)r.maxH, 0, 'f', 4));
 
-    hmSaveBtn[idx]->setEnabled(true);
+    hmSaveBtn->setEnabled(true);
 }
 
-void MainWindow::displayNormalmap(const NormalmapResult& r) {
-    if (!r.valid || r.image.empty()) {
-        hmPreview[2]->setText("(bake failed)");
-        hmInfoLabel[2]->setText("—");
-        hmSaveBtn[2]->setEnabled(false);
-        return;
-    }
-
-    QImage img(r.image.data(), r.width, r.height, 3 * r.width, QImage::Format_RGB888);
-    img = img.mirrored(false, true);
-
-    QPixmap px = QPixmap::fromImage(img);
-    QSize labelSize = hmPreview[2]->size();
-    if (labelSize.isEmpty()) labelSize = QSize(300, 300);
-    hmPreview[2]->setPixmap(
-        px.scaled(labelSize, Qt::KeepAspectRatio, Qt::SmoothTransformation));
-
-    hmInfoLabel[2]->setText("Tangent-space normal map");
-    hmSaveBtn[2]->setEnabled(true);
-}
-
-void MainWindow::onSaveNormalmap() {
-    if (!nmResult.valid || nmResult.image.empty()) return;
+void MainWindow::onSaveHeightmap() {
+    if (!hmResult.valid || hmResult.image.empty()) return;
 
     QString fileName = QFileDialog::getSaveFileName(this,
-        "Save Normal Map", "",
-        "PNG Image (*.png);;All Files (*)");
-    if (fileName.isEmpty()) return;
-
-    QImage img(nmResult.image.data(), nmResult.width, nmResult.height,
-               3 * nmResult.width, QImage::Format_RGB888);
-    img = img.mirrored(false, true);
-
-    if (img.save(fileName)) {
-        statusLabel->setText("Saved: " + fileName);
-        QMessageBox::information(this, "Saved", "Normal map saved as PNG.");
-    } else {
-        QMessageBox::critical(this, "Error", "Failed to save image.");
-    }
-}
-
-void MainWindow::onSaveHeightmap(int idx) {
-    const HeightmapResult& r = hmResults[idx];
-    if (!r.valid || r.image.empty()) return;
-
-    QString fileName = QFileDialog::getSaveFileName(this,
-        QString("Save Heightmap (%1)").arg(idx == 0 ? "No Cage" : "With Cage"), "",
+        "Save Heightmap", "",
         "PNG Image (*.png);;All Files (*)");
 
     if (fileName.isEmpty()) return;
 
-    QImage img(r.image.data(), r.width, r.height, r.width, QImage::Format_Grayscale8);
+    QImage img(hmResult.image.data(), hmResult.width, hmResult.height,
+               hmResult.width, QImage::Format_Grayscale8);
     img = img.mirrored(false, true);
 
     if (img.save(fileName)) {
