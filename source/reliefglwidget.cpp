@@ -20,7 +20,6 @@ ReliefGLWidget::~ReliefGLWidget() {
     if (vao.isCreated()) vao.destroy();
     deleteTextures();
     if (samplerPointId)  glDeleteSamplers(1, &samplerPointId);
-    if (samplerLinearId) glDeleteSamplers(1, &samplerLinearId);
     doneCurrent();
 }
 
@@ -208,10 +207,8 @@ void ReliefGLWidget::setTextures(const TexturePrepResult& result) {
 
 void ReliefGLWidget::setWireframe(bool enabled) { wireframe = enabled; update(); }
 void ReliefGLWidget::setCullFace(bool enabled)  { cullFace  = enabled; update(); }
-void ReliefGLWidget::setReliefType(int type)    { reliefType = type; update(); }
+void ReliefGLWidget::setReliefEnabled(bool enabled) { reliefEnabled = enabled; update(); }
 void ReliefGLWidget::setUseAtlas(bool enabled)  { useAtlas = enabled; update(); }
-void ReliefGLWidget::setOffsetMapSamplingVersion(int v) { offsetMapSamplingVersion = v; update(); }
-void ReliefGLWidget::setFilter0(bool enabled)   { filter0 = enabled; update(); }
 void ReliefGLWidget::setSteps(int s)            { steps = std::max(1, s); update(); }
 void ReliefGLWidget::setBinarySteps(int s)      { binarySteps = std::max(0, s); update(); }
 void ReliefGLWidget::setDepthScale(double scale) { depthScale = (float)scale; update(); }
@@ -232,12 +229,6 @@ void ReliefGLWidget::initializeGL() {
     glSamplerParameteri(samplerPointId, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
     glSamplerParameteri(samplerPointId, GL_TEXTURE_WRAP_S, GL_REPEAT);
     glSamplerParameteri(samplerPointId, GL_TEXTURE_WRAP_T, GL_REPEAT);
-
-    glGenSamplers(1, &samplerLinearId);
-    glSamplerParameteri(samplerLinearId, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
-    glSamplerParameteri(samplerLinearId, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-    glSamplerParameteri(samplerLinearId, GL_TEXTURE_WRAP_S, GL_REPEAT);
-    glSamplerParameteri(samplerLinearId, GL_TEXTURE_WRAP_T, GL_REPEAT);
 
     resetCamera();
 }
@@ -285,10 +276,8 @@ void ReliefGLWidget::paintGL() {
                     * glm::translate(glm::mat4(1.0f), -meshCenter);
     shaderProgram.setUniformValue("model", QMatrix4x4(glm::value_ptr(model)).transposed());
 
-    shaderProgram.setUniformValue("ReliefType", reliefType);
-    shaderProgram.setUniformValue("OffsetMapSamplingVersion", offsetMapSamplingVersion);
+    shaderProgram.setUniformValue("ReliefEnabled", reliefEnabled);
     shaderProgram.setUniformValue("UseAtlas", useAtlas);
-    shaderProgram.setUniformValue("Filter0", filter0);
     shaderProgram.setUniformValue("LinearSteps", steps);
     shaderProgram.setUniformValue("BinarySteps", binarySteps);
     shaderProgram.setUniformValue("DepthScale", depthScale);
@@ -307,26 +296,20 @@ void ReliefGLWidget::paintGL() {
     shaderProgram.setUniformValue("Relief_Map", 1);
 
     glActiveTexture(GL_TEXTURE2);
-    glBindTexture(GL_TEXTURE_2D, reliefTex);
-    glBindSampler(2, samplerLinearId);
-    shaderProgram.setUniformValue("Relief_Map_Linear", 2);
+    glBindTexture(GL_TEXTURE_2D, offsetTex);
+    glBindSampler(2, 0);
+    shaderProgram.setUniformValue("Offset_Map", 2);
 
     glActiveTexture(GL_TEXTURE3);
-    glBindTexture(GL_TEXTURE_2D, offsetTex);
-    glBindSampler(3, 0);
-    shaderProgram.setUniformValue("Offset_Map", 3);
-
-    glActiveTexture(GL_TEXTURE4);
     glBindTexture(GL_TEXTURE_2D, normalTex);
-    glBindSampler(4, 0);
-    shaderProgram.setUniformValue("Normal_Map", 4);
+    glBindSampler(3, 0);
+    shaderProgram.setUniformValue("Normal_Map", 3);
 
     vao.bind();
     glDrawElements(GL_TRIANGLES, indexCount, GL_UNSIGNED_INT, nullptr);
     vao.release();
 
     glBindSampler(1, 0);
-    glBindSampler(2, 0);
     shaderProgram.release();
 }
 

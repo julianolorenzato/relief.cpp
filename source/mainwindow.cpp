@@ -282,6 +282,8 @@ QWidget* MainWindow::buildHeightmapTab() {
     hmResCombo->addItem("256 × 256",   256);
     hmResCombo->addItem("512 × 512",   512);
     hmResCombo->addItem("1024 × 1024", 1024);
+    hmResCombo->addItem("2048 × 2048", 2048);
+    hmResCombo->addItem("4096 × 4096", 4096);
     hmResCombo->setCurrentIndex(2);
     ctrlRow->addWidget(hmResCombo);
 
@@ -417,7 +419,7 @@ QWidget* MainWindow::buildTexturePrepTab() {
 
     // ── Preview panels ───────────────────────────────────────────────────────
     static const char* previewTitles[4] = {
-        "Color Map", "Relief Map  (R=depth G=mip-bound B=— A=seam)", "Normal Map", "Offset Map  (atlas leap mask)"
+        "Color Map", "Relief Map  (R=min G=max(mip-bound) B=offset mask A=—)", "Normal Map", "Offset Map  (atlas leap mask)"
     };
 
     QWidget* panelsWidget = new QWidget();
@@ -441,6 +443,31 @@ QWidget* MainWindow::buildTexturePrepTab() {
         tpInfoLabel[i]->setFixedHeight(18);
         tpInfoLabel[i]->setAlignment(Qt::AlignCenter);
         pLayout->addWidget(tpInfoLabel[i]);
+
+        if (i < 3) {
+            static const char* chanLabel[4]   = {"R", "G", "B", "A"};
+            static const char* chanTooltip[3][4] = {
+                {"Red",                   "Green",                  "Blue",              "Alpha"},
+                {"Min depth (mip bound)", "Max depth (mip bound)",  "Offset/seam mask",  "Reserved (always 0)"},
+                {"X",                     "Y",                      "Z",                 ""},
+            };
+            QHBoxLayout* chanRow = new QHBoxLayout();
+            chanRow->addWidget(new QLabel("Channels:"));
+            for (int c = 0; c < 4; c++) {
+                tpChannelCheck[i][c] = new QCheckBox(chanLabel[c]);
+                tpChannelCheck[i][c]->setChecked(true);
+                tpChannelCheck[i][c]->setToolTip(chanTooltip[i][c]);
+                connect(tpChannelCheck[i][c], &QCheckBox::toggled, this, [this, idx = i](bool) { updateTpPreview(idx); });
+                chanRow->addWidget(tpChannelCheck[i][c]);
+            }
+            // Normal map has no alpha channel.
+            if (i == 2) {
+                tpChannelCheck[i][3]->setChecked(false);
+                tpChannelCheck[i][3]->setEnabled(false);
+            }
+            chanRow->addStretch();
+            pLayout->addLayout(chanRow);
+        }
 
         QHBoxLayout* btnRow = new QHBoxLayout();
         btnRow->addWidget(new QLabel("Mip:"));
@@ -539,16 +566,10 @@ QWidget* MainWindow::buildReliefMappingTab() {
     ctrlGroup->setFixedWidth(280);
     QVBoxLayout* ctrlLayout = new QVBoxLayout(ctrlGroup);
 
-    ctrlLayout->addWidget(new QLabel("Relief Type:"));
-    reliefTypeCombo = new QComboBox();
-    reliefTypeCombo->addItem("Off", 0);
-    reliefTypeCombo->addItem("Linear", 1);
-    reliefTypeCombo->addItem("Mip", 3);
-    reliefTypeCombo->setCurrentIndex(2);
-    connect(reliefTypeCombo, QOverload<int>::of(&QComboBox::currentIndexChanged), this, [this](int) {
-        reliefWidget->setReliefType(reliefTypeCombo->currentData().toInt());
-    });
-    ctrlLayout->addWidget(reliefTypeCombo);
+    reliefEnabledCheck = new QCheckBox("Enable Relief Mapping");
+    reliefEnabledCheck->setChecked(true);
+    connect(reliefEnabledCheck, &QCheckBox::toggled, reliefWidget, &ReliefGLWidget::setReliefEnabled);
+    ctrlLayout->addWidget(reliefEnabledCheck);
 
     ctrlLayout->addWidget(new QLabel("Steps:"));
     reliefStepsSpin = new QSpinBox();
@@ -579,22 +600,6 @@ QWidget* MainWindow::buildReliefMappingTab() {
     reliefUseAtlasCheck->setChecked(true);
     connect(reliefUseAtlasCheck, &QCheckBox::toggled, reliefWidget, &ReliefGLWidget::setUseAtlas);
     ctrlLayout->addWidget(reliefUseAtlasCheck);
-
-    ctrlLayout->addWidget(new QLabel("Offset Map Sampling Version:"));
-    reliefOffsetVersionCombo = new QComboBox();
-    reliefOffsetVersionCombo->addItem("V1", 1);
-    reliefOffsetVersionCombo->addItem("V2", 2);
-    reliefOffsetVersionCombo->addItem("V3", 3);
-    reliefOffsetVersionCombo->setCurrentIndex(2);
-    connect(reliefOffsetVersionCombo, QOverload<int>::of(&QComboBox::currentIndexChanged), this, [this](int) {
-        reliefWidget->setOffsetMapSamplingVersion(reliefOffsetVersionCombo->currentData().toInt());
-    });
-    ctrlLayout->addWidget(reliefOffsetVersionCombo);
-
-    reliefFilter0Check = new QCheckBox("Linear Filter at Mip 0");
-    reliefFilter0Check->setChecked(true);
-    connect(reliefFilter0Check, &QCheckBox::toggled, reliefWidget, &ReliefGLWidget::setFilter0);
-    ctrlLayout->addWidget(reliefFilter0Check);
 
     ctrlLayout->addSpacing(8);
 
@@ -1228,17 +1233,21 @@ void MainWindow::onTpDone() {
     statusLabel->setText("Texture preparation complete");
 }
 
-QImage MainWindow::mipLevelToQImage(const std::vector<float>& data, int w, int h, int channels, bool remapSigned) const {
+QImage MainWindow::mipLevelToQImage(const std::vector<float>& data, int w, int h, int channels, bool remapSigned,
+                                     const bool* showChannels) const {
+    static const bool kAllShown[4] = {true, true, true, true};
+    if (!showChannels) showChannels = kAllShown;
+
     QImage::Format fmt = (channels == 3) ? QImage::Format_RGB888 : QImage::Format_RGBA8888;
     QImage img(w, h, fmt);
     auto remap = [&](float v) { return remapSigned ? v * 0.5f + 0.5f : v; };
     for (int y = 0; y < h; y++) {
         for (int x = 0; x < w; x++) {
             size_t i = ((size_t)y * w + x) * channels;
-            float r = std::clamp(remap(data[i + 0]), 0.0f, 1.0f);
-            float g = std::clamp(remap(data[i + 1]), 0.0f, 1.0f);
-            float b = std::clamp(remap(data[i + 2]), 0.0f, 1.0f);
-            float a = (channels == 4) ? std::clamp(remap(data[i + 3]), 0.0f, 1.0f) : 1.0f;
+            float r = showChannels[0] ? std::clamp(remap(data[i + 0]), 0.0f, 1.0f) : 0.0f;
+            float g = showChannels[1] ? std::clamp(remap(data[i + 1]), 0.0f, 1.0f) : 0.0f;
+            float b = showChannels[2] ? std::clamp(remap(data[i + 2]), 0.0f, 1.0f) : 0.0f;
+            float a = (channels == 4) ? (showChannels[3] ? std::clamp(remap(data[i + 3]), 0.0f, 1.0f) : 1.0f) : 1.0f;
             img.setPixelColor(x, y, QColor::fromRgbF(r, g, b, a));
         }
     }
@@ -1271,7 +1280,11 @@ void MainWindow::updateTpPreview(int idx) {
         int level = std::min(tpMipSpin[idx]->value(), p.levelCount() - 1);
         if (level < 0) return;
         int w = std::max(1, p.width >> level), h = std::max(1, p.height >> level);
-        img = mipLevelToQImage(p.mips[level], w, h, p.channels, /*remapSigned=*/idx == 2);
+        bool show[4] = {
+            tpChannelCheck[idx][0]->isChecked(), tpChannelCheck[idx][1]->isChecked(),
+            tpChannelCheck[idx][2]->isChecked(), tpChannelCheck[idx][3]->isChecked()
+        };
+        img = mipLevelToQImage(p.mips[level], w, h, p.channels, /*remapSigned=*/idx == 2, show);
         info = QString("%1×%2, %3 mips").arg(w).arg(h).arg(p.levelCount());
     }
 

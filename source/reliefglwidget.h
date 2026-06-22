@@ -30,10 +30,8 @@ public:
 public slots:
     void setWireframe(bool enabled);
     void setCullFace(bool enabled);
-    void setReliefType(int type);              // 0 = Off, 1 = Linear, 3 = Mip
+    void setReliefEnabled(bool enabled);
     void setUseAtlas(bool enabled);
-    void setOffsetMapSamplingVersion(int v);   // 1, 2, or 3
-    void setFilter0(bool enabled);
     void setSteps(int steps);
     void setBinarySteps(int steps);
     void setDepthScale(double scale);
@@ -63,7 +61,7 @@ private:
     void updateMeshBuffers();
 
     GLuint colorTex = 0, reliefTex = 0, normalTex = 0, offsetTex = 0;
-    GLuint samplerPointId = 0, samplerLinearId = 0;
+    GLuint samplerPointId = 0;
     float lastMip = 0.0f;
     float texelSize = 1.0f;
     void uploadPyramid(GLuint& texId, const MipPyramid& pyr);
@@ -89,10 +87,8 @@ private:
     bool cullFace  = true;
 
     // Relief-mapping parameters
-    int   reliefType               = 3;
+    bool  reliefEnabled             = true;
     bool  useAtlas                 = true;
-    int   offsetMapSamplingVersion = 3;
-    bool  filter0                  = true;
     int   steps                    = 64;
     int   binarySteps               = 5;
     float depthScale               = 0.05f;

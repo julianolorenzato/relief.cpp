@@ -60,7 +60,8 @@ private:
     QWidget* buildReliefMappingTab();
 
     void updateTpPreview(int idx);
-    QImage mipLevelToQImage(const std::vector<float>& data, int w, int h, int channels, bool remapSigned) const;
+    QImage mipLevelToQImage(const std::vector<float>& data, int w, int h, int channels, bool remapSigned,
+                             const bool* showChannels = nullptr) const;
     QImage offsetMapMaskImage() const;
     void showReliefViewport();
     void trySyncReliefWidget();
@@ -145,6 +146,9 @@ private:
     QLabel*          tpInfoLabel[4]   = {};
     QSpinBox*        tpMipSpin[4]     = {};
     QPushButton*     tpSaveBtn[4]     = {};
+    // Per-panel R/G/B/A preview toggles (panels 0=Color, 1=Relief, 2=Normal);
+    // panel 3 (Offset Map) renders a derived mask and has no channel toggles.
+    QCheckBox*       tpChannelCheck[3][4] = {};
     TexturePrepWorker* tpWorker = nullptr;
     QThread*           tpThread = nullptr;
     TexturePrepResult  tpResult;
@@ -157,13 +161,11 @@ private:
     ReliefGLWidget*  reliefWidget     = nullptr;
     GLWidget*        reliefCompareWidget  = nullptr;
     GLWidget*        reliefOriginalWidget = nullptr;
-    QComboBox*       reliefTypeCombo          = nullptr;
+    QCheckBox*       reliefEnabledCheck       = nullptr;
     QSpinBox*        reliefStepsSpin          = nullptr;
     QSpinBox*        reliefBinaryStepsSpin    = nullptr;
     QDoubleSpinBox*  reliefDepthScaleSpin     = nullptr;
     QCheckBox*       reliefUseAtlasCheck      = nullptr;
-    QComboBox*       reliefOffsetVersionCombo = nullptr;
-    QCheckBox*       reliefFilter0Check       = nullptr;
     QComboBox*       reliefDebugViewCombo     = nullptr;
     QCheckBox*       reliefWireframeCheck     = nullptr;
     QCheckBox*       reliefCullFaceCheck      = nullptr;

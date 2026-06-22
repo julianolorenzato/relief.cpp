@@ -24,7 +24,7 @@ struct MipPyramid {
 
 struct TexturePrepResult {
     MipPyramid colorMap;      // RGBA, average-downsampled
-    MipPyramid reliefMap;     // R=avg depth, G=max depth (mip bound), B=reserved(0), A=seam discriminant (max/OR)
+    MipPyramid reliefMap;     // R=min depth (mip bound), G=max depth (mip bound), B=seam/offset mask (dilated max/OR), A=reserved(0)
     MipPyramid normalMap;     // XYZ unit vector in [-1,1], average-downsampled + renormalized per level
     OffsetMapResult offsetMap; // mip0 only — see uv_atlas.h
 

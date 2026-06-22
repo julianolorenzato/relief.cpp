@@ -108,7 +108,13 @@ std::vector<float> downsampleAvg(const std::vector<float>& src, int w, int h, in
     return dst;
 }
 
-// R(avg)/G(max)/B(passthrough 0)/A(max) mixed downsample for the Relief Map.
+// R(min)/G(max)/B(offset mask)/A(reserved 0) mixed downsample for the Relief Map.
+// R and G form a true min/max pair over each mip region's footprint (pooled
+// recursively level by level, so they bound the *entire* footprint at the
+// root, not just the immediate 2x2 children) — the conservative interval the
+// Mip relief stepping in relief.frag walks against. B is dilated the same
+// way (max/OR), so any texel with a positive offset-mask value anywhere in a
+// coarser mip's footprint makes that whole coarser texel positive too.
 std::vector<float> downsampleReliefMixed(const std::vector<float>& src, int w, int h, int& outW, int& outH) {
     outW = std::max(1, w / 2);
     outH = std::max(1, h / 2);
@@ -120,15 +126,15 @@ std::vector<float> downsampleReliefMixed(const std::vector<float>& src, int w, i
             size_t i00 = ((size_t)sy0 * w + sx0) * 4, i10 = ((size_t)sy0 * w + sx1) * 4;
             size_t i01 = ((size_t)sy1 * w + sx0) * 4, i11 = ((size_t)sy1 * w + sx1) * 4;
 
-            float rAvg = (src[i00 + 0] + src[i10 + 0] + src[i01 + 0] + src[i11 + 0]) * 0.25f;
+            float rMin = std::min(std::min(src[i00 + 0], src[i10 + 0]), std::min(src[i01 + 0], src[i11 + 0]));
             float gMax = std::max(std::max(src[i00 + 1], src[i10 + 1]), std::max(src[i01 + 1], src[i11 + 1]));
-            float aMax = std::max(std::max(src[i00 + 3], src[i10 + 3]), std::max(src[i01 + 3], src[i11 + 3]));
+            float bMask = std::max(std::max(src[i00 + 2], src[i10 + 2]), std::max(src[i01 + 2], src[i11 + 2]));
 
             size_t di = ((size_t)y * outW + x) * 4;
-            dst[di + 0] = rAvg;
+            dst[di + 0] = rMin;
             dst[di + 1] = gMax;
-            dst[di + 2] = 0.0f;
-            dst[di + 3] = aMax;
+            dst[di + 2] = bMask;
+            dst[di + 3] = 0.0f;
         }
     }
     return dst;
@@ -208,13 +214,14 @@ TexturePrepResult TexturePrepBaker::bake(
     result.offsetMap = UVAtlas::bakeOffsetMap(mesh, faceIsland, workRes, workRes, seamBandTexels);
     progress(55);
 
-    // Relief map mip0: R=depth, G=depth (min==max bound at finest level), B=reserved, A=seam discriminant.
+    // Relief map mip0: R=depth, G=depth (min==max bound at finest level —
+    // see downsampleReliefMixed), B=seam/offset mask, A=reserved.
     std::vector<float> reliefMip0((size_t)workRes * workRes * 4);
     for (size_t i = 0; i < (size_t)workRes * workRes; i++) {
         reliefMip0[i * 4 + 0] = depthMip0[i];
         reliefMip0[i * 4 + 1] = depthMip0[i];
-        reliefMip0[i * 4 + 2] = 0.0f;
-        reliefMip0[i * 4 + 3] = result.offsetMap.data[i * 4 + 3];
+        reliefMip0[i * 4 + 2] = result.offsetMap.data[i * 4 + 3];
+        reliefMip0[i * 4 + 3] = 0.0f;
     }
 
     result.reliefMap = buildReliefPyramid(reliefMip0, workRes, workRes);
