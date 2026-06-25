@@ -97,6 +97,7 @@ target_link_libraries(qem_gui
     tinygltf
     Eigen3::Eigen
     Threads::Threads
+    glm::glm
 )
 
 target_include_directories(qem_gui PRIVATE
