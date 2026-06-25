@@ -313,7 +313,7 @@ QWidget* MainWindow::buildHeightmapTab() {
     mainLayout->addWidget(ctrlGroup);
 
     // ── Heightmap panel ───────────────────────────────────────────────────────
-    QGroupBox* panel = new QGroupBox("Ray Cast  (unlimited range)");
+    QGroupBox* panel = new QGroupBox("UV Correspondence");
     QVBoxLayout* pLayout = new QVBoxLayout(panel);
     panel->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
 
@@ -687,7 +687,7 @@ void MainWindow::createMenuBar() {
             "Mouse: Drag to rotate, Scroll to zoom\n"
             "Formats: OBJ, GLTF\n\n"
             "Heightmap tab: bakes displacement between simplified and original mesh\n"
-            "using ray casting.");
+            "via shared UV correspondence.");
     });
 }
 

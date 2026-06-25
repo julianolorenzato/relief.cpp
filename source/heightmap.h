@@ -18,8 +18,7 @@ struct HeightmapResult {
 
 class HeightmapBaker {
 public:
-    // Cast ray from simplified surface along face normal (bidirectional, unlimited range).
-    static HeightmapResult bakeRayCast(
+    static HeightmapResult bakeUVDistance(
         const QEMSimplifier& simplified,
         const QEMSimplifier& original,
         int texWidth, int texHeight,
@@ -36,11 +35,6 @@ private:
 
     static std::vector<TexelSample> rasterizeUV(
         const QEMSimplifier& mesh, int W, int H);
-
-    static bool rayTriangle(
-        const V3& orig, const V3& dir,
-        const V3& a,    const V3& b, const V3& c,
-        double& t);
 
     static void normalize(HeightmapResult& r);
 };

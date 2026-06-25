@@ -10,9 +10,6 @@
 #include <string>
 #include <algorithm>
 #include <Eigen/Dense>
-
-// ─── Álgebra de Quádricas ────────────────────────────────────────────────────
-
 // Constrói a matriz de erro fundamental para o plano ax+by+cz+d=0
 inline Eigen::Matrix4d quadricFromPlane(double a, double b, double c, double d) {
     Eigen::Vector4d p(a, b, c, d);
@@ -40,8 +37,6 @@ inline bool solveQuadric(const Eigen::Matrix4d& Q, double& ox, double& oy, doubl
     return true;
 }
 
-// ─── Estruturas da Malha ─────────────────────────────────────────────────────
-
 struct Vertex {
     Eigen::Vector3d pos  = Eigen::Vector3d::Zero();
     Eigen::Matrix4d Q    = Eigen::Matrix4d::Zero();
@@ -60,8 +55,6 @@ struct Face {
     bool removed = false;
 };
 
-// ─── Candidato de Colapso de Aresta ─────────────────────────────────────────
-
 struct EdgeCollapse {
     int             v1, v2;
     Eigen::Vector3d target   = Eigen::Vector3d::Zero();
@@ -70,14 +63,12 @@ struct EdgeCollapse {
 
     // Quando v1/v2 é uma aresta de seam com par sincronizado (SyncSeamTwins),
     // tv1/tv2 é a aresta espelhada do outro lado da seam, colapsada junto
-    // para a mesma posição 'target' (mas com UV própria, em targetUV2).
+    // para a mesma posição 'target' (mas com UV própria, em targetUV2 )
     int             tv1 = -1, tv2 = -1;
     Eigen::Vector2d targetUV2 = Eigen::Vector2d::Zero();
 
     bool operator>(const EdgeCollapse& o) const { return cost > o.cost; }
 };
-
-// ─── Algoritmo QEM ───────────────────────────────────────────────────────────
 
 enum class BoundaryMode {
     None,             // nenhuma restrição de boundary/seam
@@ -95,8 +86,7 @@ public:
 
     // Quando true, nenhum colapso pode produzir um vértice que viole os
     // planos de envelope acumulados de v1/v2: garante que a malha
-    // simplificada fique sempre do lado de fora (ou sobre) a original.
-    // Ver docs/envelope-simplification-plan.md.
+    // simplificada fique sempre do lado de fora (ou sobre) a original
     bool envelopeConstraint = false;
 
     // Quando true, soma o ótimo irrestrito da quádrica (solveQuadric) como

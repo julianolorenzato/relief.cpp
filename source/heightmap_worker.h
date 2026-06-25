@@ -4,7 +4,7 @@
 #include "heightmap.h"
 #include "qem.h"
 
-// Runs the ray-cast baking strategy on a worker thread.
+// Runs the UV-correspondence baking strategy on a worker thread.
 // Read results[0] only after finished() is received in the main thread.
 class HeightmapWorker : public QObject {
     Q_OBJECT
@@ -25,10 +25,10 @@ signals:
 
 public slots:
     void run() {
-        emit progress(0, "Ray Cast…");
+        emit progress(0, "UV Correspondence…");
 
-        auto cb = [this](int pct) { emit progress(pct, "Ray Cast…"); };
-        results[0] = HeightmapBaker::bakeRayCast(*simplified, *original, width, height, cb);
+        auto cb = [this](int pct) { emit progress(pct, "UV Correspondence…"); };
+        results[0] = HeightmapBaker::bakeUVDistance(*simplified, *original, width, height, cb);
 
         emit progress(100, "Done");
         emit finished();

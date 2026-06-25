@@ -8,7 +8,7 @@
 
 using V3 = Eigen::Vector3d;
 
-// ─── Helpers (file-local) ────────────────────────────────────────────────────
+// Helpers
 
 static bool bary2D(double px, double py,
                    double ax, double ay,
@@ -24,7 +24,7 @@ static bool bary2D(double px, double py,
     return true;
 }
 
-// ─── UV rasterisation ────────────────────────────────────────────────────────
+//Rastereização
 
 std::vector<HeightmapBaker::TexelSample>
 HeightmapBaker::rasterizeUV(const QEMSimplifier& mesh, int W, int H)
@@ -81,33 +81,7 @@ HeightmapBaker::rasterizeUV(const QEMSimplifier& mesh, int W, int H)
     return samples;
 }
 
-// ─── Ray-triangle intersection (Möller-Trumbore) ────────────────────────────
-
-bool HeightmapBaker::rayTriangle(
-    const V3& orig, const V3& dir,
-    const V3& a,    const V3& b, const V3& c,
-    double& t)
-{
-    constexpr double EPS = 1e-8;
-    V3 e1 = b - a, e2 = c - a;
-    V3 h  = dir.cross(e2);
-    double det = e1.dot(h);
-    if (std::abs(det) < EPS) return false;
-
-    double inv = 1.0 / det;
-    V3 s = orig - a;
-    double u = inv * s.dot(h);
-    if (u < 0.0 || u > 1.0) return false;
-
-    V3 q = s.cross(e1);
-    double v = inv * dir.dot(q);
-    if (v < 0.0 || u + v > 1.0) return false;
-
-    t = inv * e2.dot(q);
-    return true;
-}
-
-// ─── Normalise to [0, 255] ───────────────────────────────────────────────────
+// 0, 255
 
 void HeightmapBaker::normalize(HeightmapResult& r)
 {
@@ -142,9 +116,7 @@ void HeightmapBaker::normalize(HeightmapResult& r)
     }
 }
 
-// ─── Ray casting ──────────────────────────────────────────────────────────────
-
-HeightmapResult HeightmapBaker::bakeRayCast(
+HeightmapResult HeightmapBaker::bakeUVDistance(
     const QEMSimplifier& simplified,
     const QEMSimplifier& original,
     int W, int H,
@@ -155,17 +127,8 @@ HeightmapResult HeightmapBaker::bakeRayCast(
     result.height = H;
     result.heights.assign(W * H, std::numeric_limits<float>::quiet_NaN());
 
-    auto samples = rasterizeUV(simplified, W, H);
-
-    struct OTri { V3 a, b, c; };
-    std::vector<OTri> otris;
-    otris.reserve(original.faces.size());
-    for (const auto& fc : original.faces) {
-        if (fc.removed) continue;
-        otris.push_back({original.vertices[fc.v[0]].pos,
-                         original.vertices[fc.v[1]].pos,
-                         original.vertices[fc.v[2]].pos});
-    }
+    auto simSamples = rasterizeUV(simplified, W, H);
+    auto orgSamples = rasterizeUV(original,   W, H);
 
     int total = W * H;
     int step  = std::max(1, total / 100);
@@ -173,40 +136,17 @@ HeightmapResult HeightmapBaker::bakeRayCast(
     std::atomic<int> processed{0};
 
     // Each texel is independent and writes only its own slot in result.heights,
-    // so threads need no locking around the ray-cast work itself — only the
-    // hit/progress counters are shared, via atomics.
+    // so threads need no locking only the hit/progress counters are shared,
+    // via atomics.
     auto worker = [&](int begin, int end) {
         for (int i = begin; i < end; i++) {
-            const auto& s = samples[i];
-            if (s.valid) {
-                V3 orig = s.pos + s.normal * 1e-5;
-
-                // Track fwd/bwd separately so a nearby backface hit in one direction
-                // cannot steal bestT from the correct hit in the other direction.
-                double bestFwdT = std::numeric_limits<double>::max();
-                double bestBwdT = std::numeric_limits<double>::max();
-
-                for (const auto& tri : otris) {
-                    double t;
-                    if (rayTriangle(orig,  s.normal, tri.a, tri.b, tri.c, t) && t > 0.0)
-                        bestFwdT = std::min(bestFwdT, t);
-                    if (rayTriangle(orig, -s.normal, tri.a, tri.b, tri.c, t) && t > 0.0)
-                        bestBwdT = std::min(bestBwdT, t);
-                }
-
-                bool hasFwd = bestFwdT < 1e15;
-                bool hasBwd = bestBwdT < 1e15;
-                if (hasFwd || hasBwd) {
-                    float h;
-                    if (hasFwd && hasBwd)
-                        h = (bestFwdT <= bestBwdT) ? (float)bestFwdT : -(float)bestBwdT;
-                    else if (hasFwd)
-                        h = (float)bestFwdT;
-                    else
-                        h = -(float)bestBwdT;
-                    result.heights[i] = h;
-                    hits.fetch_add(1, std::memory_order_relaxed);
-                }
+            const auto& s = simSamples[i];
+            const auto& o = orgSamples[i];
+            if (s.valid && o.valid) {
+                // Signed distance along the simplified surface's normal, not raw
+                // magnitude, so the sign still tells "above"/"below" for relief mapping.
+                result.heights[i] = (float)(o.pos - s.pos).dot(s.normal);
+                hits.fetch_add(1, std::memory_order_relaxed);
             }
 
             int done = processed.fetch_add(1, std::memory_order_relaxed) + 1;
@@ -227,7 +167,7 @@ HeightmapResult HeightmapBaker::bakeRayCast(
 
     if (cb) cb(100);
 
-    std::cout << "RayCast: " << hits.load() << " texels hit\n";
+    std::cout << "UVDistance: " << hits.load() << " texels matched\n";
     normalize(result);
     result.valid = true;
     return result;
