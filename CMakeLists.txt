@@ -11,7 +11,11 @@ if(NOT CMAKE_BUILD_TYPE)
   set(CMAKE_BUILD_TYPE Release)
 endif()
 
-add_compile_options(-Wall -Wextra -O2)
+if(MSVC)
+  add_compile_options(/W3 /O2)
+else()
+  add_compile_options(-Wall -Wextra -O2)
+endif()
 
 # Suprime warnings de terceiros (stb_image dentro do tinygltf)
 set_source_files_properties(source/qem_gltf.cpp PROPERTIES COMPILE_FLAGS "-w")
