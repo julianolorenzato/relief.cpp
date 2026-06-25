@@ -20,6 +20,8 @@ endif()
 # Suprime warnings de terceiros (stb_image dentro do tinygltf)
 set_source_files_properties(source/qem_gltf.cpp PROPERTIES COMPILE_FLAGS "-w")
 
+include(FetchContent)
+
 # ─── Dependências ─────────────────────────────────────────────────────────────
 
 find_package(Qt6 COMPONENTS Core Gui OpenGL OpenGLWidgets Widgets QUIET)
@@ -55,7 +57,6 @@ endif()
 
 # ─── tinygltf (header-only via FetchContent) ──────────────────────────────────
 
-include(FetchContent)
 FetchContent_Declare(
     tinygltf
     GIT_REPOSITORY https://github.com/syoyo/tinygltf.git
