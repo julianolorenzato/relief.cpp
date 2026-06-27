@@ -16,7 +16,7 @@ add_executable(gui
     include/gui/reliefglwidget.h
     include/gui/heightmap_worker.h
     include/gui/texture_prep_worker.h
-    src/main_gui.cpp
+    src/main.cpp
     src/mainwindow.cpp
     src/glwidget.cpp
     src/overlayglwidget.cpp

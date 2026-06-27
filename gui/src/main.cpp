@@ -5,8 +5,7 @@
 int main(int argc, char* argv[]) {
     QApplication app(argc, argv);
 
-    std::cout << "=== QEM Mesh Simplifier ===\n";
-    std::cout << "Starting Qt interface...\n\n";
+    std::cout << "Starting GUI...\n\n";
 
     MainWindow window;
     window.show();

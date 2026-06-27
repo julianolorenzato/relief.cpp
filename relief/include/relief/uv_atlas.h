@@ -1,5 +1,5 @@
 #pragma once
-#include "core/qem.h"
+#include "relief/qem.h"
 #include <vector>
 
 // Per-texel atlas leap data baked for relief mapping across UV-island boundaries.
