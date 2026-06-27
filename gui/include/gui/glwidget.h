@@ -9,8 +9,8 @@
 #include <memory>
 #include <vector>
 #include <glm/glm.hpp>
-#include "qem.h"
-#include "texture_prep.h"
+#include "core/qem.h"
+#include "gui/texture_prep.h"
 
 class GLWidget : public QOpenGLWidget, protected QOpenGLFunctions_3_3_Core {
     Q_OBJECT

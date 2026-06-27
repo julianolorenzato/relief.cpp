@@ -1,4 +1,4 @@
-#include "qem.h"
+#include "core/qem.h"
 #include <limits>
 
 int QEMSimplifier::canonicalize(int &a, int &b) const

@@ -3,7 +3,7 @@
 #define STB_IMAGE_WRITE_IMPLEMENTATION
 #include "tiny_gltf.h"
 
-#include "qem.h"
+#include "core/qem.h"
 #include <iostream>
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────

@@ -1,4 +1,4 @@
-#include "texture_prep.h"
+#include "gui/texture_prep.h"
 #include <QImage>
 #include <QColor>
 #include <QString>

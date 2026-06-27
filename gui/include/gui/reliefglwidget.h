@@ -6,8 +6,8 @@
 #include <QOpenGLShaderProgram>
 #include <QPoint>
 #include <glm/glm.hpp>
-#include "qem.h"
-#include "texture_prep.h"
+#include "core/qem.h"
+#include "gui/texture_prep.h"
 
 // Renders a mesh with the RTMA_Functions.ush relief-mapping algorithm (GLSL port)
 // applied in the fragment shader, using the maps baked by TexturePrepBaker.

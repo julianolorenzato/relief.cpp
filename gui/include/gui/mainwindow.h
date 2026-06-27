@@ -14,13 +14,13 @@
 #include <QTabWidget>
 #include <QStackedWidget>
 #include <memory>
-#include "qem.h"
-#include "glwidget.h"
-#include "overlayglwidget.h"
-#include "heightmap.h"
-#include "heightmap_worker.h"
-#include "texture_prep_worker.h"
-#include "reliefglwidget.h"
+#include "core/qem.h"
+#include "gui/glwidget.h"
+#include "gui/overlayglwidget.h"
+#include "core/heightmap.h"
+#include "gui/heightmap_worker.h"
+#include "gui/texture_prep_worker.h"
+#include "gui/reliefglwidget.h"
 
 class MainWindow : public QMainWindow {
     Q_OBJECT

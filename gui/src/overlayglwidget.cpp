@@ -1,4 +1,4 @@
-#include "overlayglwidget.h"
+#include "gui/overlayglwidget.h"
 #include <QMouseEvent>
 #include <QWheelEvent>
 #include <glm/glm.hpp>

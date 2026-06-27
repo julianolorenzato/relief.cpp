@@ -2,8 +2,8 @@
 #include <QObject>
 #include <QString>
 #include <QImage>
-#include "texture_prep.h"
-#include "qem.h"
+#include "gui/texture_prep.h"
+#include "core/qem.h"
 
 // Bakes the Textures Preparation pipeline (Color/Relief/Normal/Offset maps) on a
 // worker thread. Set inputs before moving to thread; read `result` only after

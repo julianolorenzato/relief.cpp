@@ -1,8 +1,8 @@
 #pragma once
 #include <QObject>
 #include <QList>
-#include "heightmap.h"
-#include "qem.h"
+#include "core/heightmap.h"
+#include "core/qem.h"
 
 // Runs the UV-correspondence baking strategy on a worker thread.
 // Read results[0] only after finished() is received in the main thread.

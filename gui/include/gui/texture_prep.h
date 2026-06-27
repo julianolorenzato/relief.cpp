@@ -1,6 +1,6 @@
 #pragma once
-#include "qem.h"
-#include "uv_atlas.h"
+#include "core/qem.h"
+#include "core/uv_atlas.h"
 #include <QImage>
 #include <vector>
 #include <string>

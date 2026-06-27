@@ -1,5 +1,5 @@
-#include "mainwindow.h"
-#include "overlayglwidget.h"
+#include "gui/mainwindow.h"
+#include "gui/overlayglwidget.h"
 #include <QVBoxLayout>
 #include <QHBoxLayout>
 #include <QGridLayout>

@@ -1,4 +1,4 @@
-#include "uv_atlas.h"
+#include "core/uv_atlas.h"
 #include <map>
 #include <tuple>
 #include <cmath>

@@ -1,4 +1,4 @@
-#include "reliefglwidget.h"
+#include "gui/reliefglwidget.h"
 #include <QMouseEvent>
 #include <QWheelEvent>
 #include <glm/glm.hpp>
