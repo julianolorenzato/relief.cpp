@@ -1,4 +1,4 @@
-#include "core/heightmap.h"
+#include "relief/heightmap.h"
 #include <algorithm>
 #include <atomic>
 #include <cmath>

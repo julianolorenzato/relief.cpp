@@ -6,7 +6,7 @@
 #include <QOpenGLShaderProgram>
 #include <QPoint>
 #include <glm/glm.hpp>
-#include "core/qem.h"
+#include "relief/qem.h"
 
 // Renders two meshes overlaid: original (solid blue) + simplified (wireframe orange).
 class OverlayGLWidget : public QOpenGLWidget, protected QOpenGLFunctions_3_3_Core {

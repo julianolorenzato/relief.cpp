@@ -14,10 +14,10 @@
 #include <QTabWidget>
 #include <QStackedWidget>
 #include <memory>
-#include "core/qem.h"
+#include "relief/qem.h"
 #include "gui/glwidget.h"
 #include "gui/overlayglwidget.h"
-#include "core/heightmap.h"
+#include "relief/heightmap.h"
 #include "gui/heightmap_worker.h"
 #include "gui/texture_prep_worker.h"
 #include "gui/reliefglwidget.h"

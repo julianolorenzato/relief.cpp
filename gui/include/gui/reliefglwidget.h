@@ -6,7 +6,7 @@
 #include <QOpenGLShaderProgram>
 #include <QPoint>
 #include <glm/glm.hpp>
-#include "core/qem.h"
+#include "relief/qem.h"
 #include "gui/texture_prep.h"
 
 // Renders a mesh with the RTMA_Functions.ush relief-mapping algorithm (GLSL port)

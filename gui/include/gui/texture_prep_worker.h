@@ -3,7 +3,7 @@
 #include <QString>
 #include <QImage>
 #include "gui/texture_prep.h"
-#include "core/qem.h"
+#include "relief/qem.h"
 
 // Bakes the Textures Preparation pipeline (Color/Relief/Normal/Offset maps) on a
 // worker thread. Set inputs before moving to thread; read `result` only after
