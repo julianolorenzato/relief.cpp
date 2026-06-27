@@ -36,8 +36,6 @@ private slots:
     void onTargetFacesChanged(int value);
     void onResetCameras();
 
-    void onSmoothCover();
-
     void onBake();
     void onSaveHeightmap();
     void onBakeProgress(int overall, const QString& text);
@@ -68,7 +66,6 @@ private:
     void onTabChanged(int index);
 
     void applyInflate(double offset);
-    void computeSmoothCoverOffsets();
 
     void displayHeightmap(const HeightmapResult& r);
     void launchBake();
@@ -102,7 +99,6 @@ private:
 
     QSlider*        inflateSlider  = nullptr;
     QDoubleSpinBox* inflateSpin    = nullptr;
-    QPushButton*    smoothCoverBtn = nullptr;
 
     std::vector<Eigen::Vector3d> baseSimplifiedPositions;
     std::vector<Eigen::Vector3d> simplifiedVertexNormals;
@@ -111,11 +107,6 @@ private:
     // sincronizados entre as cópias e a costura não se abra ao inflar.
     std::vector<int> simplifiedVertexGroup;
     int simplifiedVertexGroupCount = 0;
-    // Offset por vértice (na direção da normal) calculado por computeSmoothCoverOffsets,
-    // para que a cage cubra a malha original com uma folga suave em vez de um
-    // único offset global de pior caso. O slider/spin de inflate soma uma
-    // margem manual uniforme em cima deste campo.
-    std::vector<double> simplifiedCoverOffsets;
     double inflateScale = 1.0;
 
     // ── Heightmap tab ────────────────────────────────────────────────────────
