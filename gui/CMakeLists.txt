@@ -11,16 +11,12 @@ endif()
 
 add_executable(gui
     include/gui/mainwindow.h
-    include/gui/glwidget.h
-    include/gui/overlayglwidget.h
-    include/gui/reliefglwidget.h
+    include/gui/orbital3dview.h
     include/gui/heightmap_worker.h
     include/gui/texture_prep_worker.h
     src/main.cpp
     src/mainwindow.cpp
-    src/glwidget.cpp
-    src/overlayglwidget.cpp
-    src/reliefglwidget.cpp
+    src/orbital3dview.cpp
     src/heightmap_worker.cpp
     src/texture_prep.cpp
     src/texture_prep_worker.cpp

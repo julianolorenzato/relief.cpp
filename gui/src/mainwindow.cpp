@@ -1,11 +1,11 @@
 #include "gui/mainwindow.h"
-#include "gui/overlayglwidget.h"
 #include <QVBoxLayout>
 #include <QHBoxLayout>
 #include <QGridLayout>
 #include <QMenuBar>
 #include <QMenu>
 #include <QAction>
+#include <QActionGroup>
 #include <QFileDialog>
 #include <QMessageBox>
 #include <QGroupBox>
@@ -13,7 +13,8 @@
 #include <QCheckBox>
 #include <QStatusBar>
 #include <QSplitter>
-#include <QTabWidget>
+#include <QToolBar>
+#include <QDockWidget>
 #include <QScrollArea>
 #include <QApplication>
 #include <QImage>
@@ -54,263 +55,56 @@ MainWindow::MainWindow(QWidget *parent)
     updateStatusBar();
 }
 
-// ─── Tab builders ─────────────────────────────────────────────────────────────
+// ─── Context builders: viewports ──────────────────────────────────────────────
 
-QWidget *MainWindow::buildSimplifierTab()
+QWidget *MainWindow::buildSimplifierViewport()
 {
-    QWidget *tab = new QWidget();
-    QVBoxLayout *layout = new QVBoxLayout(tab);
+    QWidget *w = new QWidget();
+    QVBoxLayout *layout = new QVBoxLayout(w);
 
-    // ── Viewports ────────────────────────────────────────────────────────────
     QWidget *viewportsWidget = new QWidget();
     QHBoxLayout *viewportsLayout = new QHBoxLayout(viewportsWidget);
 
-    QGroupBox *originalGroup = new QGroupBox("Original Mesh");
+    QWidget *originalGroup = new QWidget();
     originalGroup->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
     QVBoxLayout *leftLayout = new QVBoxLayout(originalGroup);
-    leftLayout->setContentsMargins(4, 4, 4, 4);
-    glWidgetOriginal = new GLWidget();
+    leftLayout->setContentsMargins(0, 0, 0, 0);
+    glWidgetOriginal = new Orbital3DView(RenderMode::Solid, "Original Mesh");
     glWidgetOriginal->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
-    leftLayout->addWidget(glWidgetOriginal);
-    originalStatsLabel = new QLabel("Faces: 0 | Vertices: 0");
-    originalStatsLabel->setFixedHeight(20);
-    leftLayout->addWidget(originalStatsLabel);
+    leftLayout->addWidget(glWidgetOriginal, 1);
     viewportsLayout->addWidget(originalGroup);
 
-    QGroupBox *simplifiedGroup = new QGroupBox("Simplified Mesh");
+    QWidget *simplifiedGroup = new QWidget();
     simplifiedGroup->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
     QVBoxLayout *rightLayout = new QVBoxLayout(simplifiedGroup);
-    rightLayout->setContentsMargins(4, 4, 4, 4);
-    glWidgetSimplified = new GLWidget();
+    rightLayout->setContentsMargins(0, 0, 0, 0);
+    glWidgetSimplified = new Orbital3DView(RenderMode::Solid, "Simplified Mesh");
     glWidgetSimplified->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
-    rightLayout->addWidget(glWidgetSimplified);
-    simplifiedStatsLabel = new QLabel("Faces: 0 | Vertices: 0");
-    simplifiedStatsLabel->setFixedHeight(20);
-    rightLayout->addWidget(simplifiedStatsLabel);
+    rightLayout->addWidget(glWidgetSimplified, 1);
     viewportsLayout->addWidget(simplifiedGroup);
 
-    QGroupBox *overlayGroup = new QGroupBox("Overlay  (azul = original · laranja = simplificada)");
-    overlayGroup->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
-    QVBoxLayout *overlayLayout = new QVBoxLayout(overlayGroup);
-    overlayLayout->setContentsMargins(4, 4, 4, 4);
-    glWidgetOverlay = new OverlayGLWidget();
+    glWidgetOverlay = new Orbital3DView(RenderMode::Overlay, "Overlay");
     glWidgetOverlay->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
-    overlayLayout->addWidget(glWidgetOverlay);
-    viewportsLayout->addWidget(overlayGroup);
+    viewportsLayout->addWidget(glWidgetOverlay);
 
     viewportsWidget->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
-    layout->addWidget(viewportsWidget, 1);
+    layout->addWidget(viewportsWidget);
 
-    // ── Controls ─────────────────────────────────────────────────────────────
-    QGroupBox *controlsGroup = new QGroupBox("Simplification Controls");
-    QVBoxLayout *controlsRows = new QVBoxLayout(controlsGroup);
-    QHBoxLayout *controlsLayout = new QHBoxLayout();
-    QHBoxLayout *controlsLayout2 = new QHBoxLayout();
-    controlsRows->addLayout(controlsLayout);
-    controlsRows->addLayout(controlsLayout2);
+    connect(glWidgetOriginal,  &Orbital3DView::cameraChanged, glWidgetSimplified, &Orbital3DView::syncCamera);
+    connect(glWidgetOriginal,  &Orbital3DView::cameraChanged, glWidgetOverlay,    &Orbital3DView::syncCamera);
+    connect(glWidgetSimplified,&Orbital3DView::cameraChanged, glWidgetOriginal,   &Orbital3DView::syncCamera);
+    connect(glWidgetSimplified,&Orbital3DView::cameraChanged, glWidgetOverlay,    &Orbital3DView::syncCamera);
+    connect(glWidgetOverlay,   &Orbital3DView::cameraChanged, glWidgetOriginal,   &Orbital3DView::syncCamera);
+    connect(glWidgetOverlay,   &Orbital3DView::cameraChanged, glWidgetSimplified, &Orbital3DView::syncCamera);
 
-    controlsLayout->addWidget(new QLabel("Target Faces:"));
-
-    targetFacesSpinBox = new QSpinBox();
-    targetFacesSpinBox->setMinimum(4);
-    targetFacesSpinBox->setMaximum(1000000);
-    targetFacesSpinBox->setValue(1000);
-    controlsLayout->addWidget(targetFacesSpinBox);
-
-    simplificationSlider = new QSlider(Qt::Horizontal);
-    simplificationSlider->setMinimum(1);
-    simplificationSlider->setMaximum(100);
-    simplificationSlider->setValue(50);
-    controlsLayout->addWidget(simplificationSlider);
-
-    QPushButton *simplifyBtn = new QPushButton("Simplify");
-    connect(simplifyBtn, &QPushButton::clicked, this, &MainWindow::onSimplify);
-    controlsLayout->addWidget(simplifyBtn);
-
-    QPushButton *resetCamBtn = new QPushButton("Reset Cameras");
-    connect(resetCamBtn, &QPushButton::clicked, this, &MainWindow::onResetCameras);
-    controlsLayout->addWidget(resetCamBtn);
-
-    wireframeCheck = new QCheckBox("Wireframe");
-    connect(wireframeCheck, &QCheckBox::toggled, glWidgetOriginal, &GLWidget::setWireframe);
-    connect(wireframeCheck, &QCheckBox::toggled, glWidgetSimplified, &GLWidget::setWireframe);
-    controlsLayout->addWidget(wireframeCheck);
-
-    cullFaceCheck = new QCheckBox("Backface Culling");
-    cullFaceCheck->setChecked(true);
-    connect(cullFaceCheck, &QCheckBox::toggled, glWidgetOriginal, &GLWidget::setCullFace);
-    connect(cullFaceCheck, &QCheckBox::toggled, glWidgetSimplified, &GLWidget::setCullFace);
-    controlsLayout->addWidget(cullFaceCheck);
-
-    texturedCheck = new QCheckBox("Textured");
-    texturedCheck->setEnabled(false);
-    connect(texturedCheck, &QCheckBox::toggled, glWidgetOriginal, &GLWidget::setTextured);
-    connect(texturedCheck, &QCheckBox::toggled, glWidgetSimplified, &GLWidget::setTextured);
-    controlsLayout->addWidget(texturedCheck);
-
-    uvViewCheck = new QCheckBox("UV View");
-    uvViewCheck->setEnabled(false);
-    connect(uvViewCheck, &QCheckBox::toggled, glWidgetOriginal, &GLWidget::setUVMode);
-    connect(uvViewCheck, &QCheckBox::toggled, glWidgetSimplified, &GLWidget::setUVMode);
-    controlsLayout->addWidget(uvViewCheck);
-
-    controlsLayout2->addWidget(new QLabel("Boundary:"));
-    boundaryModeCombo = new QComboBox();
-    boundaryModeCombo->addItem("No constraint", (int)BoundaryMode::None);
-    boundaryModeCombo->addItem("Boundary constraint", (int)BoundaryMode::Constraint);
-    boundaryModeCombo->addItem("Lock seam edges", (int)BoundaryMode::LockSeamVertices);
-    boundaryModeCombo->addItem("Sync seam twins", (int)BoundaryMode::SyncSeamTwins);
-    boundaryModeCombo->setCurrentIndex(1);
-    controlsLayout2->addWidget(boundaryModeCombo);
-
-    envelopeConstraintCheck = new QCheckBox("Envelope Constraint");
-    envelopeConstraintCheck->setToolTip(
-        "Garante que a malha simplificada fique sempre do lado de fora (ou sobre)\n"
-        "a malha original. Pode travar colapsos em regioes muito concavas, entao\n"
-        "a malha final pode nao atingir a contagem de faces alvo.");
-    controlsLayout2->addWidget(envelopeConstraintCheck);
-
-    useOptimalCandidateCheck = new QCheckBox("Use Optimal Candidate");
-    useOptimalCandidateCheck->setToolTip(
-        "Soma o otimo irrestrito da quadrica como mais um candidato de posicao\n"
-        "de colapso, alem de v1, v2 e ponto medio.");
-    controlsLayout2->addWidget(useOptimalCandidateCheck);
-
-    showBoundaryEdgesCheck = new QCheckBox("Show Boundary Edges");
-    connect(showBoundaryEdgesCheck, &QCheckBox::toggled, glWidgetOriginal, &GLWidget::setShowBoundaryEdges);
-    connect(showBoundaryEdgesCheck, &QCheckBox::toggled, glWidgetSimplified, &GLWidget::setShowBoundaryEdges);
-    controlsLayout2->addWidget(showBoundaryEdgesCheck);
-
-    showInternalEdgesCheck = new QCheckBox("Show Internal Edges");
-    connect(showInternalEdgesCheck, &QCheckBox::toggled, glWidgetOriginal, &GLWidget::setShowInternalEdges);
-    connect(showInternalEdgesCheck, &QCheckBox::toggled, glWidgetSimplified, &GLWidget::setShowInternalEdges);
-    controlsLayout2->addWidget(showInternalEdgesCheck);
-
-    controlsLayout2->addStretch();
-
-    controlsGroup->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
-    layout->addWidget(controlsGroup);
-
-    // ── Inflate / Deflate Controls ────────────────────────────────────────────
-    QGroupBox *inflateGroup = new QGroupBox("Inflate / Deflate (simplified mesh vertex positions)");
-    QHBoxLayout *inflateLayout = new QHBoxLayout(inflateGroup);
-
-    inflateLayout->addWidget(new QLabel("Offset:"));
-
-    inflateSlider = new QSlider(Qt::Horizontal);
-    inflateSlider->setMinimum(-1000);
-    inflateSlider->setMaximum(1000);
-    inflateSlider->setValue(0);
-    inflateSlider->setEnabled(false);
-    inflateLayout->addWidget(inflateSlider);
-
-    inflateSpin = new QDoubleSpinBox();
-    inflateSpin->setMinimum(-1e6);
-    inflateSpin->setMaximum(1e6);
-    inflateSpin->setValue(0.0);
-    inflateSpin->setDecimals(5);
-    inflateSpin->setSingleStep(0.001);
-    inflateSpin->setFixedWidth(130);
-    inflateSpin->setEnabled(false);
-    inflateLayout->addWidget(inflateSpin);
-
-    connect(inflateSlider, &QSlider::valueChanged, this, [this](int val)
-            {
-        double offset = (inflateScale > 1e-10) ? val / 1000.0 * inflateScale : 0.0;
-        inflateSpin->blockSignals(true);
-        inflateSpin->setValue(offset);
-        inflateSpin->blockSignals(false);
-        applyInflate(offset); });
-    connect(inflateSpin, QOverload<double>::of(&QDoubleSpinBox::valueChanged), this, [this](double val)
-            {
-        int sliderVal = (inflateScale > 1e-10) ? (int)(val / inflateScale * 1000.0) : 0;
-        inflateSlider->blockSignals(true);
-        inflateSlider->setValue(std::max(-1000, std::min(1000, sliderVal)));
-        inflateSlider->blockSignals(false);
-        applyInflate(val); });
-
-    inflateGroup->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
-    layout->addWidget(inflateGroup);
-
-    // ── Signals ───────────────────────────────────────────────────────────────
-    connect(targetFacesSpinBox, QOverload<int>::of(&QSpinBox::valueChanged),
-            this, &MainWindow::onTargetFacesChanged);
-    connect(simplificationSlider, &QSlider::valueChanged, this, [this](int val)
-            {
-        int targetFaces = std::max(4, (int)(originalFaceCount * val / 100.0));
-        targetFacesSpinBox->blockSignals(true);
-        targetFacesSpinBox->setValue(targetFaces);
-        targetFacesSpinBox->blockSignals(false); });
-
-    // Sync cameras: any viewport drives the other two
-    connect(glWidgetOriginal, &GLWidget::cameraChanged,
-            glWidgetSimplified, &GLWidget::syncCamera);
-    connect(glWidgetOriginal, &GLWidget::cameraChanged,
-            glWidgetOverlay, &OverlayGLWidget::syncCamera);
-    connect(glWidgetSimplified, &GLWidget::cameraChanged,
-            glWidgetOriginal, &GLWidget::syncCamera);
-    connect(glWidgetSimplified, &GLWidget::cameraChanged,
-            glWidgetOverlay, &OverlayGLWidget::syncCamera);
-    connect(glWidgetOverlay, &OverlayGLWidget::cameraChanged,
-            glWidgetOriginal, &GLWidget::syncCamera);
-    connect(glWidgetOverlay, &OverlayGLWidget::cameraChanged,
-            glWidgetSimplified, &GLWidget::syncCamera);
-
-    return tab;
+    return w;
 }
 
-QWidget *MainWindow::buildHeightmapTab()
+QWidget *MainWindow::buildHeightmapViewport()
 {
-    QWidget *tab = new QWidget();
-    QVBoxLayout *mainLayout = new QVBoxLayout(tab);
-
-    // ── Top controls bar ─────────────────────────────────────────────────────
-    QGroupBox *ctrlGroup = new QGroupBox("Baking Controls");
-    QVBoxLayout *ctrlOuter = new QVBoxLayout(ctrlGroup);
-
-    // Row 1: resolution + bake button
-    QHBoxLayout *ctrlRow = new QHBoxLayout();
-
-    ctrlRow->addWidget(new QLabel("Resolution:"));
-    hmResCombo = new QComboBox();
-    hmResCombo->addItem("128 × 128", 128);
-    hmResCombo->addItem("256 × 256", 256);
-    hmResCombo->addItem("512 × 512", 512);
-    hmResCombo->addItem("1024 × 1024", 1024);
-    hmResCombo->addItem("2048 × 2048", 2048);
-    hmResCombo->addItem("4096 × 4096", 4096);
-    hmResCombo->setCurrentIndex(2);
-    ctrlRow->addWidget(hmResCombo);
-
-    ctrlRow->addSpacing(16);
-    hmBakeBtn = new QPushButton("Bake");
-    hmBakeBtn->setMinimumWidth(120);
-    connect(hmBakeBtn, &QPushButton::clicked, this, &MainWindow::onBake);
-    ctrlRow->addWidget(hmBakeBtn);
-    ctrlRow->addStretch();
-    ctrlOuter->addLayout(ctrlRow);
-
-    // Row 2: progress bar + label
-    QHBoxLayout *progressRow = new QHBoxLayout();
-    hmProgressBar = new QProgressBar();
-    hmProgressBar->setRange(0, 100);
-    hmProgressBar->setValue(0);
-    hmProgressBar->setTextVisible(true);
-    hmProgressBar->setFixedHeight(18);
-    progressRow->addWidget(hmProgressBar, 1);
-
-    hmProgressLabel = new QLabel("Ready");
-    hmProgressLabel->setFixedWidth(280);
-    progressRow->addWidget(hmProgressLabel);
-    ctrlOuter->addLayout(progressRow);
-
-    ctrlGroup->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
-    mainLayout->addWidget(ctrlGroup);
-
-    // ── Heightmap panel ───────────────────────────────────────────────────────
     QGroupBox *panel = new QGroupBox("UV Correspondence");
-    QVBoxLayout *pLayout = new QVBoxLayout(panel);
     panel->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
+    QVBoxLayout *pLayout = new QVBoxLayout(panel);
 
     hmPreview = new QLabel();
     hmPreview->setAlignment(Qt::AlignCenter);
@@ -330,91 +124,11 @@ QWidget *MainWindow::buildHeightmapTab()
     connect(hmSaveBtn, &QPushButton::clicked, this, &MainWindow::onSaveHeightmap);
     pLayout->addWidget(hmSaveBtn);
 
-    panel->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
-    mainLayout->addWidget(panel, 1);
-
-    return tab;
+    return panel;
 }
 
-QWidget *MainWindow::buildTexturePrepTab()
+QWidget *MainWindow::buildTexturePrepViewport()
 {
-    QWidget *tab = new QWidget();
-    QVBoxLayout *mainLayout = new QVBoxLayout(tab);
-
-    // ── Top controls ─────────────────────────────────────────────────────────
-    QGroupBox *ctrlGroup = new QGroupBox("Input Textures && Baking Controls");
-    QVBoxLayout *ctrlOuter = new QVBoxLayout(ctrlGroup);
-
-    static const char *thumbCaptions[3] = {"Color (model)", "Depth (bake)", "Normal (model)"};
-    QHBoxLayout *loadRow = new QHBoxLayout();
-    for (int i = 0; i < 3; i++)
-    {
-        QVBoxLayout *col = new QVBoxLayout();
-        tpThumb[i] = new QLabel();
-        tpThumb[i]->setFixedSize(64, 64);
-        tpThumb[i]->setAlignment(Qt::AlignCenter);
-        tpThumb[i]->setStyleSheet("background-color:#1e1e1e;border:1px solid #555;");
-        tpThumb[i]->setText("—");
-        col->addWidget(tpThumb[i]);
-
-        QLabel *caption = new QLabel(thumbCaptions[i]);
-        caption->setAlignment(Qt::AlignCenter);
-        col->addWidget(caption);
-        loadRow->addLayout(col);
-    }
-    loadRow->addSpacing(16);
-
-    QVBoxLayout *paramsCol = new QVBoxLayout();
-    QHBoxLayout *resRow = new QHBoxLayout();
-    resRow->addWidget(new QLabel("Working Resolution:"));
-    tpResCombo = new QComboBox();
-    tpResCombo->addItem("128 × 128", 128);
-    tpResCombo->addItem("256 × 256", 256);
-    tpResCombo->addItem("512 × 512", 512);
-    tpResCombo->addItem("1024 × 1024", 1024);
-    tpResCombo->addItem("2048 × 2048", 2048);
-    tpResCombo->setCurrentIndex(2);
-    resRow->addWidget(tpResCombo);
-    paramsCol->addLayout(resRow);
-
-    QHBoxLayout *seamRow = new QHBoxLayout();
-    seamRow->addWidget(new QLabel("Seam Band (texels):"));
-    tpSeamBandSpin = new QSpinBox();
-    tpSeamBandSpin->setRange(1, 32);
-    tpSeamBandSpin->setValue(4);
-    tpSeamBandSpin->setToolTip(
-        "Width (in texels) of the atlas-leap band baked around UV seams.\n"
-        "Wider bands tolerate longer relief-mapping rays crossing islands.");
-    seamRow->addWidget(tpSeamBandSpin);
-    paramsCol->addLayout(seamRow);
-    loadRow->addLayout(paramsCol);
-    loadRow->addStretch();
-
-    tpGenerateBtn = new QPushButton("Generate");
-    tpGenerateBtn->setMinimumWidth(120);
-    tpGenerateBtn->setEnabled(false);
-    connect(tpGenerateBtn, &QPushButton::clicked, this, &MainWindow::onTpGenerate);
-    loadRow->addWidget(tpGenerateBtn);
-
-    ctrlOuter->addLayout(loadRow);
-
-    QHBoxLayout *progressRow = new QHBoxLayout();
-    tpProgressBar = new QProgressBar();
-    tpProgressBar->setRange(0, 100);
-    tpProgressBar->setValue(0);
-    tpProgressBar->setTextVisible(true);
-    tpProgressBar->setFixedHeight(18);
-    progressRow->addWidget(tpProgressBar, 1);
-
-    tpProgressLabel = new QLabel("Ready");
-    tpProgressLabel->setFixedWidth(280);
-    progressRow->addWidget(tpProgressLabel);
-    ctrlOuter->addLayout(progressRow);
-
-    ctrlGroup->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
-    mainLayout->addWidget(ctrlGroup);
-
-    // ── Preview panels ───────────────────────────────────────────────────────
     static const char *previewTitles[4] = {
         "Color Map", "Relief Map  (R=min G=max(mip-bound) B=offset mask A=—)", "Normal Map", "Offset Map  (atlas leap mask)"};
 
@@ -460,7 +174,6 @@ QWidget *MainWindow::buildTexturePrepTab()
                         { updateTpPreview(idx); });
                 chanRow->addWidget(tpChannelCheck[i][c]);
             }
-            // Normal map has no alpha channel.
             if (i == 2)
             {
                 tpChannelCheck[i][3]->setChecked(false);
@@ -492,172 +205,444 @@ QWidget *MainWindow::buildTexturePrepTab()
     }
 
     panelsWidget->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
-    mainLayout->addWidget(panelsWidget, 1);
-
-    return tab;
+    return panelsWidget;
 }
 
-QWidget *MainWindow::buildReliefMappingTab()
+QWidget *MainWindow::buildReliefMappingViewport()
 {
-    QWidget *tab = new QWidget();
-    QHBoxLayout *layout = new QHBoxLayout(tab);
-
     QWidget *viewportsWidget = new QWidget();
     QHBoxLayout *viewportsLayout = new QHBoxLayout(viewportsWidget);
     viewportsLayout->setContentsMargins(0, 0, 0, 0);
 
-    QGroupBox *reliefGroup = new QGroupBox("Relief Mapping");
-    reliefGroup->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
-    QVBoxLayout *reliefGroupLayout = new QVBoxLayout(reliefGroup);
-    reliefGroupLayout->setContentsMargins(4, 4, 4, 4);
-
-    reliefStack = new QStackedWidget();
-    reliefStack->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
-
-    reliefPlaceholder = new QLabel("Run Textures Preparation first to view relief mapping.");
-    reliefPlaceholder->setAlignment(Qt::AlignCenter);
-    reliefPlaceholder->setStyleSheet("color: #888; font-size: 14px;");
-    reliefStack->addWidget(reliefPlaceholder);
-
-    reliefWidget = new ReliefGLWidget();
+    reliefWidget = new Orbital3DView(RenderMode::Relief, "Relief Mapping");
     reliefWidget->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
-    reliefStack->addWidget(reliefWidget);
-    reliefStack->setCurrentWidget(reliefPlaceholder);
+    viewportsLayout->addWidget(reliefWidget);
 
-    reliefGroupLayout->addWidget(reliefStack);
-    viewportsLayout->addWidget(reliefGroup);
-
-    QGroupBox *compareGroup = new QGroupBox("Simplified Mesh (no relief)");
-    compareGroup->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
-    QVBoxLayout *compareGroupLayout = new QVBoxLayout(compareGroup);
-    compareGroupLayout->setContentsMargins(4, 4, 4, 4);
-
-    reliefCompareWidget = new GLWidget();
+    reliefCompareWidget = new Orbital3DView(RenderMode::Textured, "Simplified Mesh (no relief)");
     reliefCompareWidget->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
-    reliefCompareWidget->setTextured(true);
-    compareGroupLayout->addWidget(reliefCompareWidget);
-    viewportsLayout->addWidget(compareGroup);
+    viewportsLayout->addWidget(reliefCompareWidget);
 
-    QGroupBox *originalGroup = new QGroupBox("Original Model");
-    originalGroup->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
-    QVBoxLayout *originalGroupLayout = new QVBoxLayout(originalGroup);
-    originalGroupLayout->setContentsMargins(4, 4, 4, 4);
-
-    reliefOriginalWidget = new GLWidget();
+    reliefOriginalWidget = new Orbital3DView(RenderMode::Textured, "Original Model");
     reliefOriginalWidget->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
-    reliefOriginalWidget->setTextured(true);
-    originalGroupLayout->addWidget(reliefOriginalWidget);
-    viewportsLayout->addWidget(originalGroup);
-
-    layout->addWidget(viewportsWidget, 1);
+    viewportsLayout->addWidget(reliefOriginalWidget);
 
     // Cameras stay in sync across the three viewports so they can be compared directly.
-    connect(reliefWidget, &ReliefGLWidget::cameraChanged,
-            reliefCompareWidget, &GLWidget::syncCamera);
-    connect(reliefWidget, &ReliefGLWidget::cameraChanged,
-            reliefOriginalWidget, &GLWidget::syncCamera);
-    connect(reliefCompareWidget, &GLWidget::cameraChanged,
-            reliefWidget, &ReliefGLWidget::syncCamera);
-    connect(reliefCompareWidget, &GLWidget::cameraChanged,
-            reliefOriginalWidget, &GLWidget::syncCamera);
-    connect(reliefOriginalWidget, &GLWidget::cameraChanged,
-            reliefWidget, &ReliefGLWidget::syncCamera);
-    connect(reliefOriginalWidget, &GLWidget::cameraChanged,
-            reliefCompareWidget, &GLWidget::syncCamera);
+    connect(reliefWidget,        &Orbital3DView::cameraChanged, reliefCompareWidget,  &Orbital3DView::syncCamera);
+    connect(reliefWidget,        &Orbital3DView::cameraChanged, reliefOriginalWidget, &Orbital3DView::syncCamera);
+    connect(reliefCompareWidget, &Orbital3DView::cameraChanged, reliefWidget,         &Orbital3DView::syncCamera);
+    connect(reliefCompareWidget, &Orbital3DView::cameraChanged, reliefOriginalWidget, &Orbital3DView::syncCamera);
+    connect(reliefOriginalWidget,&Orbital3DView::cameraChanged, reliefWidget,         &Orbital3DView::syncCamera);
+    connect(reliefOriginalWidget,&Orbital3DView::cameraChanged, reliefCompareWidget,  &Orbital3DView::syncCamera);
 
-    // ── Controls panel ───────────────────────────────────────────────────────
+    return viewportsWidget;
+}
+
+// ─── Context builders: controls ───────────────────────────────────────────────
+
+QWidget *MainWindow::buildSimplifierControls()
+{
+    QWidget *w = new QWidget();
+    QVBoxLayout *layout = new QVBoxLayout(w);
+    layout->setContentsMargins(4, 4, 4, 4);
+
+    // ── Simplification Controls ────────────────────────────────────────────
+    QGroupBox *controlsGroup = new QGroupBox("Simplification");
+    QVBoxLayout *controlsRows = new QVBoxLayout(controlsGroup);
+    controlsRows->setSpacing(4);
+
+    // Target faces row
+    QHBoxLayout *facesRow = new QHBoxLayout();
+    facesRow->addWidget(new QLabel("Target Faces:"));
+    targetFacesSpinBox = new QSpinBox();
+    targetFacesSpinBox->setMinimum(4);
+    targetFacesSpinBox->setMaximum(1000000);
+    targetFacesSpinBox->setValue(1000);
+    facesRow->addWidget(targetFacesSpinBox, 1);
+    controlsRows->addLayout(facesRow);
+
+    simplificationSlider = new QSlider(Qt::Horizontal);
+    simplificationSlider->setMinimum(1);
+    simplificationSlider->setMaximum(100);
+    simplificationSlider->setValue(50);
+    controlsRows->addWidget(simplificationSlider);
+
+    QHBoxLayout *btnRow = new QHBoxLayout();
+    QPushButton *simplifyBtn = new QPushButton("Simplify");
+    connect(simplifyBtn, &QPushButton::clicked, this, &MainWindow::onSimplify);
+    btnRow->addWidget(simplifyBtn);
+    QPushButton *resetCamBtn = new QPushButton("Reset Cameras");
+    connect(resetCamBtn, &QPushButton::clicked, this, &MainWindow::onResetCameras);
+    btnRow->addWidget(resetCamBtn);
+    controlsRows->addLayout(btnRow);
+
+    // View options
+    wireframeCheck = new QCheckBox("Wireframe");
+    connect(wireframeCheck, &QCheckBox::toggled, glWidgetOriginal,   &Orbital3DView::setWireframe);
+    connect(wireframeCheck, &QCheckBox::toggled, glWidgetSimplified, &Orbital3DView::setWireframe);
+    controlsRows->addWidget(wireframeCheck);
+
+    texturedCheck = new QCheckBox("Textured");
+    texturedCheck->setEnabled(false);
+    connect(texturedCheck, &QCheckBox::toggled, glWidgetOriginal,   &Orbital3DView::setTextured);
+    connect(texturedCheck, &QCheckBox::toggled, glWidgetSimplified, &Orbital3DView::setTextured);
+    controlsRows->addWidget(texturedCheck);
+
+    cullFaceCheck = new QCheckBox("Backface Cull");
+    cullFaceCheck->setChecked(true);
+    connect(cullFaceCheck, &QCheckBox::toggled, glWidgetOriginal,   &Orbital3DView::setCullFace);
+    connect(cullFaceCheck, &QCheckBox::toggled, glWidgetSimplified, &Orbital3DView::setCullFace);
+    controlsRows->addWidget(cullFaceCheck);
+
+    uvViewCheck = new QCheckBox("UV View");
+    uvViewCheck->setEnabled(false);
+    connect(uvViewCheck, &QCheckBox::toggled, glWidgetOriginal,   &Orbital3DView::setUVMode);
+    connect(uvViewCheck, &QCheckBox::toggled, glWidgetSimplified, &Orbital3DView::setUVMode);
+    controlsRows->addWidget(uvViewCheck);
+
+    // Simplification options
+    QHBoxLayout *boundaryRow = new QHBoxLayout();
+    boundaryRow->addWidget(new QLabel("Boundary:"));
+    boundaryModeCombo = new QComboBox();
+    boundaryModeCombo->addItem("No constraint",       (int)BoundaryMode::None);
+    boundaryModeCombo->addItem("Constraint",          (int)BoundaryMode::Constraint);
+    boundaryModeCombo->addItem("Lock seam edges",     (int)BoundaryMode::LockSeamVertices);
+    boundaryModeCombo->addItem("Sync seam twins",     (int)BoundaryMode::SyncSeamTwins);
+    boundaryModeCombo->setCurrentIndex(1);
+    boundaryRow->addWidget(boundaryModeCombo, 1);
+    controlsRows->addLayout(boundaryRow);
+
+    envelopeConstraintCheck = new QCheckBox("Envelope Constraint");
+    envelopeConstraintCheck->setToolTip(
+        "Garante que a malha simplificada fique sempre do lado de fora (ou sobre)\n"
+        "a malha original. Pode travar colapsos em regioes muito concavas, entao\n"
+        "a malha final pode nao atingir a contagem de faces alvo.");
+    controlsRows->addWidget(envelopeConstraintCheck);
+
+    useOptimalCandidateCheck = new QCheckBox("Use Optimal Candidate");
+    useOptimalCandidateCheck->setToolTip(
+        "Soma o otimo irrestrito da quadrica como mais um candidato de posicao\n"
+        "de colapso, alem de v1, v2 e ponto medio.");
+    controlsRows->addWidget(useOptimalCandidateCheck);
+
+    showBoundaryEdgesCheck = new QCheckBox("Show Boundary Edges");
+    connect(showBoundaryEdgesCheck, &QCheckBox::toggled, glWidgetOriginal,   &Orbital3DView::setShowBoundaryEdges);
+    connect(showBoundaryEdgesCheck, &QCheckBox::toggled, glWidgetSimplified, &Orbital3DView::setShowBoundaryEdges);
+    controlsRows->addWidget(showBoundaryEdgesCheck);
+
+    showInternalEdgesCheck = new QCheckBox("Show Internal Edges");
+    connect(showInternalEdgesCheck, &QCheckBox::toggled, glWidgetOriginal,   &Orbital3DView::setShowInternalEdges);
+    connect(showInternalEdgesCheck, &QCheckBox::toggled, glWidgetSimplified, &Orbital3DView::setShowInternalEdges);
+    controlsRows->addWidget(showInternalEdgesCheck);
+
+    layout->addWidget(controlsGroup);
+
+    // ── Inflate / Deflate ──────────────────────────────────────────────────
+    QGroupBox *inflateGroup = new QGroupBox("Inflate / Deflate");
+    QVBoxLayout *inflateLayout = new QVBoxLayout(inflateGroup);
+    inflateLayout->setSpacing(4);
+
+    QHBoxLayout *inflateValRow = new QHBoxLayout();
+    inflateValRow->addWidget(new QLabel("Offset:"));
+    inflateSpin = new QDoubleSpinBox();
+    inflateSpin->setMinimum(-1e6);
+    inflateSpin->setMaximum(1e6);
+    inflateSpin->setValue(0.0);
+    inflateSpin->setDecimals(5);
+    inflateSpin->setSingleStep(0.001);
+    inflateSpin->setEnabled(false);
+    inflateValRow->addWidget(inflateSpin, 1);
+    inflateLayout->addLayout(inflateValRow);
+
+    inflateSlider = new QSlider(Qt::Horizontal);
+    inflateSlider->setMinimum(-1000);
+    inflateSlider->setMaximum(1000);
+    inflateSlider->setValue(0);
+    inflateSlider->setEnabled(false);
+    inflateLayout->addWidget(inflateSlider);
+
+    connect(inflateSlider, &QSlider::valueChanged, this, [this](int val)
+            {
+        double offset = (inflateScale > 1e-10) ? val / 1000.0 * inflateScale : 0.0;
+        inflateSpin->blockSignals(true);
+        inflateSpin->setValue(offset);
+        inflateSpin->blockSignals(false);
+        applyInflate(offset); });
+    connect(inflateSpin, QOverload<double>::of(&QDoubleSpinBox::valueChanged), this, [this](double val)
+            {
+        int sliderVal = (inflateScale > 1e-10) ? (int)(val / inflateScale * 1000.0) : 0;
+        inflateSlider->blockSignals(true);
+        inflateSlider->setValue(std::max(-1000, std::min(1000, sliderVal)));
+        inflateSlider->blockSignals(false);
+        applyInflate(val); });
+
+    layout->addWidget(inflateGroup);
+
+    // ── Signals ───────────────────────────────────────────────────────────
+    connect(targetFacesSpinBox, QOverload<int>::of(&QSpinBox::valueChanged),
+            this, &MainWindow::onTargetFacesChanged);
+    connect(simplificationSlider, &QSlider::valueChanged, this, [this](int val)
+            {
+        int targetFaces = std::max(4, (int)(originalFaceCount * val / 100.0));
+        targetFacesSpinBox->blockSignals(true);
+        targetFacesSpinBox->setValue(targetFaces);
+        targetFacesSpinBox->blockSignals(false); });
+
+    layout->addStretch();
+    return w;
+}
+
+QWidget *MainWindow::buildHeightmapControls()
+{
+    QWidget *w = new QWidget();
+    QVBoxLayout *mainLayout = new QVBoxLayout(w);
+
+    QGroupBox *ctrlGroup = new QGroupBox("Baking Controls");
+    QVBoxLayout *ctrlOuter = new QVBoxLayout(ctrlGroup);
+
+    QHBoxLayout *ctrlRow = new QHBoxLayout();
+    ctrlRow->addWidget(new QLabel("Resolution:"));
+    hmResCombo = new QComboBox();
+    hmResCombo->addItem("128 × 128", 128);
+    hmResCombo->addItem("256 × 256", 256);
+    hmResCombo->addItem("512 × 512", 512);
+    hmResCombo->addItem("1024 × 1024", 1024);
+    hmResCombo->addItem("2048 × 2048", 2048);
+    hmResCombo->addItem("4096 × 4096", 4096);
+    hmResCombo->setCurrentIndex(2);
+    ctrlRow->addWidget(hmResCombo);
+
+    ctrlRow->addSpacing(16);
+    hmBakeBtn = new QPushButton("Bake");
+    hmBakeBtn->setMinimumWidth(120);
+    connect(hmBakeBtn, &QPushButton::clicked, this, &MainWindow::onBake);
+    ctrlRow->addWidget(hmBakeBtn);
+    ctrlRow->addStretch();
+    ctrlOuter->addLayout(ctrlRow);
+
+    QHBoxLayout *progressRow = new QHBoxLayout();
+    hmProgressBar = new QProgressBar();
+    hmProgressBar->setRange(0, 100);
+    hmProgressBar->setValue(0);
+    hmProgressBar->setTextVisible(true);
+    hmProgressBar->setFixedHeight(18);
+    progressRow->addWidget(hmProgressBar, 1);
+
+    hmProgressLabel = new QLabel("Ready");
+    hmProgressLabel->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
+    progressRow->addWidget(hmProgressLabel);
+    ctrlOuter->addLayout(progressRow);
+
+    mainLayout->addWidget(ctrlGroup);
+    mainLayout->addStretch();
+    return w;
+}
+
+QWidget *MainWindow::buildTexturePrepControls()
+{
+    QWidget *w = new QWidget();
+    QVBoxLayout *mainLayout = new QVBoxLayout(w);
+
+    QGroupBox *ctrlGroup = new QGroupBox("Input Textures && Baking Controls");
+    QVBoxLayout *ctrlOuter = new QVBoxLayout(ctrlGroup);
+
+    // Input texture thumbnails
+    static const char *thumbCaptions[3] = {"Color", "Depth", "Normal"};
+    QHBoxLayout *thumbRow = new QHBoxLayout();
+    for (int i = 0; i < 3; i++)
+    {
+        QVBoxLayout *col = new QVBoxLayout();
+        col->setSpacing(2);
+        tpThumb[i] = new QLabel();
+        tpThumb[i]->setFixedSize(56, 56);
+        tpThumb[i]->setAlignment(Qt::AlignCenter);
+        tpThumb[i]->setStyleSheet("background-color:#1e1e1e;border:1px solid #555;");
+        tpThumb[i]->setText("—");
+        col->addWidget(tpThumb[i]);
+        QLabel *caption = new QLabel(thumbCaptions[i]);
+        caption->setAlignment(Qt::AlignCenter);
+        caption->setStyleSheet("font-size: 10px;");
+        col->addWidget(caption);
+        thumbRow->addLayout(col);
+    }
+    ctrlOuter->addLayout(thumbRow);
+
+    QHBoxLayout *resRow = new QHBoxLayout();
+    resRow->addWidget(new QLabel("Resolution:"));
+    tpResCombo = new QComboBox();
+    tpResCombo->addItem("128 × 128",   128);
+    tpResCombo->addItem("256 × 256",   256);
+    tpResCombo->addItem("512 × 512",   512);
+    tpResCombo->addItem("1024 × 1024", 1024);
+    tpResCombo->addItem("2048 × 2048", 2048);
+    tpResCombo->setCurrentIndex(2);
+    resRow->addWidget(tpResCombo, 1);
+    ctrlOuter->addLayout(resRow);
+
+    QHBoxLayout *seamRow = new QHBoxLayout();
+    seamRow->addWidget(new QLabel("Seam Band:"));
+    tpSeamBandSpin = new QSpinBox();
+    tpSeamBandSpin->setRange(1, 32);
+    tpSeamBandSpin->setValue(4);
+    tpSeamBandSpin->setToolTip(
+        "Width (in texels) of the atlas-leap band baked around UV seams.\n"
+        "Wider bands tolerate longer relief-mapping rays crossing islands.");
+    seamRow->addWidget(tpSeamBandSpin, 1);
+    ctrlOuter->addLayout(seamRow);
+
+    tpGenerateBtn = new QPushButton("Generate");
+    tpGenerateBtn->setEnabled(false);
+    connect(tpGenerateBtn, &QPushButton::clicked, this, &MainWindow::onTpGenerate);
+    ctrlOuter->addWidget(tpGenerateBtn);
+
+    QHBoxLayout *progressRow = new QHBoxLayout();
+    tpProgressBar = new QProgressBar();
+    tpProgressBar->setRange(0, 100);
+    tpProgressBar->setValue(0);
+    tpProgressBar->setTextVisible(true);
+    tpProgressBar->setFixedHeight(18);
+    progressRow->addWidget(tpProgressBar, 1);
+
+    tpProgressLabel = new QLabel("Ready");
+    tpProgressLabel->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
+    progressRow->addWidget(tpProgressLabel);
+    ctrlOuter->addLayout(progressRow);
+
+    mainLayout->addWidget(ctrlGroup);
+    mainLayout->addStretch();
+    return w;
+}
+
+QWidget *MainWindow::buildReliefMappingControls()
+{
+    // Called after buildReliefMappingViewport(), so reliefWidget/Compare/Original are set.
     QGroupBox *ctrlGroup = new QGroupBox("Relief Mapping Parameters");
-    ctrlGroup->setFixedWidth(280);
     QVBoxLayout *ctrlLayout = new QVBoxLayout(ctrlGroup);
 
     reliefEnabledCheck = new QCheckBox("Enable Relief Mapping");
     reliefEnabledCheck->setChecked(true);
-    connect(reliefEnabledCheck, &QCheckBox::toggled, reliefWidget, &ReliefGLWidget::setReliefEnabled);
+    connect(reliefEnabledCheck, &QCheckBox::toggled, reliefWidget, &Orbital3DView::setReliefEnabled);
     ctrlLayout->addWidget(reliefEnabledCheck);
 
-    ctrlLayout->addWidget(new QLabel("Steps:"));
+    QHBoxLayout *stepsRow = new QHBoxLayout();
+    stepsRow->addWidget(new QLabel("Steps:"));
     reliefStepsSpin = new QSpinBox();
     reliefStepsSpin->setRange(1, 256);
     reliefStepsSpin->setValue(64);
-    connect(reliefStepsSpin, QOverload<int>::of(&QSpinBox::valueChanged), reliefWidget, &ReliefGLWidget::setSteps);
-    ctrlLayout->addWidget(reliefStepsSpin);
+    connect(reliefStepsSpin, QOverload<int>::of(&QSpinBox::valueChanged), reliefWidget, &Orbital3DView::setSteps);
+    stepsRow->addWidget(reliefStepsSpin, 1);
+    ctrlLayout->addLayout(stepsRow);
 
-    ctrlLayout->addWidget(new QLabel("Binary Search Steps:"));
+    QHBoxLayout *binRow = new QHBoxLayout();
+    binRow->addWidget(new QLabel("Binary Steps:"));
     reliefBinaryStepsSpin = new QSpinBox();
     reliefBinaryStepsSpin->setRange(0, 16);
     reliefBinaryStepsSpin->setValue(5);
-    connect(reliefBinaryStepsSpin, QOverload<int>::of(&QSpinBox::valueChanged), reliefWidget, &ReliefGLWidget::setBinarySteps);
-    ctrlLayout->addWidget(reliefBinaryStepsSpin);
+    connect(reliefBinaryStepsSpin, QOverload<int>::of(&QSpinBox::valueChanged), reliefWidget, &Orbital3DView::setBinarySteps);
+    binRow->addWidget(reliefBinaryStepsSpin, 1);
+    ctrlLayout->addLayout(binRow);
 
-    ctrlLayout->addWidget(new QLabel("Depth Scale:"));
+    QHBoxLayout *depthRow = new QHBoxLayout();
+    depthRow->addWidget(new QLabel("Depth Scale:"));
     reliefDepthScaleSpin = new QDoubleSpinBox();
     reliefDepthScaleSpin->setRange(0.0, 2.0);
     reliefDepthScaleSpin->setSingleStep(0.01);
     reliefDepthScaleSpin->setDecimals(4);
     reliefDepthScaleSpin->setValue(0.05);
-    connect(reliefDepthScaleSpin, QOverload<double>::of(&QDoubleSpinBox::valueChanged), reliefWidget, &ReliefGLWidget::setDepthScale);
-    ctrlLayout->addWidget(reliefDepthScaleSpin);
-
-    ctrlLayout->addSpacing(8);
+    connect(reliefDepthScaleSpin, QOverload<double>::of(&QDoubleSpinBox::valueChanged), reliefWidget, &Orbital3DView::setDepthScale);
+    depthRow->addWidget(reliefDepthScaleSpin, 1);
+    ctrlLayout->addLayout(depthRow);
 
     reliefUseAtlasCheck = new QCheckBox("Use Atlas (Island Leaping)");
     reliefUseAtlasCheck->setChecked(true);
-    connect(reliefUseAtlasCheck, &QCheckBox::toggled, reliefWidget, &ReliefGLWidget::setUseAtlas);
+    connect(reliefUseAtlasCheck, &QCheckBox::toggled, reliefWidget, &Orbital3DView::setUseAtlas);
     ctrlLayout->addWidget(reliefUseAtlasCheck);
 
-    ctrlLayout->addSpacing(8);
-
-    ctrlLayout->addWidget(new QLabel("Debug View:"));
+    QHBoxLayout *debugRow = new QHBoxLayout();
+    debugRow->addWidget(new QLabel("Debug:"));
     reliefDebugViewCombo = new QComboBox();
-    reliefDebugViewCombo->addItem("Shaded", 0);
-    reliefDebugViewCombo->addItem("Step Count", 1);
-    reliefDebugViewCombo->addItem("Leap Count", 2);
+    reliefDebugViewCombo->addItem("Shaded",         0);
+    reliefDebugViewCombo->addItem("Step Count",     1);
+    reliefDebugViewCombo->addItem("Leap Count",     2);
     reliefDebugViewCombo->addItem("UV After Relief", 3);
     connect(reliefDebugViewCombo, QOverload<int>::of(&QComboBox::currentIndexChanged), this, [this](int)
             { reliefWidget->setDebugView(reliefDebugViewCombo->currentData().toInt()); });
-    ctrlLayout->addWidget(reliefDebugViewCombo);
+    debugRow->addWidget(reliefDebugViewCombo, 1);
+    ctrlLayout->addLayout(debugRow);
 
-    ctrlLayout->addSpacing(8);
-
+    QHBoxLayout *viewRow = new QHBoxLayout();
     reliefWireframeCheck = new QCheckBox("Wireframe");
-    connect(reliefWireframeCheck, &QCheckBox::toggled, reliefWidget, &ReliefGLWidget::setWireframe);
-    connect(reliefWireframeCheck, &QCheckBox::toggled, reliefCompareWidget, &GLWidget::setWireframe);
-    connect(reliefWireframeCheck, &QCheckBox::toggled, reliefOriginalWidget, &GLWidget::setWireframe);
-    ctrlLayout->addWidget(reliefWireframeCheck);
-
-    reliefCullFaceCheck = new QCheckBox("Backface Culling");
+    connect(reliefWireframeCheck, &QCheckBox::toggled, reliefWidget,        &Orbital3DView::setWireframe);
+    connect(reliefWireframeCheck, &QCheckBox::toggled, reliefCompareWidget,  &Orbital3DView::setWireframe);
+    connect(reliefWireframeCheck, &QCheckBox::toggled, reliefOriginalWidget, &Orbital3DView::setWireframe);
+    viewRow->addWidget(reliefWireframeCheck);
+    reliefCullFaceCheck = new QCheckBox("Backface Cull");
     reliefCullFaceCheck->setChecked(true);
-    connect(reliefCullFaceCheck, &QCheckBox::toggled, reliefWidget, &ReliefGLWidget::setCullFace);
-    connect(reliefCullFaceCheck, &QCheckBox::toggled, reliefCompareWidget, &GLWidget::setCullFace);
-    connect(reliefCullFaceCheck, &QCheckBox::toggled, reliefOriginalWidget, &GLWidget::setCullFace);
-    ctrlLayout->addWidget(reliefCullFaceCheck);
+    connect(reliefCullFaceCheck, &QCheckBox::toggled, reliefWidget,        &Orbital3DView::setCullFace);
+    connect(reliefCullFaceCheck, &QCheckBox::toggled, reliefCompareWidget,  &Orbital3DView::setCullFace);
+    connect(reliefCullFaceCheck, &QCheckBox::toggled, reliefOriginalWidget, &Orbital3DView::setCullFace);
+    viewRow->addWidget(reliefCullFaceCheck);
+    ctrlLayout->addLayout(viewRow);
 
     reliefResetCamBtn = new QPushButton("Reset Camera");
-    connect(reliefResetCamBtn, &QPushButton::clicked, reliefWidget, &ReliefGLWidget::resetCamera);
-    connect(reliefResetCamBtn, &QPushButton::clicked, reliefCompareWidget, &GLWidget::resetCamera);
-    connect(reliefResetCamBtn, &QPushButton::clicked, reliefOriginalWidget, &GLWidget::resetCamera);
+    connect(reliefResetCamBtn, &QPushButton::clicked, reliefWidget,        &Orbital3DView::resetCamera);
+    connect(reliefResetCamBtn, &QPushButton::clicked, reliefCompareWidget,  &Orbital3DView::resetCamera);
+    connect(reliefResetCamBtn, &QPushButton::clicked, reliefOriginalWidget, &Orbital3DView::resetCamera);
     ctrlLayout->addWidget(reliefResetCamBtn);
 
     ctrlLayout->addStretch();
-    layout->addWidget(ctrlGroup);
-
-    return tab;
+    return ctrlGroup;
 }
 
 // ─── Setup ───────────────────────────────────────────────────────────────────
 
 void MainWindow::setupUI()
 {
-    QTabWidget *tabs = new QTabWidget(this);
-    setCentralWidget(tabs);
-    tabsWidget = tabs;
+    // ── Context toolbar ────────────────────────────────────────────────────
+    contextToolBar = addToolBar("Contexts");
+    contextToolBar->setMovable(false);
+    contextToolBar->setStyleSheet(R"(
+        QToolBar { background: #2d2d2d; border: none; spacing: 2px; padding: 2px 6px; }
+        QToolButton { background: transparent; color: #ccc; border: none;
+                      border-radius: 3px; padding: 5px 14px; font-weight: bold; }
+        QToolButton:checked { background: #4a7abf; color: white; }
+        QToolButton:hover:!checked { background: #3d3d3d; }
+    )");
+    auto *group = new QActionGroup(this);
+    group->setExclusive(true);
+    const char *labels[] = {"Mesh", "Heightmap", "Textures", "Relief"};
+    for (int i = 0; i < 4; ++i)
+    {
+        auto *act = new QAction(labels[i], this);
+        act->setCheckable(true);
+        group->addAction(act);
+        contextToolBar->addAction(act);
+        connect(act, &QAction::triggered, this, [this, i](bool) { switchContext(i); });
+    }
+    group->actions().first()->setChecked(true);
 
-    tabs->addTab(buildSimplifierTab(), "Simplifier");
-    tabs->addTab(buildHeightmapTab(), "Heightmap Baking");
-    tabs->addTab(buildTexturePrepTab(), "Textures Preparation");
-    reliefTabIndex = tabs->addTab(buildReliefMappingTab(), "Relief Mapping");
+    // ── Viewport stack (central widget) ────────────────────────────────────
+    // Viewport builders must run before controls builders because the controls
+    // builders connect to GL widget pointers set by the viewport builders.
+    viewportStack = new QStackedWidget();
+    viewportStack->addWidget(buildSimplifierViewport());
+    viewportStack->addWidget(buildHeightmapViewport());
+    viewportStack->addWidget(buildTexturePrepViewport());
+    viewportStack->addWidget(buildReliefMappingViewport());
+    setCentralWidget(viewportStack);
 
-    connect(tabs, &QTabWidget::currentChanged, this, &MainWindow::onTabChanged);
+    // ── Controls dock ──────────────────────────────────────────────────────
+    dockStack = new QStackedWidget();
+    dockStack->addWidget(buildSimplifierControls());
+    dockStack->addWidget(buildHeightmapControls());
+    dockStack->addWidget(buildTexturePrepControls());
+    dockStack->addWidget(buildReliefMappingControls());
+
+    controlsDock = new QDockWidget("Controls", this);
+    controlsDock->setWidget(dockStack);
+    controlsDock->setFeatures(QDockWidget::DockWidgetMovable);
+    controlsDock->setAllowedAreas(Qt::LeftDockWidgetArea | Qt::RightDockWidgetArea);
+    controlsDock->setMaximumWidth(280);
+    addDockWidget(Qt::RightDockWidgetArea, controlsDock);
 
     statusLabel = new QLabel("Ready");
     statusBar()->addWidget(statusLabel);
@@ -696,6 +681,14 @@ void MainWindow::createMenuBar()
 }
 
 // ─── Slots ───────────────────────────────────────────────────────────────────
+
+void MainWindow::switchContext(int index)
+{
+    viewportStack->setCurrentIndex(index);
+    dockStack->setCurrentIndex(index);
+    if (index == 3)
+        trySyncReliefWidget();
+}
 
 void MainWindow::onLoadModel()
 {
@@ -794,8 +787,6 @@ void MainWindow::onLoadModel()
         tpMipSpin[i]->setEnabled(false);
         tpMipSpin[i]->setRange(0, 0);
     }
-    if (reliefStack)
-        reliefStack->setCurrentWidget(reliefPlaceholder);
 
     updateStatusBar();
 }
@@ -972,9 +963,9 @@ void MainWindow::onTargetFacesChanged(int value)
 
 void MainWindow::onResetCameras()
 {
-    glWidgetOriginal->resetCamera();
-    glWidgetSimplified->resetCamera();
-    glWidgetOverlay->resetCamera();
+    if (glWidgetOriginal)   glWidgetOriginal->resetCamera();
+    if (glWidgetSimplified) glWidgetSimplified->resetCamera();
+    if (glWidgetOverlay)    glWidgetOverlay->resetCamera();
 }
 
 // ─── Heightmap baking ────────────────────────────────────────────────────────
@@ -1210,7 +1201,7 @@ void MainWindow::onTpGenerate()
     if (!hmResult.valid || hmResult.image.empty())
     {
         QMessageBox::warning(this, "Warning",
-                             "Bake a heightmap first (Heightmap Baking tab) — it is used as the depth input.");
+                             "Bake a heightmap first (Heightmap context) — it is used as the depth input.");
         return;
     }
 
@@ -1434,15 +1425,9 @@ void MainWindow::onTpSave(int idx)
 
 // ─── Relief Mapping ──────────────────────────────────────────────────────────
 
-void MainWindow::showReliefViewport()
-{
-    if (reliefStack && reliefWidget)
-        reliefStack->setCurrentWidget(reliefWidget);
-}
-
 void MainWindow::trySyncReliefWidget()
 {
-    if (!reliefWidget || !tabsWidget || tabsWidget->currentIndex() != reliefTabIndex)
+    if (!reliefWidget || viewportStack->currentIndex() != 3)
         return;
 
     if (reliefMeshPending && simplifiedMesh && simplifiedMesh->faceCount() > 0)
@@ -1457,17 +1442,9 @@ void MainWindow::trySyncReliefWidget()
     {
         reliefWidget->setTextures(tpResult);
         reliefCompareWidget->setColorTexture(tpResult.colorMap);
+        reliefOriginalWidget->setColorTexture(tpResult.colorMap);
         reliefTexturesPending = false;
     }
-    if (tpResult.valid)
-        showReliefViewport();
-}
-
-void MainWindow::onTabChanged(int index)
-{
-    if (index != reliefTabIndex)
-        return;
-    trySyncReliefWidget();
 }
 
 // ─── Status / helpers ────────────────────────────────────────────────────────
@@ -1482,8 +1459,8 @@ void MainWindow::updateStatusBar()
                                   .arg(simplifiedMesh->faceCount())
                                   .arg(simplifiedMesh->vertexCount());
 
-    originalStatsLabel->setText(originalStats);
-    simplifiedStatsLabel->setText(simplifiedStats);
+    glWidgetOriginal->setStats(originalMesh->faceCount(), originalMesh->vertexCount());
+    glWidgetSimplified->setStats(simplifiedMesh->faceCount(), simplifiedMesh->vertexCount());
 
     if (simplifiedMesh->faceCount() > 0)
     {
@@ -1510,7 +1487,7 @@ void MainWindow::applyInflate(double offset)
                 baseSimplifiedPositions[i] + offset * simplifiedVertexNormals[i];
     }
     glWidgetSimplified->updateMeshData();
-    glWidgetOverlay->updateSimplifiedMesh();
+    glWidgetOverlay->updateSecondaryMesh();
 }
 
 void MainWindow::computeAutoTarget()
