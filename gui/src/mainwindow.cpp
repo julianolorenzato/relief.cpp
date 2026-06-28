@@ -12,7 +12,7 @@
 MainWindow::MainWindow(QWidget* parent)
     : QMainWindow(parent)
 {
-    setWindowTitle("QEM Mesh Simplifier");
+    setWindowTitle("Relief Standalone Viewer");
     setGeometry(100, 100, 1600, 900);
 
     setupUI();
