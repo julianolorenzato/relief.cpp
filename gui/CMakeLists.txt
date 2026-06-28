@@ -19,7 +19,6 @@ add_executable(gui
     src/main.cpp
     src/mainwindow.cpp
     src/orbital3dview.cpp
-    src/texture_prep.cpp
     src/simplifier_module.cpp
     src/heightmap_module.cpp
     src/texture_prep_module.cpp

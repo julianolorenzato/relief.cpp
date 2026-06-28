@@ -1,5 +1,4 @@
 #include "gui/texture_prep_module.h"
-#include "gui/texture_prep.h"
 
 namespace {
 class TexturePrepWorker : public QObject {
@@ -17,8 +16,17 @@ public slots:
     void run() {
         emit progress(0, "Baking textures…");
         auto cb = [this](int pct) { emit progress(pct, "Baking textures…"); };
-        result = TexturePrepBaker::bake(*mesh, colorImg, depthImg, normalImg,
-                                        workRes, seamBandTexels, cb);
+
+        QImage c = colorImg.convertToFormat(QImage::Format_RGBA8888);
+        QImage d = depthImg.convertToFormat(QImage::Format_Grayscale8);
+        QImage n = normalImg.convertToFormat(QImage::Format_RGB888);
+
+        RawImage rawColor  { c.constBits(), c.width(), c.height(), 4 };
+        RawImage rawDepth  { d.constBits(), d.width(), d.height(), 1 };
+        RawImage rawNormal { n.constBits(), n.width(), n.height(), 3 };
+
+        result = TextureBaker::bake(*mesh, rawColor, rawDepth, rawNormal,
+                                    workRes, seamBandTexels, cb);
         emit progress(100, result.valid ? "Done" : "Failed to prepare textures");
         emit finished();
     }

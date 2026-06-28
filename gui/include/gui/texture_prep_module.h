@@ -10,7 +10,7 @@
 #include <QImage>
 #include "relief/heightmap.h"
 #include "relief/qem.h"
-#include "gui/texture_prep.h"
+#include "relief/textures.h"
 
 class TexturePrepModule : public QWidget {
     Q_OBJECT

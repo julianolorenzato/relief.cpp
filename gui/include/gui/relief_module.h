@@ -7,7 +7,7 @@
 #include <QPushButton>
 #include "relief/qem.h"
 #include "gui/orbital3dview.h"
-#include "gui/texture_prep.h"
+#include "relief/textures.h"
 
 class ReliefModule : public QWidget {
     Q_OBJECT

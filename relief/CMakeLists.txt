@@ -24,6 +24,7 @@ add_library(relief STATIC
     src/qem_gltf.cpp
     src/heightmap.cpp
     src/uv_atlas.cpp
+    src/textures.cpp
 )
 
 target_include_directories(relief

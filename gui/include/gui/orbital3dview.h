@@ -10,7 +10,7 @@
 #include <QPoint>
 #include <glm/glm.hpp>
 #include "relief/qem.h"
-#include "gui/texture_prep.h"
+#include "relief/textures.h"
 
 enum class RenderMode { Solid, Textured, Overlay, Relief, UV };
 
