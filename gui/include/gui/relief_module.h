@@ -1,0 +1,59 @@
+#pragma once
+#include <QWidget>
+#include <QCheckBox>
+#include <QSpinBox>
+#include <QDoubleSpinBox>
+#include <QComboBox>
+#include <QPushButton>
+#include "relief/qem.h"
+#include "gui/orbital3dview.h"
+#include "gui/texture_prep.h"
+
+class ReliefModule : public QWidget {
+    Q_OBJECT
+
+public:
+    explicit ReliefModule(QWidget* parent = nullptr);
+
+public slots:
+    // Store mesh pointers and mark them pending for sync.
+    void setMeshes(QEMSimplifier* original, QEMSimplifier* simplified);
+    // Store the texture prep result and mark it pending for sync.
+    void onTexturesReady(const TexturePrepResult& result);
+    // Called when this tab is activated — flushes any pending data.
+    void onActivated();
+
+signals:
+    void statusMessage(const QString& msg);
+
+private:
+    void buildUI();
+    void syncIfReady();
+
+    // ── Viewports ─────────────────────────────────────────────────────────────
+    Orbital3DView* reliefWidget_         = nullptr;  // mode: Relief
+    Orbital3DView* reliefCompareWidget_  = nullptr;  // mode: Textured
+    Orbital3DView* reliefOriginalWidget_ = nullptr;  // mode: Textured
+
+    // ── Controls ──────────────────────────────────────────────────────────────
+    QCheckBox*      reliefEnabledCheck_       = nullptr;
+    QSpinBox*       reliefStepsSpin_          = nullptr;
+    QSpinBox*       reliefBinaryStepsSpin_    = nullptr;
+    QDoubleSpinBox* reliefDepthScaleSpin_     = nullptr;
+    QCheckBox*      reliefUseAtlasCheck_      = nullptr;
+    QComboBox*      reliefDebugViewCombo_     = nullptr;
+    QCheckBox*      reliefWireframeCheck_     = nullptr;
+    QCheckBox*      reliefCullFaceCheck_      = nullptr;
+    QPushButton*    reliefResetCamBtn_        = nullptr;
+
+    // ── Pending state ─────────────────────────────────────────────────────────
+    bool meshPending_     = false;
+    bool texturesPending_ = false;
+
+    // Non-owned mesh pointers
+    QEMSimplifier* originalMesh_   = nullptr;
+    QEMSimplifier* simplifiedMesh_ = nullptr;
+
+    // Stored texture prep result (copy)
+    TexturePrepResult tpResult_;
+};

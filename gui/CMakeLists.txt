@@ -12,14 +12,18 @@ endif()
 add_executable(gui
     include/gui/mainwindow.h
     include/gui/orbital3dview.h
-    include/gui/heightmap_worker.h
-    include/gui/texture_prep_worker.h
+    include/gui/simplifier_module.h
+    include/gui/heightmap_module.h
+    include/gui/texture_prep_module.h
+    include/gui/relief_module.h
     src/main.cpp
     src/mainwindow.cpp
     src/orbital3dview.cpp
-    src/heightmap_worker.cpp
     src/texture_prep.cpp
-    src/texture_prep_worker.cpp
+    src/simplifier_module.cpp
+    src/heightmap_module.cpp
+    src/texture_prep_module.cpp
+    src/relief_module.cpp
     src/shaders/shaders.qrc
 )
 
