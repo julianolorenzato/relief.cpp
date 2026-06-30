@@ -15,10 +15,10 @@
 
 // ─── Constructor ─────────────────────────────────────────────────────────────
 
-SimplifierModule::SimplifierModule(QWidget* parent)
+SimplifierModule::SimplifierModule(QWidget *parent)
     : QWidget(parent)
 {
-    originalMesh_   = std::make_unique<QEMSimplifier>();
+    originalMesh_ = std::make_unique<QEMSimplifier>();
     simplifiedMesh_ = std::make_unique<QEMSimplifier>();
     buildUI();
 }
@@ -27,29 +27,29 @@ SimplifierModule::SimplifierModule(QWidget* parent)
 
 void SimplifierModule::buildUI()
 {
-    QHBoxLayout* outerLayout = new QHBoxLayout(this);
+    QHBoxLayout *outerLayout = new QHBoxLayout(this);
     outerLayout->setContentsMargins(0, 0, 0, 0);
 
-    QSplitter* splitter = new QSplitter(Qt::Horizontal, this);
+    QSplitter *splitter = new QSplitter(Qt::Horizontal, this);
     outerLayout->addWidget(splitter);
 
     // ── Left: viewport area (3 Orbital3DViews side by side) ──────────────────
-    QWidget* viewportArea = new QWidget();
-    QHBoxLayout* viewportsLayout = new QHBoxLayout(viewportArea);
+    QWidget *viewportArea = new QWidget();
+    QHBoxLayout *viewportsLayout = new QHBoxLayout(viewportArea);
     viewportsLayout->setContentsMargins(0, 0, 0, 0);
 
-    QWidget* originalGroup = new QWidget();
+    QWidget *originalGroup = new QWidget();
     originalGroup->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
-    QVBoxLayout* leftLayout = new QVBoxLayout(originalGroup);
+    QVBoxLayout *leftLayout = new QVBoxLayout(originalGroup);
     leftLayout->setContentsMargins(0, 0, 0, 0);
     glWidgetOriginal_ = new Orbital3DView(RenderMode::Solid, "Original Mesh");
     glWidgetOriginal_->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
     leftLayout->addWidget(glWidgetOriginal_, 1);
     viewportsLayout->addWidget(originalGroup);
 
-    QWidget* simplifiedGroup = new QWidget();
+    QWidget *simplifiedGroup = new QWidget();
     simplifiedGroup->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
-    QVBoxLayout* rightLayout = new QVBoxLayout(simplifiedGroup);
+    QVBoxLayout *rightLayout = new QVBoxLayout(simplifiedGroup);
     rightLayout->setContentsMargins(0, 0, 0, 0);
     glWidgetSimplified_ = new Orbital3DView(RenderMode::Solid, "Simplified Mesh");
     glWidgetSimplified_->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
@@ -62,26 +62,26 @@ void SimplifierModule::buildUI()
 
     viewportArea->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
 
-    connect(glWidgetOriginal_,  &Orbital3DView::cameraChanged, glWidgetSimplified_, &Orbital3DView::syncCamera);
-    connect(glWidgetOriginal_,  &Orbital3DView::cameraChanged, glWidgetOverlay_,    &Orbital3DView::syncCamera);
-    connect(glWidgetSimplified_,&Orbital3DView::cameraChanged, glWidgetOriginal_,   &Orbital3DView::syncCamera);
-    connect(glWidgetSimplified_,&Orbital3DView::cameraChanged, glWidgetOverlay_,    &Orbital3DView::syncCamera);
-    connect(glWidgetOverlay_,   &Orbital3DView::cameraChanged, glWidgetOriginal_,   &Orbital3DView::syncCamera);
-    connect(glWidgetOverlay_,   &Orbital3DView::cameraChanged, glWidgetSimplified_, &Orbital3DView::syncCamera);
+    connect(glWidgetOriginal_, &Orbital3DView::cameraChanged, glWidgetSimplified_, &Orbital3DView::syncCamera);
+    connect(glWidgetOriginal_, &Orbital3DView::cameraChanged, glWidgetOverlay_, &Orbital3DView::syncCamera);
+    connect(glWidgetSimplified_, &Orbital3DView::cameraChanged, glWidgetOriginal_, &Orbital3DView::syncCamera);
+    connect(glWidgetSimplified_, &Orbital3DView::cameraChanged, glWidgetOverlay_, &Orbital3DView::syncCamera);
+    connect(glWidgetOverlay_, &Orbital3DView::cameraChanged, glWidgetOriginal_, &Orbital3DView::syncCamera);
+    connect(glWidgetOverlay_, &Orbital3DView::cameraChanged, glWidgetSimplified_, &Orbital3DView::syncCamera);
 
     splitter->addWidget(viewportArea);
 
     // ── Right: controls in a QScrollArea ─────────────────────────────────────
-    QWidget* controlsWidget = new QWidget();
-    QVBoxLayout* layout = new QVBoxLayout(controlsWidget);
+    QWidget *controlsWidget = new QWidget();
+    QVBoxLayout *layout = new QVBoxLayout(controlsWidget);
     layout->setContentsMargins(4, 4, 4, 4);
 
     // ── Simplification Controls ────────────────────────────────────────────
-    QGroupBox* controlsGroup = new QGroupBox("Simplification");
-    QVBoxLayout* controlsRows = new QVBoxLayout(controlsGroup);
+    QGroupBox *controlsGroup = new QGroupBox("Simplification");
+    QVBoxLayout *controlsRows = new QVBoxLayout(controlsGroup);
     controlsRows->setSpacing(4);
 
-    QHBoxLayout* facesRow = new QHBoxLayout();
+    QHBoxLayout *facesRow = new QHBoxLayout();
     facesRow->addWidget(new QLabel("Target Faces:"));
     targetFacesSpinBox_ = new QSpinBox();
     targetFacesSpinBox_->setMinimum(4);
@@ -96,45 +96,45 @@ void SimplifierModule::buildUI()
     simplificationSlider_->setValue(50);
     controlsRows->addWidget(simplificationSlider_);
 
-    QHBoxLayout* btnRow = new QHBoxLayout();
-    QPushButton* simplifyBtn = new QPushButton("Simplify");
+    QHBoxLayout *btnRow = new QHBoxLayout();
+    QPushButton *simplifyBtn = new QPushButton("Simplify");
     connect(simplifyBtn, &QPushButton::clicked, this, &SimplifierModule::onSimplify);
     btnRow->addWidget(simplifyBtn);
-    QPushButton* resetCamBtn = new QPushButton("Reset Cameras");
+    QPushButton *resetCamBtn = new QPushButton("Reset Cameras");
     connect(resetCamBtn, &QPushButton::clicked, this, &SimplifierModule::onResetCameras);
     btnRow->addWidget(resetCamBtn);
     controlsRows->addLayout(btnRow);
 
     wireframeCheck_ = new QCheckBox("Wireframe");
-    connect(wireframeCheck_, &QCheckBox::toggled, glWidgetOriginal_,   &Orbital3DView::setWireframe);
+    connect(wireframeCheck_, &QCheckBox::toggled, glWidgetOriginal_, &Orbital3DView::setWireframe);
     connect(wireframeCheck_, &QCheckBox::toggled, glWidgetSimplified_, &Orbital3DView::setWireframe);
     controlsRows->addWidget(wireframeCheck_);
 
     texturedCheck_ = new QCheckBox("Textured");
     texturedCheck_->setEnabled(false);
-    connect(texturedCheck_, &QCheckBox::toggled, glWidgetOriginal_,   &Orbital3DView::setTextured);
+    connect(texturedCheck_, &QCheckBox::toggled, glWidgetOriginal_, &Orbital3DView::setTextured);
     connect(texturedCheck_, &QCheckBox::toggled, glWidgetSimplified_, &Orbital3DView::setTextured);
     controlsRows->addWidget(texturedCheck_);
 
     cullFaceCheck_ = new QCheckBox("Backface Cull");
     cullFaceCheck_->setChecked(true);
-    connect(cullFaceCheck_, &QCheckBox::toggled, glWidgetOriginal_,   &Orbital3DView::setCullFace);
+    connect(cullFaceCheck_, &QCheckBox::toggled, glWidgetOriginal_, &Orbital3DView::setCullFace);
     connect(cullFaceCheck_, &QCheckBox::toggled, glWidgetSimplified_, &Orbital3DView::setCullFace);
     controlsRows->addWidget(cullFaceCheck_);
 
     uvViewCheck_ = new QCheckBox("UV View");
     uvViewCheck_->setEnabled(false);
-    connect(uvViewCheck_, &QCheckBox::toggled, glWidgetOriginal_,   &Orbital3DView::setUVMode);
+    connect(uvViewCheck_, &QCheckBox::toggled, glWidgetOriginal_, &Orbital3DView::setUVMode);
     connect(uvViewCheck_, &QCheckBox::toggled, glWidgetSimplified_, &Orbital3DView::setUVMode);
     controlsRows->addWidget(uvViewCheck_);
 
-    QHBoxLayout* boundaryRow = new QHBoxLayout();
+    QHBoxLayout *boundaryRow = new QHBoxLayout();
     boundaryRow->addWidget(new QLabel("Boundary:"));
     boundaryModeCombo_ = new QComboBox();
-    boundaryModeCombo_->addItem("No constraint",       (int)BoundaryMode::None);
-    boundaryModeCombo_->addItem("Constraint",          (int)BoundaryMode::Constraint);
-    boundaryModeCombo_->addItem("Lock seam edges",     (int)BoundaryMode::LockSeamVertices);
-    boundaryModeCombo_->addItem("Sync seam twins",     (int)BoundaryMode::SyncSeamTwins);
+    boundaryModeCombo_->addItem("No constraint", (int)BoundaryMode::None);
+    boundaryModeCombo_->addItem("Constraint", (int)BoundaryMode::Constraint);
+    boundaryModeCombo_->addItem("Lock seam edges", (int)BoundaryMode::LockSeamVertices);
+    boundaryModeCombo_->addItem("Sync seam twins", (int)BoundaryMode::SyncSeamTwins);
     boundaryModeCombo_->setCurrentIndex(1);
     boundaryRow->addWidget(boundaryModeCombo_, 1);
     controlsRows->addLayout(boundaryRow);
@@ -153,23 +153,23 @@ void SimplifierModule::buildUI()
     controlsRows->addWidget(useOptimalCandidateCheck_);
 
     showBoundaryEdgesCheck_ = new QCheckBox("Show Boundary Edges");
-    connect(showBoundaryEdgesCheck_, &QCheckBox::toggled, glWidgetOriginal_,   &Orbital3DView::setShowBoundaryEdges);
+    connect(showBoundaryEdgesCheck_, &QCheckBox::toggled, glWidgetOriginal_, &Orbital3DView::setShowBoundaryEdges);
     connect(showBoundaryEdgesCheck_, &QCheckBox::toggled, glWidgetSimplified_, &Orbital3DView::setShowBoundaryEdges);
     controlsRows->addWidget(showBoundaryEdgesCheck_);
 
     showInternalEdgesCheck_ = new QCheckBox("Show Internal Edges");
-    connect(showInternalEdgesCheck_, &QCheckBox::toggled, glWidgetOriginal_,   &Orbital3DView::setShowInternalEdges);
+    connect(showInternalEdgesCheck_, &QCheckBox::toggled, glWidgetOriginal_, &Orbital3DView::setShowInternalEdges);
     connect(showInternalEdgesCheck_, &QCheckBox::toggled, glWidgetSimplified_, &Orbital3DView::setShowInternalEdges);
     controlsRows->addWidget(showInternalEdgesCheck_);
 
     layout->addWidget(controlsGroup);
 
     // ── Inflate / Deflate ──────────────────────────────────────────────────
-    QGroupBox* inflateGroup = new QGroupBox("Inflate / Deflate");
-    QVBoxLayout* inflateLayout = new QVBoxLayout(inflateGroup);
+    QGroupBox *inflateGroup = new QGroupBox("Inflate / Deflate");
+    QVBoxLayout *inflateLayout = new QVBoxLayout(inflateGroup);
     inflateLayout->setSpacing(4);
 
-    QHBoxLayout* inflateValRow = new QHBoxLayout();
+    QHBoxLayout *inflateValRow = new QHBoxLayout();
     inflateValRow->addWidget(new QLabel("Offset:"));
     inflateSpin_ = new QDoubleSpinBox();
     inflateSpin_->setMinimum(-1e6);
@@ -188,36 +188,36 @@ void SimplifierModule::buildUI()
     inflateSlider_->setEnabled(false);
     inflateLayout->addWidget(inflateSlider_);
 
-    connect(inflateSlider_, &QSlider::valueChanged, this, [this](int val) {
+    connect(inflateSlider_, &QSlider::valueChanged, this, [this](int val)
+            {
         double offset = (inflateScale_ > 1e-10) ? val / 1000.0 * inflateScale_ : 0.0;
         inflateSpin_->blockSignals(true);
         inflateSpin_->setValue(offset);
         inflateSpin_->blockSignals(false);
-        applyInflate(offset);
-    });
-    connect(inflateSpin_, QOverload<double>::of(&QDoubleSpinBox::valueChanged), this, [this](double val) {
+        applyInflate(offset); });
+    connect(inflateSpin_, QOverload<double>::of(&QDoubleSpinBox::valueChanged), this, [this](double val)
+            {
         int sliderVal = (inflateScale_ > 1e-10) ? (int)(val / inflateScale_ * 1000.0) : 0;
         inflateSlider_->blockSignals(true);
         inflateSlider_->setValue(std::max(-1000, std::min(1000, sliderVal)));
         inflateSlider_->blockSignals(false);
-        applyInflate(val);
-    });
+        applyInflate(val); });
 
     layout->addWidget(inflateGroup);
 
     // ── Signals ───────────────────────────────────────────────────────────
     connect(targetFacesSpinBox_, QOverload<int>::of(&QSpinBox::valueChanged),
             this, &SimplifierModule::onTargetFacesChanged);
-    connect(simplificationSlider_, &QSlider::valueChanged, this, [this](int val) {
+    connect(simplificationSlider_, &QSlider::valueChanged, this, [this](int val)
+            {
         int targetFaces = std::max(4, (int)(originalFaceCount_ * val / 100.0));
         targetFacesSpinBox_->blockSignals(true);
         targetFacesSpinBox_->setValue(targetFaces);
-        targetFacesSpinBox_->blockSignals(false);
-    });
+        targetFacesSpinBox_->blockSignals(false); });
 
     layout->addStretch();
 
-    QScrollArea* scrollArea = new QScrollArea();
+    QScrollArea *scrollArea = new QScrollArea();
     scrollArea->setWidget(controlsWidget);
     scrollArea->setWidgetResizable(true);
     scrollArea->setMinimumWidth(220);
@@ -229,9 +229,9 @@ void SimplifierModule::buildUI()
 
 // ─── Public methods ───────────────────────────────────────────────────────────
 
-bool SimplifierModule::loadModel(const QString& path)
+bool SimplifierModule::loadModel(const QString &path)
 {
-    originalMesh_   = std::make_unique<QEMSimplifier>();
+    originalMesh_ = std::make_unique<QEMSimplifier>();
     simplifiedMesh_ = std::make_unique<QEMSimplifier>();
 
     bool success = false;
@@ -248,7 +248,7 @@ bool SimplifierModule::loadModel(const QString& path)
     *simplifiedMesh_ = *originalMesh_;
 
     originalFaceCount_ = originalMesh_->faceCount();
-    targetFaceCount_   = std::max(4, originalFaceCount_ / 4);
+    targetFaceCount_ = std::max(4, originalFaceCount_ / 4);
 
     targetFacesSpinBox_->blockSignals(true);
     targetFacesSpinBox_->setMaximum(originalFaceCount_);
@@ -266,8 +266,12 @@ bool SimplifierModule::loadModel(const QString& path)
         texturedCheck_->setChecked(false);
 
     bool hasUVs = false;
-    for (const auto& v : originalMesh_->vertices)
-        if (v.uv.squaredNorm() > 1e-12) { hasUVs = true; break; }
+    for (const auto &v : originalMesh_->vertices)
+        if (v.uv.squaredNorm() > 1e-12)
+        {
+            hasUVs = true;
+            break;
+        }
     uvViewCheck_->setEnabled(hasUVs);
     if (!hasUVs)
         uvViewCheck_->setChecked(false);
@@ -291,7 +295,7 @@ bool SimplifierModule::loadModel(const QString& path)
     return true;
 }
 
-bool SimplifierModule::saveSimplified(const QString& path)
+bool SimplifierModule::saveSimplified(const QString &path)
 {
     if (!simplifiedMesh_ || simplifiedMesh_->faceCount() == 0)
         return false;
@@ -317,7 +321,7 @@ void SimplifierModule::onSimplify()
 
     int targetFaces = targetFacesSpinBox_->value();
     *simplifiedMesh_ = *originalMesh_;
-    simplifiedMesh_->boundaryMode      = (BoundaryMode)boundaryModeCombo_->currentData().toInt();
+    simplifiedMesh_->boundaryMode = (BoundaryMode)boundaryModeCombo_->currentData().toInt();
     simplifiedMesh_->envelopeConstraint = envelopeConstraintCheck_->isChecked();
     simplifiedMesh_->useOptimalCandidate = useOptimalCandidateCheck_->isChecked();
 
@@ -331,13 +335,13 @@ void SimplifierModule::onSimplify()
         baseSimplifiedPositions_[i] = simplifiedMesh_->vertices[i].pos;
 
     simplifiedVertexNormals_.assign(simplifiedMesh_->vertices.size(), Eigen::Vector3d::Zero());
-    for (const auto& f : simplifiedMesh_->faces)
+    for (const auto &f : simplifiedMesh_->faces)
     {
         if (f.removed)
             continue;
-        const auto& p0 = baseSimplifiedPositions_[f.v[0]];
-        const auto& p1 = baseSimplifiedPositions_[f.v[1]];
-        const auto& p2 = baseSimplifiedPositions_[f.v[2]];
+        const auto &p0 = baseSimplifiedPositions_[f.v[0]];
+        const auto &p1 = baseSimplifiedPositions_[f.v[1]];
+        const auto &p2 = baseSimplifiedPositions_[f.v[2]];
         Eigen::Vector3d n = (p1 - p0).cross(p2 - p0);
         simplifiedVertexNormals_[f.v[0]] += n;
         simplifiedVertexNormals_[f.v[1]] += n;
@@ -351,14 +355,15 @@ void SimplifierModule::onSimplify()
     {
         Eigen::Vector3d bmin = Eigen::Vector3d::Constant(1e18);
         Eigen::Vector3d bmax = Eigen::Vector3d::Constant(-1e18);
-        for (const auto& p : baseSimplifiedPositions_)
+        for (const auto &p : baseSimplifiedPositions_)
         {
             bmin = bmin.cwiseMin(p);
             bmax = bmax.cwiseMax(p);
         }
         double cell = std::max((bmax - bmin).norm() * 1e-7, 1e-9);
 
-        auto quantize = [cell](const Eigen::Vector3d& p) {
+        auto quantize = [cell](const Eigen::Vector3d &p)
+        {
             return std::make_tuple(
                 (long long)std::llround(p.x() / cell),
                 (long long)std::llround(p.y() / cell),
@@ -403,7 +408,7 @@ void SimplifierModule::onSimplify()
     {
         Eigen::Vector3d bmin = Eigen::Vector3d::Constant(1e18);
         Eigen::Vector3d bmax = Eigen::Vector3d::Constant(-1e18);
-        for (const auto& v : originalMesh_->vertices)
+        for (const auto &v : originalMesh_->vertices)
         {
             if (!v.removed)
             {
@@ -440,9 +445,12 @@ void SimplifierModule::onTargetFacesChanged(int value)
 
 void SimplifierModule::onResetCameras()
 {
-    if (glWidgetOriginal_)   glWidgetOriginal_->resetCamera();
-    if (glWidgetSimplified_) glWidgetSimplified_->resetCamera();
-    if (glWidgetOverlay_)    glWidgetOverlay_->resetCamera();
+    if (glWidgetOriginal_)
+        glWidgetOriginal_->resetCamera();
+    if (glWidgetSimplified_)
+        glWidgetSimplified_->resetCamera();
+    if (glWidgetOverlay_)
+        glWidgetOverlay_->resetCamera();
 }
 
 // ─── Private methods ──────────────────────────────────────────────────────────
@@ -472,7 +480,7 @@ void SimplifierModule::updateStats()
     if (simplifiedMesh_->faceCount() > 0 && originalMesh_->faceCount() > 0)
     {
         double reduction = 100.0 *
-            (1.0 - (double)simplifiedMesh_->faceCount() / originalMesh_->faceCount());
+                           (1.0 - (double)simplifiedMesh_->faceCount() / originalMesh_->faceCount());
         emit statusMessage(QString("Reduction: %1%").arg(reduction, 0, 'f', 1));
     }
     else
