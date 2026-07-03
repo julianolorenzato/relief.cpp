@@ -10,6 +10,7 @@
 #include <memory>
 #include "relief/qem.h"
 #include "relief/textures.h"
+#include "relief/uv_atlas.h"
 #include "gui/relief_view.h"
 
 // Standalone context for testing relief mapping in isolation.
@@ -60,5 +61,10 @@ private:
     // ── State ─────────────────────────────────────────────────────────────────
     std::unique_ptr<QEMSimplifier> mesh;
     QImage colorImg, depthImg, normalImg;
-    TexturePrepResult tpResult;
+
+    // Baked results — kept alive so ReliefView pointers remain valid until paintGL uploads them
+    MipPyramid      bakedColorMap_;
+    MipPyramid      bakedReliefMap_;
+    MipPyramid      bakedNormalMap_;
+    OffsetMapResult bakedOffsetMap_;
 };

@@ -11,6 +11,7 @@
 #include <glm/glm.hpp>
 #include "relief/qem.h"
 #include "relief/textures.h"
+#include "relief/uv_atlas.h"
 
 enum class RenderMode { Solid, Textured, Overlay, Relief, UV };
 
@@ -39,8 +40,10 @@ public:
 
     // Upload a float MipPyramid as color texture (overrides mesh's embedded texture)
     void setColorTexture(const MipPyramid& pyr);
-    // Upload all four relief-mapping textures from a TexturePrepResult
-    void setTextures(const TexturePrepResult& result);
+    void setColorMap(const MipPyramid& pyr);
+    void setReliefMap(const MipPyramid& pyr);
+    void setNormalMap(const MipPyramid& pyr);
+    void setOffsetMap(const OffsetMapResult& off);
     bool hasTextures() const { return colorTex_ != 0; }
 
     void resetCamera();
@@ -117,7 +120,10 @@ private:
     bool secondaryMeshDirty_ = false;
     bool reliefTexDirty_     = false;
     bool colorPyrDirty_      = false;
-    const TexturePrepResult* pendingTextures_ = nullptr;
+    const MipPyramid*      pendingColorMap_  = nullptr;
+    const MipPyramid*      pendingReliefMap_ = nullptr;
+    const MipPyramid*      pendingNormalMap_ = nullptr;
+    const OffsetMapResult* pendingOffsetMap_ = nullptr;
     const MipPyramid*        pendingColorPyr_ = nullptr;
 
     // Relief shader uniforms (precomputed from texture resolution)

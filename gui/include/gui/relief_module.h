@@ -20,7 +20,7 @@ public slots:
     // Store mesh pointers and mark them pending for sync.
     void setMeshes(QEMSimplifier* original, QEMSimplifier* simplified);
     // Store the texture prep result and mark it pending for sync.
-    void onTexturesReady(const TexturePrepResult& result);
+    // void onTexturesReady(const TexturePrepResult& result); // disabled: TexturePrepResult removed
     // Called when this tab is activated — flushes any pending data.
     void onActivated();
 
@@ -55,6 +55,5 @@ private:
     QEMSimplifier* originalMesh_   = nullptr;
     QEMSimplifier* simplifiedMesh_ = nullptr;
 
-    // Stored texture prep result (copy)
-    TexturePrepResult tpResult_;
+    // TexturePrepResult tpResult_; // disabled: TexturePrepResult removed
 };

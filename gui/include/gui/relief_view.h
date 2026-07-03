@@ -8,6 +8,7 @@
 #include <glm/glm.hpp>
 #include "relief/qem.h"
 #include "relief/textures.h"
+#include "relief/uv_atlas.h"
 
 // Dedicated OpenGL widget for relief mapping.
 // Receives a simplified mesh and a TexturePrepResult, renders with the
@@ -21,7 +22,10 @@ public:
     ~ReliefView() override;
 
     void setMesh(const QEMSimplifier *mesh);
-    void setTextures(const TexturePrepResult &result);
+    void setColorMap(const MipPyramid& pyr);
+    void setReliefMap(const MipPyramid& pyr);
+    void setNormalMap(const MipPyramid& pyr);
+    void setOffsetMap(const OffsetMapResult& off);
     bool hasTextures() const { return this->colorTex != 0; }
 
     void resetCamera();
@@ -68,7 +72,10 @@ private:
     // Mesh (not owned)
     const QEMSimplifier *mesh = nullptr;
 
-    const TexturePrepResult *pendingTextures = nullptr;
+    const MipPyramid*      pendingColorMap_  = nullptr;
+    const MipPyramid*      pendingReliefMap_ = nullptr;
+    const MipPyramid*      pendingNormalMap_ = nullptr;
+    const OffsetMapResult* pendingOffsetMap_ = nullptr;
 
     // Shader uniforms derived from texture resolution
     float lastMip   = 0.f;

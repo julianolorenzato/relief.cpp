@@ -1,11 +1,6 @@
 #pragma once
-#include "relief/qem.h"
-#include "relief/uv_atlas.h"
 #include <vector>
-#include <functional>
 #include <cstdint>
-
-using TexturePrepProgressCb = std::function<void(int)>;
 
 // Raw uncompressed image (uint8, row-major). channels: 1=grey, 3=RGB, 4=RGBA.
 struct RawImage {
@@ -29,26 +24,26 @@ struct MipPyramid {
     int levelCount() const { return (int)mips.size(); }
 };
 
-struct TexturePrepResult {
-    MipPyramid colorMap;      // RGBA, average-downsampled
-    MipPyramid reliefMap;     // R=min depth, G=max depth, B=seam/offset mask, A=reserved(0)
-    MipPyramid normalMap;     // XYZ unit vector in [-1,1], average-downsampled + renormalized
-    OffsetMapResult offsetMap; // mip0 only
+namespace Textures {
 
-    bool valid = false;
-};
+// Build a full mip pyramid using 2x2 average (bilinear) downsampling.
+// If renormalizeAsNormal is true, each downsampled level is renormalized
+// so every texel remains a unit vector (use for normal maps in [-1,1]).
+MipPyramid buildBilinearPyramid(
+    const std::vector<float>& mip0,
+    int width, int height, int channels,
+    bool renormalizeAsNormal = false);
 
-class TextureBaker {
-public:
-    // colorImg: RGBA8888, depthImg: Grayscale8 (channel 0 used as depth),
-    // normalImg: RGB888 or RGBA8888 (XYZ encoded in [0,1]).
-    // workRes: square resolution for baking. seamBandTexels: UV seam dilation width.
-    static TexturePrepResult bake(
-        const QEMSimplifier& mesh,
-        const RawImage& colorImg,
-        const RawImage& depthImg,
-        const RawImage& normalImg,
-        int workRes,
-        int seamBandTexels,
-        TexturePrepProgressCb cb = {});
-};
+// Build a mip pyramid using 2x2 minimum pooling — single channel.
+// Each coarser level stores the minimum value seen in its 2x2 footprint.
+MipPyramid buildMinPyramid(
+    const std::vector<float>& mip0,
+    int width, int height);
+
+// Build a mip pyramid using 2x2 maximum pooling — single channel.
+// Each coarser level stores the maximum value seen in its 2x2 footprint.
+MipPyramid buildMaxPyramid(
+    const std::vector<float>& mip0,
+    int width, int height);
+
+} // namespace Textures

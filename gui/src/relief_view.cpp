@@ -134,12 +134,30 @@ void ReliefView::setMesh(const QEMSimplifier *mesh)
     resetCamera();
 }
 
-void ReliefView::setTextures(const TexturePrepResult &result)
+void ReliefView::setColorMap(const MipPyramid& pyr)
 {
-    this->pendingTextures = &result;
-    int res = std::max(1, result.reliefMap.width);
-    this->lastMip = std::log2((float)res);
+    this->pendingColorMap_ = &pyr;
+    update();
+}
+
+void ReliefView::setReliefMap(const MipPyramid& pyr)
+{
+    this->pendingReliefMap_ = &pyr;
+    int res = std::max(1, pyr.width);
+    this->lastMip   = std::log2((float)res);
     this->texelSize = 1.0f / (float)res;
+    update();
+}
+
+void ReliefView::setNormalMap(const MipPyramid& pyr)
+{
+    this->pendingNormalMap_ = &pyr;
+    update();
+}
+
+void ReliefView::setOffsetMap(const OffsetMapResult& off)
+{
+    this->pendingOffsetMap_ = &off;
     update();
 }
 
@@ -237,14 +255,10 @@ void ReliefView::paintGL()
         buildMeshBuffers();
     }
 
-    if (this->pendingTextures)
-    {
-        uploadPyramid(this->colorTex, this->pendingTextures->colorMap);
-        uploadPyramid(this->reliefTex, this->pendingTextures->reliefMap);
-        uploadPyramid(this->normalTex, this->pendingTextures->normalMap);
-        uploadOffsetMap(this->offsetTex, this->pendingTextures->offsetMap);
-        this->pendingTextures = nullptr;
-    }
+    if (this->pendingColorMap_)  { uploadPyramid(this->colorTex,  *this->pendingColorMap_);  this->pendingColorMap_  = nullptr; }
+    if (this->pendingReliefMap_) { uploadPyramid(this->reliefTex, *this->pendingReliefMap_); this->pendingReliefMap_ = nullptr; }
+    if (this->pendingNormalMap_) { uploadPyramid(this->normalTex, *this->pendingNormalMap_); this->pendingNormalMap_ = nullptr; }
+    if (this->pendingOffsetMap_) { uploadOffsetMap(this->offsetTex, *this->pendingOffsetMap_); this->pendingOffsetMap_ = nullptr; }
 
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 

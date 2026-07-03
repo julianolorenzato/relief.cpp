@@ -86,9 +86,9 @@ void MainWindow::setupUI()
     connect(heightmap_,  &HeightmapModule::bakeReady,
             texturePrep_,&TexturePrepModule::onHeightmapReady);
 
-    // texture prep → relief
-    connect(texturePrep_,&TexturePrepModule::texturesReady,
-            relief_,     &ReliefModule::onTexturesReady);
+    // texture prep → relief (disabled: texturesReady signal and onTexturesReady slot removed)
+    // connect(texturePrep_,&TexturePrepModule::texturesReady,
+    //         relief_,     &ReliefModule::onTexturesReady);
 
     // status messages
     connect(simplifier_, &SimplifierModule::statusMessage,  statusLabel, &QLabel::setText);

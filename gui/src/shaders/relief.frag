@@ -121,7 +121,8 @@ vec3 Mip_Relief(
 
     for(int i = 0; i < maxSteps; i++) {
         stepsTaken = i + 1;
-        float s = textureLod(Relief_Map, pos.xy, mip).x;
+        vec2 rm = textureLod(Relief_Map, pos.xy, mip).xy;
+        float s = (ReliefTextureType == 1) ? rm.y : rm.x;
         float depth = (ReliefTextureType == 1 ? s - 1.0 : -s) * DepthScale;
 
         if(UseAtlas)

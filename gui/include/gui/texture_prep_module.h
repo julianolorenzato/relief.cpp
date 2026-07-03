@@ -27,7 +27,7 @@ public slots:
     void onHeightmapReady(const HeightmapResult& result);
 
 signals:
-    void texturesReady(const TexturePrepResult& result);
+    // void texturesReady(const TexturePrepResult& result); // disabled: TexturePrepResult removed
     void statusMessage(const QString& msg);
 
 private slots:
@@ -64,7 +64,7 @@ private:
     QCheckBox*   tpChannelCheck_[3][4] = {};
 
     // ── State ─────────────────────────────────────────────────────────────────
-    TexturePrepResult  tpResult_;
+    // TexturePrepResult tpResult_; // disabled: TexturePrepResult removed
     QObject*           tpWorker_ = nullptr;
     QThread*           tpThread_ = nullptr;
 

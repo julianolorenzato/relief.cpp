@@ -1,37 +1,9 @@
 #include "gui/texture_prep_module.h"
 
-namespace {
-class TexturePrepWorker : public QObject {
-    Q_OBJECT
-public:
-    const QEMSimplifier* mesh = nullptr;
-    QImage colorImg, depthImg, normalImg;
-    int workRes        = 512;
-    int seamBandTexels = 4;
-    TexturePrepResult result;
-signals:
-    void progress(int overall, const QString& text);
-    void finished();
-public slots:
-    void run() {
-        emit progress(0, "Baking textures…");
-        auto cb = [this](int pct) { emit progress(pct, "Baking textures…"); };
-
-        QImage c = colorImg.convertToFormat(QImage::Format_RGBA8888);
-        QImage d = depthImg.convertToFormat(QImage::Format_Grayscale8);
-        QImage n = normalImg.convertToFormat(QImage::Format_RGB888);
-
-        RawImage rawColor  { c.constBits(), c.width(), c.height(), 4 };
-        RawImage rawDepth  { d.constBits(), d.width(), d.height(), 1 };
-        RawImage rawNormal { n.constBits(), n.width(), n.height(), 3 };
-
-        result = TextureBaker::bake(*mesh, rawColor, rawDepth, rawNormal,
-                                    workRes, seamBandTexels, cb);
-        emit progress(100, result.valid ? "Done" : "Failed to prepare textures");
-        emit finished();
-    }
-};
-} // namespace
+// TexturePrepWorker disabled — TextureBaker and TexturePrepResult have been removed.
+// namespace {
+// class TexturePrepWorker : public QObject { ... }
+// } // namespace
 #include <QVBoxLayout>
 #include <QHBoxLayout>
 #include <QGroupBox>
@@ -241,7 +213,7 @@ void TexturePrepModule::onModelLoaded(QEMSimplifier* simplified)
 {
     simplifiedMesh_ = simplified;
     hmResult_ = HeightmapResult{};
-    tpResult_ = TexturePrepResult{};
+    // tpResult_ = TexturePrepResult{}; // disabled: TexturePrepResult removed
 
     for (int i = 0; i < 4; i++)
     {
@@ -275,83 +247,10 @@ void TexturePrepModule::onHeightmapReady(const HeightmapResult& result)
 
 void TexturePrepModule::onTpGenerate()
 {
-    if (tpThread_ && tpThread_->isRunning())
-        return;
-    if (!simplifiedMesh_ || simplifiedMesh_->faceCount() == 0)
-    {
-        QMessageBox::warning(this, "Warning", "Simplify the mesh first before preparing textures.");
-        return;
-    }
-    if (simplifiedMesh_->textureData.empty() || simplifiedMesh_->normalTextureData.empty())
-    {
-        QMessageBox::warning(this, "Warning",
-            "The model has no embedded color and/or normal texture.\n"
-            "Load a GLTF with a baseColorTexture and normalTexture.");
-        return;
-    }
-    if (!hmResult_.valid || hmResult_.image.empty())
-    {
-        QMessageBox::warning(this, "Warning",
-            "Bake a heightmap first (Heightmap context) — it is used as the depth input.");
-        return;
-    }
-
-    bool hasUVs = false;
-    for (const auto& v : simplifiedMesh_->vertices)
-        if (v.uv.squaredNorm() > 1e-12) { hasUVs = true; break; }
-    if (!hasUVs)
-    {
-        QMessageBox::warning(this, "Warning",
-            "The simplified mesh has no UV coordinates.\n"
-            "Load a mesh with UVs (e.g. a GLTF with texture coordinates).");
-        return;
-    }
-
-    int res      = tpResCombo_->currentData().toInt();
-    int seamBand = tpSeamBandSpin_->value();
-
-    tpGenerateBtn_->setEnabled(false);
-    tpProgressBar_->setValue(0);
-    tpProgressLabel_->setText("Starting…");
-    for (int i = 0; i < 4; i++)
-    {
-        tpPreview_[i]->setText("(generating…)");
-        tpPreview_[i]->setPixmap(QPixmap());
-        tpInfoLabel_[i]->setText("—");
-        tpSaveBtn_[i]->setEnabled(false);
-        tpMipSpin_[i]->setEnabled(false);
-    }
-
-    auto* worker = new TexturePrepWorker();
-    worker->mesh      = simplifiedMesh_;
-    worker->colorImg  = rgbaTextureToQImage(simplifiedMesh_->textureData,
-                                            simplifiedMesh_->textureWidth, simplifiedMesh_->textureHeight);
-    worker->normalImg = rgbaTextureToQImage(simplifiedMesh_->normalTextureData,
-                                            simplifiedMesh_->normalTextureWidth, simplifiedMesh_->normalTextureHeight);
-    worker->depthImg  = QImage(hmResult_.image.data(), hmResult_.width, hmResult_.height,
-                               hmResult_.width, QImage::Format_Grayscale8)
-                            .mirrored(false, true);
-    worker->workRes        = res;
-    worker->seamBandTexels = seamBand;
-    tpWorker_ = worker;
-
-    tpThread_ = new QThread(this);
-    worker->moveToThread(tpThread_);
-
-    connect(tpThread_, &QThread::started,              worker, &TexturePrepWorker::run);
-    connect(worker,    &TexturePrepWorker::progress,   this,   &TexturePrepModule::onTpProgress);
-    connect(worker,    &TexturePrepWorker::finished,   this,   &TexturePrepModule::onTpDone);
-    connect(worker,    &TexturePrepWorker::finished,   tpThread_, &QThread::quit);
-    // tpWorker_ is deleted explicitly in onTpDone(), after it has read tpWorker_->result —
-    // see the comment on the equivalent hmWorker_ connection in launchBake() for why a
-    // finished->deleteLater connection on tpWorker_ itself would race the cross-thread
-    // delivery of finished() to onTpDone().
-    // See launchBake(): only delete the QThread once it has actually finished, not
-    // right after quit() is merely requested.
-    connect(tpThread_, &QThread::finished, tpThread_, &QObject::deleteLater);
-
-    emit statusMessage(QString("Baking textures %1×%1…").arg(res));
-    tpThread_->start();
+    // Disabled: TexturePrepWorker and TextureBaker have been removed.
+    QMessageBox::information(this, "Disabled",
+        "Texture generation from this module is temporarily disabled.\n"
+        "Use the Relief Test Module to bake textures directly.");
 }
 
 void TexturePrepModule::onTpProgress(int overall, const QString& text)
@@ -362,75 +261,12 @@ void TexturePrepModule::onTpProgress(int overall, const QString& text)
 
 void TexturePrepModule::onTpDone()
 {
-    tpResult_ = static_cast<TexturePrepWorker*>(tpWorker_)->result;
-
-    // Read of tpWorker_->result is done — safe to delete it now. tpThread_
-    // self-deletes once truly idle (see QThread::finished connection in onTpGenerate).
-    tpWorker_->deleteLater();
-    tpWorker_ = nullptr;
-    tpThread_ = nullptr;
-
-    if (!tpResult_.valid)
-    {
-        QMessageBox::critical(this, "Error", "Failed to generate textures (could not load one of the input images).");
-        for (int i = 0; i < 4; i++)
-            tpPreview_[i]->setText("(failed)");
-    }
-    else
-    {
-        int levels[4] = {
-            tpResult_.colorMap.levelCount(), tpResult_.reliefMap.levelCount(),
-            tpResult_.normalMap.levelCount(), 1};
-        for (int i = 0; i < 4; i++)
-        {
-            tpMipSpin_[i]->setRange(0, std::max(0, levels[i] - 1));
-            tpMipSpin_[i]->setValue(0);
-            tpMipSpin_[i]->setEnabled(levels[i] > 1);
-            tpSaveBtn_[i]->setEnabled(true);
-            updatePreview(i);
-        }
-
-        emit texturesReady(tpResult_);
-    }
-
-    tpGenerateBtn_->setEnabled(true);
-    tpProgressLabel_->setText("Done");
-    emit statusMessage("Texture preparation complete");
+    // Disabled: TexturePrepWorker removed.
 }
 
-void TexturePrepModule::onTpSave(int idx)
+void TexturePrepModule::onTpSave(int /*idx*/)
 {
-    if (!tpResult_.valid)
-        return;
-    static const char* names[4] = {"Color Map", "Relief Map", "Normal Map", "Offset Map"};
-
-    QString fileName = QFileDialog::getSaveFileName(this, QString("Save %1").arg(names[idx]), "",
-                                                    "PNG Image (*.png);;All Files (*)");
-    if (fileName.isEmpty())
-        return;
-
-    QImage img;
-    if (idx == 3)
-    {
-        img = offsetMapMaskImage();
-    }
-    else
-    {
-        const MipPyramid& p = (idx == 0) ? tpResult_.colorMap
-                            : (idx == 1) ? tpResult_.reliefMap
-                                         : tpResult_.normalMap;
-        img = mipLevelToQImage(p.mips[0], p.width, p.height, p.channels, /*remapSigned=*/idx == 2);
-    }
-    img = img.mirrored(false, true);
-
-    if (img.save(fileName))
-    {
-        emit statusMessage("Saved: " + fileName);
-    }
-    else
-    {
-        QMessageBox::critical(this, "Error", "Failed to save image.");
-    }
+    // Disabled: tpResult_ removed.
 }
 
 // ─── Private methods ──────────────────────────────────────────────────────────
@@ -480,43 +316,9 @@ void TexturePrepModule::updateGenerateEnabled()
     tpGenerateBtn_->setEnabled(hasMesh && hasColor && hasNormal && hasDepth);
 }
 
-void TexturePrepModule::updatePreview(int idx)
+void TexturePrepModule::updatePreview(int /*idx*/)
 {
-    if (!tpResult_.valid)
-        return;
-
-    QImage img;
-    QString info;
-
-    if (idx == 3)
-    {
-        img  = offsetMapMaskImage();
-        info = QString("%1×%2 (seam mask)").arg(tpResult_.offsetMap.width).arg(tpResult_.offsetMap.height);
-    }
-    else
-    {
-        const MipPyramid& p = (idx == 0) ? tpResult_.colorMap
-                            : (idx == 1) ? tpResult_.reliefMap
-                                         : tpResult_.normalMap;
-        int level = std::min(tpMipSpin_[idx]->value(), p.levelCount() - 1);
-        if (level < 0)
-            return;
-        int w = std::max(1, p.width  >> level);
-        int h = std::max(1, p.height >> level);
-        bool show[4] = {
-            tpChannelCheck_[idx][0]->isChecked(), tpChannelCheck_[idx][1]->isChecked(),
-            tpChannelCheck_[idx][2]->isChecked(), tpChannelCheck_[idx][3]->isChecked()};
-        img  = mipLevelToQImage(p.mips[level], w, h, p.channels, /*remapSigned=*/idx == 2, show);
-        info = QString("%1×%2, %3 mips").arg(w).arg(h).arg(p.levelCount());
-    }
-
-    img = img.mirrored(false, true);
-    QPixmap px = QPixmap::fromImage(img);
-    QSize labelSize = tpPreview_[idx]->size();
-    if (labelSize.isEmpty())
-        labelSize = QSize(220, 220);
-    tpPreview_[idx]->setPixmap(px.scaled(labelSize, Qt::KeepAspectRatio, Qt::FastTransformation));
-    tpInfoLabel_[idx]->setText(info);
+    // Disabled: tpResult_ removed.
 }
 
 QImage TexturePrepModule::mipLevelToQImage(const std::vector<float>& data, int w, int h,
@@ -547,17 +349,8 @@ QImage TexturePrepModule::mipLevelToQImage(const std::vector<float>& data, int w
 
 QImage TexturePrepModule::offsetMapMaskImage() const
 {
-    const OffsetMapResult& o = tpResult_.offsetMap;
-    QImage img(std::max(1, o.width), std::max(1, o.height), QImage::Format_RGB888);
-    for (int y = 0; y < o.height; y++)
-    {
-        for (int x = 0; x < o.width; x++)
-        {
-            float valid = o.data[((size_t)y * o.width + x) * 4 + 3];
-            img.setPixelColor(x, y, valid > 0.0f ? QColor(255, 60, 60) : QColor(20, 20, 20));
-        }
-    }
-    return img;
+    // Disabled: tpResult_ removed.
+    return QImage();
 }
 
-#include "texture_prep_module.moc"
+// #include "texture_prep_module.moc" — removed: TexturePrepWorker (the Q_OBJECT class it served) was disabled

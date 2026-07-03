@@ -188,12 +188,30 @@ void Orbital3DView::setColorTexture(const MipPyramid& pyr) {
     update();
 }
 
-void Orbital3DView::setTextures(const TexturePrepResult& result) {
-    pendingTextures_ = &result;
+void Orbital3DView::setColorMap(const MipPyramid& pyr) {
+    pendingColorMap_ = &pyr;
     reliefTexDirty_  = true;
-    int res = std::max(1, result.reliefMap.width);
+    update();
+}
+
+void Orbital3DView::setReliefMap(const MipPyramid& pyr) {
+    pendingReliefMap_ = &pyr;
+    reliefTexDirty_   = true;
+    int res = std::max(1, pyr.width);
     lastMip_   = std::log2((float)res);
     texelSize_ = 1.0f / (float)res;
+    update();
+}
+
+void Orbital3DView::setNormalMap(const MipPyramid& pyr) {
+    pendingNormalMap_ = &pyr;
+    reliefTexDirty_   = true;
+    update();
+}
+
+void Orbital3DView::setOffsetMap(const OffsetMapResult& off) {
+    pendingOffsetMap_ = &off;
+    reliefTexDirty_   = true;
     update();
 }
 
@@ -721,13 +739,12 @@ void Orbital3DView::paintGL() {
         buildSecondaryBuffers();
         secondaryMeshDirty_ = false;
     }
-    if (reliefTexDirty_ && pendingTextures_) {
-        uploadPyramid(colorTex_,  pendingTextures_->colorMap);
-        uploadPyramid(reliefTex_, pendingTextures_->reliefMap);
-        uploadPyramid(normalTex_, pendingTextures_->normalMap);
-        uploadOffsetMap(offsetTex_, pendingTextures_->offsetMap);
-        reliefTexDirty_  = false;
-        pendingTextures_ = nullptr;
+    if (reliefTexDirty_) {
+        if (pendingColorMap_)  { uploadPyramid(colorTex_,  *pendingColorMap_);  pendingColorMap_  = nullptr; }
+        if (pendingReliefMap_) { uploadPyramid(reliefTex_, *pendingReliefMap_); pendingReliefMap_ = nullptr; }
+        if (pendingNormalMap_) { uploadPyramid(normalTex_, *pendingNormalMap_); pendingNormalMap_ = nullptr; }
+        if (pendingOffsetMap_) { uploadOffsetMap(offsetTex_, *pendingOffsetMap_); pendingOffsetMap_ = nullptr; }
+        reliefTexDirty_ = false;
     }
     if (colorPyrDirty_ && pendingColorPyr_) {
         if (colorTex_) { glDeleteTextures(1, &colorTex_); colorTex_ = 0; }

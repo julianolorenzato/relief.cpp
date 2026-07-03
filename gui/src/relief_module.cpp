@@ -157,11 +157,7 @@ void ReliefModule::setMeshes(QEMSimplifier* original, QEMSimplifier* simplified)
     meshPending_    = true;
 }
 
-void ReliefModule::onTexturesReady(const TexturePrepResult& result)
-{
-    tpResult_        = result;
-    texturesPending_ = true;
-}
+// void ReliefModule::onTexturesReady(const TexturePrepResult& result) — disabled: TexturePrepResult removed
 
 void ReliefModule::onActivated()
 {
@@ -180,11 +176,6 @@ void ReliefModule::syncIfReady()
             reliefOriginalWidget_->setMesh(originalMesh_);
         meshPending_ = false;
     }
-    if (texturesPending_ && tpResult_.valid)
-    {
-        reliefWidget_->setTextures(tpResult_);
-        reliefCompareWidget_->setColorTexture(tpResult_.colorMap);
-        reliefOriginalWidget_->setColorTexture(tpResult_.colorMap);
-        texturesPending_ = false;
-    }
+    // texturesPending_ block disabled: tpResult_ removed
+    // if (texturesPending_ && tpResult_.valid) { ... }
 }
