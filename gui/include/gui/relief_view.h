@@ -4,6 +4,7 @@
 #include <QOpenGLBuffer>
 #include <QOpenGLVertexArrayObject>
 #include <QOpenGLShaderProgram>
+#include <QOpenGLTexture>
 #include <QPoint>
 #include <QVector3D>
 #include <QMatrix4x4>
@@ -27,7 +28,7 @@ public:
     void setReliefMap(const MipPyramid& pyr);
     void setNormalMap(const MipPyramid& pyr);
     void setOffsetMap(const OffsetMapResult& off);
-    bool hasTextures() const { return colorTex != 0 && reliefTex != 0 && normalTex != 0 && offsetTex != 0; }
+    bool hasTextures() const { return colorTex && reliefTex && normalTex && offsetTex; }
 
     void resetCamera();
     void syncCamera(float rotX, float rotY, float zoom);
@@ -84,15 +85,14 @@ private:
     QOpenGLVertexArrayObject vao;
     int indexCount = 0;
 
-    GLuint colorTex    = 0;
-    GLuint reliefTex   = 0;
-    GLuint normalTex   = 0;
-    GLuint offsetTex   = 0;
-    GLuint samplerPoint = 0;
+    QOpenGLTexture *colorTex   = nullptr;
+    QOpenGLTexture *reliefTex  = nullptr;
+    QOpenGLTexture *normalTex  = nullptr;
+    QOpenGLTexture *offsetTex  = nullptr;
 
     void buildMeshBuffers();
-    void uploadPyramid(GLuint &texId, const MipPyramid &pyr);
-    void uploadOffsetMap(GLuint &texId, const OffsetMapResult &off);
+    void uploadPyramid(QOpenGLTexture *&tex, const MipPyramid &pyr, bool pointFilter = false);
+    void uploadOffsetMap(QOpenGLTexture *&tex, const OffsetMapResult &off);
     void deleteTextures();
 
     QMatrix4x4 viewMatrix() const;

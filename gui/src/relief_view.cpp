@@ -113,8 +113,6 @@ ReliefView::~ReliefView()
     if (this->vao.isCreated())
         this->vao.destroy();
     deleteTextures();
-    if (this->samplerPoint)
-        glDeleteSamplers(1, &this->samplerPoint);
     doneCurrent();
 }
 
@@ -141,7 +139,7 @@ void ReliefView::setReliefMap(const MipPyramid& pyr)
     this->lastMip   = std::log2((float)res);
     this->texelSize = 1.0f / (float)res;
     makeCurrent();
-    uploadPyramid(this->reliefTex, pyr);
+    uploadPyramid(this->reliefTex, pyr, true);
     doneCurrent();
     update();
 }
@@ -237,11 +235,6 @@ void ReliefView::initializeGL()
     if (!this->prog.link())
         std::cerr << "ReliefView link error: " << this->prog.log().toStdString() << "\n";
 
-    glGenSamplers(1, &this->samplerPoint);
-    glSamplerParameteri(this->samplerPoint, GL_TEXTURE_MIN_FILTER, GL_NEAREST_MIPMAP_NEAREST);
-    glSamplerParameteri(this->samplerPoint, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
-    glSamplerParameteri(this->samplerPoint, GL_TEXTURE_WRAP_S, GL_REPEAT);
-    glSamplerParameteri(this->samplerPoint, GL_TEXTURE_WRAP_T, GL_REPEAT);
 }
 
 void ReliefView::resizeGL(int w, int h)
@@ -301,28 +294,19 @@ void ReliefView::paintGL()
     this->prog.setUniformValue("TexelSize", this->texelSize);
     this->prog.setUniformValue("DebugView", this->debugView);
 
-    glActiveTexture(GL_TEXTURE0);
-    glBindTexture(GL_TEXTURE_2D, this->colorTex);
-    glBindSampler(0, 0);
+    this->colorTex->bind(0);
     this->prog.setUniformValue("Color_Map", 0);
-    glActiveTexture(GL_TEXTURE1);
-    glBindTexture(GL_TEXTURE_2D, this->reliefTex);
-    glBindSampler(1, this->samplerPoint);
+    this->reliefTex->bind(1);
     this->prog.setUniformValue("Relief_Map", 1);
-    glActiveTexture(GL_TEXTURE2);
-    glBindTexture(GL_TEXTURE_2D, this->offsetTex);
-    glBindSampler(2, 0);
+    this->offsetTex->bind(2);
     this->prog.setUniformValue("Offset_Map", 2);
-    glActiveTexture(GL_TEXTURE3);
-    glBindTexture(GL_TEXTURE_2D, this->normalTex);
-    glBindSampler(3, 0);
+    this->normalTex->bind(3);
     this->prog.setUniformValue("Normal_Map", 3);
 
     this->vao.bind();
     glDrawElements(GL_TRIANGLES, this->indexCount, GL_UNSIGNED_INT, nullptr);
     this->vao.release();
 
-    glBindSampler(1, 0);
     this->prog.release();
     glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
 }
@@ -381,80 +365,60 @@ void ReliefView::buildMeshBuffers()
     this->vao.release();
 }
 
-void ReliefView::uploadPyramid(GLuint &texId, const MipPyramid &pyr)
+void ReliefView::uploadPyramid(QOpenGLTexture *&tex, const MipPyramid &pyr, bool pointFilter)
 {
-    if (texId)
-    {
-        glDeleteTextures(1, &texId);
-        texId = 0;
-    }
+    delete tex;
+    tex = nullptr;
     if (pyr.mips.empty())
         return;
 
-    GLenum internalFmt = pyr.channels == 3 ? GL_RGB32F : GL_RGBA32F;
-    GLenum extFmt = pyr.channels == 3 ? GL_RGB : GL_RGBA;
+    tex = new QOpenGLTexture(QOpenGLTexture::Target2D);
+    tex->setFormat(pyr.channels == 3 ? QOpenGLTexture::RGB32F : QOpenGLTexture::RGBA32F);
+    tex->setSize(pyr.width, pyr.height);
+    tex->setMipLevels(pyr.levelCount());
+    tex->allocateStorage();
 
-    glGenTextures(1, &texId);
-    glBindTexture(GL_TEXTURE_2D, texId);
-    int w = pyr.width, h = pyr.height;
+    QOpenGLTexture::PixelFormat fmt = pyr.channels == 3 ? QOpenGLTexture::RGB : QOpenGLTexture::RGBA;
     for (int lvl = 0; lvl < pyr.levelCount(); lvl++)
+        tex->setData(lvl, fmt, QOpenGLTexture::Float32, pyr.mips[lvl].data());
+
+    if (pointFilter)
     {
-        glTexImage2D(GL_TEXTURE_2D, lvl, internalFmt, w, h, 0, extFmt, GL_FLOAT, pyr.mips[lvl].data());
-        w = std::max(1, w / 2);
-        h = std::max(1, h / 2);
+        tex->setMinificationFilter(QOpenGLTexture::NearestMipMapNearest);
+        tex->setMagnificationFilter(QOpenGLTexture::Nearest);
     }
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAX_LEVEL, pyr.levelCount() - 1);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
-    glBindTexture(GL_TEXTURE_2D, 0);
+    else
+    {
+        tex->setMinificationFilter(QOpenGLTexture::LinearMipMapLinear);
+        tex->setMagnificationFilter(QOpenGLTexture::Linear);
+    }
+    tex->setWrapMode(QOpenGLTexture::Repeat);
 }
 
-void ReliefView::uploadOffsetMap(GLuint &texId, const OffsetMapResult &off)
+void ReliefView::uploadOffsetMap(QOpenGLTexture *&tex, const OffsetMapResult &off)
 {
-    if (texId)
-    {
-        glDeleteTextures(1, &texId);
-        texId = 0;
-    }
+    delete tex;
+    tex = nullptr;
     if (off.data.empty())
         return;
 
-    glGenTextures(1, &texId);
-    glBindTexture(GL_TEXTURE_2D, texId);
-    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA32F, off.width, off.height,
-                 0, GL_RGBA, GL_FLOAT, off.data.data());
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAX_LEVEL, 0);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
-    glBindTexture(GL_TEXTURE_2D, 0);
+    tex = new QOpenGLTexture(QOpenGLTexture::Target2D);
+    tex->setFormat(QOpenGLTexture::RGBA32F);
+    tex->setSize(off.width, off.height);
+    tex->setMipLevels(1);
+    tex->allocateStorage();
+    tex->setData(0, QOpenGLTexture::RGBA, QOpenGLTexture::Float32, off.data.data());
+    tex->setMinificationFilter(QOpenGLTexture::Nearest);
+    tex->setMagnificationFilter(QOpenGLTexture::Nearest);
+    tex->setWrapMode(QOpenGLTexture::Repeat);
 }
 
 void ReliefView::deleteTextures()
 {
-    if (this->colorTex)
-    {
-        glDeleteTextures(1, &this->colorTex);
-        this->colorTex = 0;
-    }
-    if (this->reliefTex)
-    {
-        glDeleteTextures(1, &this->reliefTex);
-        this->reliefTex = 0;
-    }
-    if (this->normalTex)
-    {
-        glDeleteTextures(1, &this->normalTex);
-        this->normalTex = 0;
-    }
-    if (this->offsetTex)
-    {
-        glDeleteTextures(1, &this->offsetTex);
-        this->offsetTex = 0;
-    }
+    delete colorTex;  colorTex  = nullptr;
+    delete reliefTex; reliefTex = nullptr;
+    delete normalTex; normalTex = nullptr;
+    delete offsetTex; offsetTex = nullptr;
 }
 
 // ─── Camera matrices ──────────────────────────────────────────────────────────
