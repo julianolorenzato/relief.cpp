@@ -2,9 +2,7 @@
 #include <QMouseEvent>
 #include <QWheelEvent>
 #include <QPainter>
-#include <glm/glm.hpp>
-#include <glm/gtc/matrix_transform.hpp>
-#include <glm/gtc/type_ptr.hpp>
+#include <QtMath>
 #include <algorithm>
 #include <cmath>
 #include <iostream>
@@ -93,11 +91,6 @@ namespace
             idxs.push_back(remap[f.v[1]]);
             idxs.push_back(remap[f.v[2]]);
         }
-    }
-
-    QMatrix4x4 toQt(const glm::mat4 &m)
-    {
-        return QMatrix4x4(glm::value_ptr(m)).transposed();
     }
 
 } // namespace
@@ -284,12 +277,17 @@ void ReliefView::paintGL()
     glPolygonMode(GL_FRONT_AND_BACK, this->wireframe ? GL_LINE : GL_FILL);
 
     this->prog.bind();
-    this->prog.setUniformValue("projection", toQt(projMatrix()));
-    this->prog.setUniformValue("view", toQt(viewMatrix()));
-    this->prog.setUniformValue("model", toQt(modelMatrix()));
+    this->prog.setUniformValue("projection", projMatrix());
+    this->prog.setUniformValue("view", viewMatrix());
+    this->prog.setUniformValue("model", modelMatrix());
 
-    glm::vec3 camPos = glm::vec3(glm::inverse(viewMatrix())[3]);
-    this->prog.setUniformValue("viewPosWorld", QVector3D(camPos.x, camPos.y, camPos.z));
+    float radX = qDegreesToRadians(this->rotX);
+    float radY = qDegreesToRadians(this->rotY);
+    QVector3D camPos(
+        this->zoom * sinf(radY) * cosf(radX),
+        this->zoom * sinf(radX),
+        this->zoom * cosf(radY) * cosf(radX));
+    this->prog.setUniformValue("viewPosWorld", camPos);
 
     this->prog.setUniformValue("ReliefEnabled", this->reliefEnabled);
     this->prog.setUniformValue("UseAtlas", this->useAtlas);
@@ -346,7 +344,7 @@ void ReliefView::buildMeshBuffers()
     double radius = (bmax - bmin).norm() * 0.5;
     if (radius < 1e-9)
         radius = 1.0;
-    this->meshCenter = glm::vec3((float)center.x(), (float)center.y(), (float)center.z());
+    this->meshCenter = QVector3D((float)center.x(), (float)center.y(), (float)center.z());
     this->meshNormScale = 1.0f / (float)radius;
 
     std::vector<float> verts;
@@ -458,25 +456,32 @@ void ReliefView::deleteTextures()
 
 // ─── Camera matrices ──────────────────────────────────────────────────────────
 
-glm::mat4 ReliefView::projMatrix() const
+QMatrix4x4 ReliefView::projMatrix() const
 {
-    return glm::perspective(glm::radians(45.0f),
-                            (float)width() / std::max(1, height()),
-                            0.1f, 100.0f);
+    QMatrix4x4 m;
+    m.perspective(45.0f, (float)width() / std::max(1, height()), 0.1f, 100.0f);
+    return m;
 }
 
-glm::mat4 ReliefView::viewMatrix() const
+QMatrix4x4 ReliefView::viewMatrix() const
 {
-    glm::vec3 pos(
-        this->zoom * sinf(glm::radians(this->rotY)) * cosf(glm::radians(this->rotX)),
-        this->zoom * sinf(glm::radians(this->rotX)),
-        this->zoom * cosf(glm::radians(this->rotY)) * cosf(glm::radians(this->rotX)));
-    return glm::lookAt(pos, glm::vec3(0.f), glm::vec3(0.f, 1.f, 0.f));
+    float radX = qDegreesToRadians(this->rotX);
+    float radY = qDegreesToRadians(this->rotY);
+    QVector3D pos(
+        this->zoom * sinf(radY) * cosf(radX),
+        this->zoom * sinf(radX),
+        this->zoom * cosf(radY) * cosf(radX));
+    QMatrix4x4 m;
+    m.lookAt(pos, QVector3D(0.f, 0.f, 0.f), QVector3D(0.f, 1.f, 0.f));
+    return m;
 }
 
-glm::mat4 ReliefView::modelMatrix() const
+QMatrix4x4 ReliefView::modelMatrix() const
 {
-    return glm::scale(glm::mat4(1.f), glm::vec3(this->meshNormScale)) * glm::translate(glm::mat4(1.f), -this->meshCenter);
+    QMatrix4x4 m;
+    m.scale(this->meshNormScale);
+    m.translate(-this->meshCenter);
+    return m;
 }
 
 // ─── Mouse / camera ───────────────────────────────────────────────────────────

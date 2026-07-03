@@ -5,7 +5,8 @@
 #include <QOpenGLVertexArrayObject>
 #include <QOpenGLShaderProgram>
 #include <QPoint>
-#include <glm/glm.hpp>
+#include <QVector3D>
+#include <QMatrix4x4>
 #include "relief/qem.h"
 #include "relief/textures.h"
 #include "relief/uv_atlas.h"
@@ -66,7 +67,7 @@ private:
     // Camera (spherical coordinates)
     float rotX = 0.f, rotY = 0.f, zoom = 3.f;
     QPoint lastMouse;
-    glm::vec3 meshCenter{0.f, 0.f, 0.f};
+    QVector3D meshCenter{0.f, 0.f, 0.f};
     float meshNormScale = 1.f;
 
     // Mesh (not owned)
@@ -99,7 +100,7 @@ private:
     void uploadOffsetMap(GLuint &texId, const OffsetMapResult &off);
     void deleteTextures();
 
-    glm::mat4 viewMatrix() const;
-    glm::mat4 modelMatrix() const;
-    glm::mat4 projMatrix() const;
+    QMatrix4x4 viewMatrix() const;
+    QMatrix4x4 modelMatrix() const;
+    QMatrix4x4 projMatrix() const;
 };
