@@ -17,7 +17,6 @@ uniform int ReliefTextureType;   // 0 = depth map (white=deep), 1 = height map (
 uniform int LinearSteps;
 uniform float DepthScale;
 uniform float LastMip;
-uniform float TexelSize;
 uniform int DebugView;                 // 0 Shaded, 1 Steps, 2 Leaps, 3 UV
 
 // Matches relief.ush's `eps` — also used as the AABB epsilon and the

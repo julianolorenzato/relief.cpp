@@ -74,10 +74,6 @@ private:
     // Mesh (not owned)
     const QEMSimplifier *mesh = nullptr;
 
-    // Shader uniforms derived from texture resolution
-    float lastMip   = 0.f;
-    float texelSize = 1.f;
-
     // OpenGL resources
     QOpenGLShaderProgram     prog;
     QOpenGLBuffer            vbo{QOpenGLBuffer::VertexBuffer};
@@ -91,7 +87,9 @@ private:
     QOpenGLTexture *offsetTex  = nullptr;
 
     void buildMeshBuffers();
-    void uploadPyramid(QOpenGLTexture *&tex, const MipPyramid &pyr, bool pointFilter = false);
+    void uploadColorMap(QOpenGLTexture *&tex, const MipPyramid &pyr);
+    void uploadNormalMap(QOpenGLTexture *&tex, const MipPyramid &pyr);
+    void uploadReliefMap(QOpenGLTexture *&tex, const MipPyramid &pyr);
     void uploadOffsetMap(QOpenGLTexture *&tex, const OffsetMapResult &off);
     void deleteTextures();
 
