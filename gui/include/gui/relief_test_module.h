@@ -28,11 +28,11 @@ private slots:
     void onLoadColor();
     void onLoadDepth();
     void onLoadNormal();
-    void onBake();
 
 private:
     QWidget *buildControls();
     void setThumb(QLabel *label, const QImage &img);
+    void recomputeDepthTextures();
 
     // ── Viewport ──────────────────────────────────────────────────────────────
     ReliefView *reliefView = nullptr;
@@ -56,15 +56,8 @@ private:
     QCheckBox *wireframeCheck = nullptr;
     QCheckBox *cullFaceCheck = nullptr;
     QPushButton *resetCamBtn = nullptr;
-    QPushButton *renderBtn   = nullptr;
 
     // ── State ─────────────────────────────────────────────────────────────────
     std::unique_ptr<QEMSimplifier> mesh;
     QImage colorImg, depthImg, normalImg;
-
-    // Baked results — kept alive so ReliefView pointers remain valid until paintGL uploads them
-    MipPyramid      bakedColorMap_;
-    MipPyramid      bakedReliefMap_;
-    MipPyramid      bakedNormalMap_;
-    OffsetMapResult bakedOffsetMap_;
 };

@@ -27,7 +27,7 @@ public:
     void setReliefMap(const MipPyramid& pyr);
     void setNormalMap(const MipPyramid& pyr);
     void setOffsetMap(const OffsetMapResult& off);
-    bool hasTextures() const { return this->colorTex != 0; }
+    bool hasTextures() const { return colorTex != 0 && reliefTex != 0 && normalTex != 0 && offsetTex != 0; }
 
     void resetCamera();
     void syncCamera(float rotX, float rotY, float zoom);
@@ -72,11 +72,6 @@ private:
 
     // Mesh (not owned)
     const QEMSimplifier *mesh = nullptr;
-
-    const MipPyramid*      pendingColorMap_  = nullptr;
-    const MipPyramid*      pendingReliefMap_ = nullptr;
-    const MipPyramid*      pendingNormalMap_ = nullptr;
-    const OffsetMapResult* pendingOffsetMap_ = nullptr;
 
     // Shader uniforms derived from texture resolution
     float lastMip   = 0.f;

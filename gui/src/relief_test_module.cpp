@@ -9,7 +9,6 @@
 #include <QSplitter>
 #include <QFileDialog>
 #include <QMessageBox>
-#include <QApplication>
 
 // ─── Resample helpers (bilinear from RawImage → float mip0) ─────────────────
 
@@ -209,10 +208,6 @@ QWidget *ReliefTestModule::buildControls()
     connect(this->resetCamBtn, &QPushButton::clicked, this->reliefView, &ReliefView::resetCamera);
     ctrlLayout->addWidget(this->resetCamBtn);
 
-    this->renderBtn = new QPushButton("Render");
-    connect(this->renderBtn, &QPushButton::clicked, this, &ReliefTestModule::onBake);
-    ctrlLayout->addWidget(this->renderBtn);
-
     layout->addWidget(ctrlGroup);
     layout->addStretch();
 
@@ -251,6 +246,9 @@ void ReliefTestModule::onLoadMesh()
 
     QFileInfo fi(path);
     this->meshStatusLbl->setText(QString("%1  (%2 faces)").arg(fi.fileName()).arg(this->mesh->faceCount()));
+
+    if (!this->depthImg.isNull())
+        recomputeDepthTextures();
 }
 
 void ReliefTestModule::onLoadColor()
@@ -266,6 +264,15 @@ void ReliefTestModule::onLoadColor()
         return;
     }
     setThumb(this->thumbColor, this->colorImg);
+
+    int kRes = 1;
+    while (kRes < std::max(this->colorImg.width(), this->colorImg.height())) kRes <<= 1;
+
+    QImage c = this->colorImg.convertToFormat(QImage::Format_RGBA8888);
+    RawImage raw{c.constBits(), c.width(), c.height(), 4};
+    auto mip0 = resampleColorRGBA(raw, kRes, kRes);
+    auto colorMap = Textures::buildBilinearPyramid(mip0, kRes, kRes, 4);
+    this->reliefView->setColorMap(colorMap);
 }
 
 void ReliefTestModule::onLoadDepth()
@@ -281,6 +288,7 @@ void ReliefTestModule::onLoadDepth()
         return;
     }
     setThumb(this->thumbDepth, this->depthImg);
+    recomputeDepthTextures();
 }
 
 void ReliefTestModule::onLoadNormal()
@@ -296,128 +304,61 @@ void ReliefTestModule::onLoadNormal()
         return;
     }
     setThumb(this->thumbNormal, this->normalImg);
+
+    int kRes = 1;
+    while (kRes < std::max(this->normalImg.width(), this->normalImg.height())) kRes <<= 1;
+
+    QImage n = this->normalImg.convertToFormat(QImage::Format_RGB888);
+    RawImage raw{n.constBits(), n.width(), n.height(), 3};
+    auto mip0 = resampleNormalXYZ(raw, kRes, kRes);
+    auto normalMap = Textures::buildBilinearPyramid(mip0, kRes, kRes, 3, /*renormalizeAsNormal=*/true);
+    this->reliefView->setNormalMap(normalMap);
 }
 
-void ReliefTestModule::onBake()
+void ReliefTestModule::recomputeDepthTextures()
 {
-    // Verifica se todos os inputs necessários foram carregados antes de prosseguir
-    if (!this->mesh || this->colorImg.isNull() || this->depthImg.isNull() || this->normalImg.isNull())
-    {
-        QMessageBox::warning(this, "Missing inputs", "Load a mesh and all three textures first.");
+    if (this->depthImg.isNull())
         return;
-    }
 
-    // Desabilita o botão durante o processamento para evitar cliques duplicados,
-    // e força a UI a atualizar antes de bloquear a thread principal
-    this->renderBtn->setEnabled(false);
-    QApplication::processEvents();
-
-    // Calcula a resolução de trabalho como a próxima potência de 2 acima da maior
-    // dimensão entre as 3 imagens, garantindo que nenhum detalhe seja perdido por
-    // subamostrar antes de processar
-    int maxDim = std::max({colorImg.width(), colorImg.height(),
-                           depthImg.width(), depthImg.height(),
-                           normalImg.width(), normalImg.height()});
     int kRes = 1;
-    while (kRes < maxDim) kRes <<= 1;
+    while (kRes < std::max(this->depthImg.width(), this->depthImg.height())) kRes <<= 1;
+
+    QImage d = this->depthImg.convertToFormat(QImage::Format_Grayscale8);
+    RawImage rawDepth{d.constBits(), d.width(), d.height(), 1};
+    auto depthMip0 = resampleDepthR(rawDepth, kRes, kRes);
 
     constexpr int kSeam = 4;
+    std::vector<float> seamMip0((size_t)kRes * kRes, 0.f);
 
-    // Converte cada imagem Qt para o formato de pixel esperado pelos helpers de resample:
-    // cor → RGBA8888 (4 bytes/pixel), profundidade → Grayscale8 (1 byte/pixel), normal → RGB888
-    QImage c = this->colorImg.convertToFormat(QImage::Format_RGBA8888);
-    QImage d = this->depthImg.convertToFormat(QImage::Format_Grayscale8);
-    QImage n = this->normalImg.convertToFormat(QImage::Format_RGB888);
-
-    // Cria views não-proprietárias (RawImage) sobre os buffers das QImages,
-    // evitando cópias desnecessárias dos dados de pixel
-    RawImage rawColor {c.constBits(), c.width(), c.height(), 4};
-    RawImage rawDepth {d.constBits(), d.width(), d.height(), 1};
-    RawImage rawNormal{n.constBits(), n.width(), n.height(), 3};
-
-    // Valida que os ponteiros e dimensões são não-nulos antes de prosseguir
-    if (!rawColor.valid() || !rawDepth.valid() || !rawNormal.valid())
+    if (this->mesh)
     {
-        QMessageBox::critical(this, "Error", "Invalid input images.");
-        this->renderBtn->setEnabled(true);
-        return;
+        auto faceIsland = UVAtlas::detectIslands(*this->mesh);
+        auto offsetMap  = UVAtlas::bakeOffsetMap(*this->mesh, faceIsland, kRes, kRes, kSeam);
+        for (size_t i = 0; i < (size_t)kRes * kRes; i++)
+            seamMip0[i] = offsetMap.data[i * 4 + 3];
+        this->reliefView->setOffsetMap(offsetMap);
     }
 
-    // Reamostra as três imagens de entrada para a resolução de trabalho (kRes × kRes)
-    // usando filtragem bilinear, produzindo vetores de floats em [0,1] (ou [-1,1] para normais)
-    auto colorMip0  = resampleColorRGBA(rawColor,  kRes, kRes); // RGBA float, 4 canais
-    auto depthMip0  = resampleDepthR(rawDepth,     kRes, kRes); // profundidade float, 1 canal
-    auto normalMip0 = resampleNormalXYZ(rawNormal,  kRes, kRes); // XYZ float normalizado, 3 canais
-
-    // Detecta as ilhas UV do mesh (grupos de faces conectadas no espaço UV)
-    // e gera o offset map: para cada texel na borda de uma ilha, armazena o vetor
-    // de deslocamento até a ilha vizinha mais próxima, permitindo que o shader
-    // "salte" entre ilhas durante o ray marching (island leaping)
-    auto faceIsland = UVAtlas::detectIslands(*this->mesh);
-    auto offsetMap  = UVAtlas::bakeOffsetMap(*this->mesh, faceIsland, kRes, kRes, kSeam);
-
-    // Constrói a pirâmide de mips da cor por média bilinear (4 canais RGBA)
-    auto colorMap  = Textures::buildBilinearPyramid(colorMip0,  kRes, kRes, 4);
-    // Constrói a pirâmide de mips das normais por média bilinear (3 canais XYZ),
-    // com renormalização em cada nível para manter os vetores unitários
-    auto normalMap = Textures::buildBilinearPyramid(normalMip0, kRes, kRes, 3, /*renormalizeAsNormal=*/true);
-
-    // Extrai a máscara de costura UV do canal A do offset map:
-    // valor > 0 indica que o texel está na banda de costura entre ilhas UV
-    std::vector<float> seamMip0((size_t)kRes * kRes);
-    for (size_t i = 0; i < (size_t)kRes * kRes; i++)
-        seamMip0[i] = offsetMap.data[i * 4 + 3];
-
-    // Constrói três pirâmides de canal único a partir da profundidade e da máscara de costura.
-    // Em cada nível de mip, um texel representa uma região 2×2 do nível anterior:
-    // - minPyr: guarda o valor MÍNIMO de profundidade da região (limite inferior do intervalo)
-    // - maxPyr: guarda o valor MÁXIMO de profundidade da região (limite superior do intervalo)
-    // - maskPyr: guarda o MÁXIMO da máscara de costura (se qualquer texel da região é costura, propaga)
     auto minPyr  = Textures::buildMinPyramid(depthMip0, kRes, kRes);
     auto maxPyr  = Textures::buildMaxPyramid(depthMip0, kRes, kRes);
     auto maskPyr = Textures::buildMaxPyramid(seamMip0,  kRes, kRes);
 
-    // Intercala as três pirâmides numa única MipPyramid de 4 canais — o formato
-    // que o shader de relief mapping espera em uma única textura:
-    //   R = profundidade mínima  (usado pelo shader para pular regiões vazias)
-    //   G = profundidade máxima  (usado para delimitar onde a superfície pode estar)
-    //   B = máscara de costura   (indica onde o shader pode fazer island leaping)
-    //   A = reservado, sempre 0
     MipPyramid reliefMap;
     reliefMap.width = kRes; reliefMap.height = kRes; reliefMap.channels = 4;
     for (int lvl = 0; lvl < minPyr.levelCount(); lvl++)
     {
-        // Dimensões do nível atual: cada nível é metade do anterior (mínimo 1×1)
         int w = std::max(1, kRes >> lvl), h = std::max(1, kRes >> lvl);
         std::vector<float> mip((size_t)w * h * 4);
         for (size_t i = 0; i < (size_t)w * h; i++)
         {
-            mip[i*4+0] = minPyr.mips[lvl][i];   // R = profundidade mínima
-            mip[i*4+1] = maxPyr.mips[lvl][i];   // G = profundidade máxima
-            mip[i*4+2] = maskPyr.mips[lvl][i];  // B = máscara de costura UV
-            mip[i*4+3] = 0.f;                   // A = reservado
+            mip[i*4+0] = minPyr.mips[lvl][i];
+            mip[i*4+1] = maxPyr.mips[lvl][i];
+            mip[i*4+2] = maskPyr.mips[lvl][i];
+            mip[i*4+3] = 0.f;
         }
         reliefMap.mips.push_back(std::move(mip));
     }
-
-    // Move os resultados para membros do módulo antes de passar ponteiros ao ReliefView.
-    // Isso é necessário porque setColorMap/setReliefMap/etc. armazenam apenas ponteiros
-    // (para upload deferido no paintGL) — se os objetos fossem locais desta função,
-    // seriam destruídos ao retornar e os ponteiros ficariam inválidos (dangling pointer → SIGSEGV)
-    this->bakedColorMap_  = std::move(colorMap);
-    this->bakedReliefMap_ = std::move(reliefMap);
-    this->bakedNormalMap_ = std::move(normalMap);
-    this->bakedOffsetMap_ = std::move(offsetMap);
-
-    // Envia cada textura individualmente ao ReliefView.
-    // O upload para a GPU é deferido: ocorre no início do próximo paintGL(),
-    // quando o contexto OpenGL já está ativo
-    this->reliefView->setColorMap(this->bakedColorMap_);
-    this->reliefView->setReliefMap(this->bakedReliefMap_);
-    this->reliefView->setNormalMap(this->bakedNormalMap_);
-    this->reliefView->setOffsetMap(this->bakedOffsetMap_);
-
-    this->renderBtn->setEnabled(true);
+    this->reliefView->setReliefMap(reliefMap);
 }
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
