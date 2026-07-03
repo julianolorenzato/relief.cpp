@@ -16,6 +16,8 @@ add_executable(gui
     include/gui/heightmap_module.h
     include/gui/texture_prep_module.h
     include/gui/relief_module.h
+    include/gui/relief_view.h
+    include/gui/relief_test_module.h
     src/main.cpp
     src/mainwindow.cpp
     src/orbital3dview.cpp
@@ -23,6 +25,8 @@ add_executable(gui
     src/heightmap_module.cpp
     src/texture_prep_module.cpp
     src/relief_module.cpp
+    src/relief_view.cpp
+    src/relief_test_module.cpp
     src/shaders/shaders.qrc
 )
 

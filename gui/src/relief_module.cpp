@@ -29,7 +29,7 @@ void ReliefModule::buildUI()
     QHBoxLayout* viewportsLayout = new QHBoxLayout(viewportsWidget);
     viewportsLayout->setContentsMargins(0, 0, 0, 0);
 
-    reliefWidget_ = new Orbital3DView(RenderMode::Relief, "Relief Mapping");
+    reliefWidget_ = new ReliefView();
     reliefWidget_->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
     viewportsLayout->addWidget(reliefWidget_);
 
@@ -42,11 +42,11 @@ void ReliefModule::buildUI()
     viewportsLayout->addWidget(reliefOriginalWidget_);
 
     // Cameras stay in sync across the three viewports so they can be compared directly.
-    connect(reliefWidget_,        &Orbital3DView::cameraChanged, reliefCompareWidget_,  &Orbital3DView::syncCamera);
-    connect(reliefWidget_,        &Orbital3DView::cameraChanged, reliefOriginalWidget_, &Orbital3DView::syncCamera);
-    connect(reliefCompareWidget_, &Orbital3DView::cameraChanged, reliefWidget_,         &Orbital3DView::syncCamera);
+    connect(reliefWidget_,        &ReliefView::cameraChanged,    reliefCompareWidget_,  &Orbital3DView::syncCamera);
+    connect(reliefWidget_,        &ReliefView::cameraChanged,    reliefOriginalWidget_, &Orbital3DView::syncCamera);
+    connect(reliefCompareWidget_, &Orbital3DView::cameraChanged, reliefWidget_,         &ReliefView::syncCamera);
     connect(reliefCompareWidget_, &Orbital3DView::cameraChanged, reliefOriginalWidget_, &Orbital3DView::syncCamera);
-    connect(reliefOriginalWidget_,&Orbital3DView::cameraChanged, reliefWidget_,         &Orbital3DView::syncCamera);
+    connect(reliefOriginalWidget_,&Orbital3DView::cameraChanged, reliefWidget_,         &ReliefView::syncCamera);
     connect(reliefOriginalWidget_,&Orbital3DView::cameraChanged, reliefCompareWidget_,  &Orbital3DView::syncCamera);
 
     splitter->addWidget(viewportsWidget);
@@ -58,7 +58,7 @@ void ReliefModule::buildUI()
 
     reliefEnabledCheck_ = new QCheckBox("Enable Relief Mapping");
     reliefEnabledCheck_->setChecked(true);
-    connect(reliefEnabledCheck_, &QCheckBox::toggled, reliefWidget_, &Orbital3DView::setReliefEnabled);
+    connect(reliefEnabledCheck_, &QCheckBox::toggled, reliefWidget_, &ReliefView::setReliefEnabled);
     ctrlLayout->addWidget(reliefEnabledCheck_);
 
     QHBoxLayout* stepsRow = new QHBoxLayout();
@@ -66,18 +66,9 @@ void ReliefModule::buildUI()
     reliefStepsSpin_ = new QSpinBox();
     reliefStepsSpin_->setRange(1, 256);
     reliefStepsSpin_->setValue(64);
-    connect(reliefStepsSpin_, QOverload<int>::of(&QSpinBox::valueChanged), reliefWidget_, &Orbital3DView::setSteps);
+    connect(reliefStepsSpin_, QOverload<int>::of(&QSpinBox::valueChanged), reliefWidget_, &ReliefView::setSteps);
     stepsRow->addWidget(reliefStepsSpin_, 1);
     ctrlLayout->addLayout(stepsRow);
-
-    QHBoxLayout* binRow = new QHBoxLayout();
-    binRow->addWidget(new QLabel("Binary Steps:"));
-    reliefBinaryStepsSpin_ = new QSpinBox();
-    reliefBinaryStepsSpin_->setRange(0, 16);
-    reliefBinaryStepsSpin_->setValue(5);
-    connect(reliefBinaryStepsSpin_, QOverload<int>::of(&QSpinBox::valueChanged), reliefWidget_, &Orbital3DView::setBinarySteps);
-    binRow->addWidget(reliefBinaryStepsSpin_, 1);
-    ctrlLayout->addLayout(binRow);
 
     QHBoxLayout* depthRow = new QHBoxLayout();
     depthRow->addWidget(new QLabel("Depth Scale:"));
@@ -86,14 +77,25 @@ void ReliefModule::buildUI()
     reliefDepthScaleSpin_->setSingleStep(0.01);
     reliefDepthScaleSpin_->setDecimals(4);
     reliefDepthScaleSpin_->setValue(0.05);
-    connect(reliefDepthScaleSpin_, QOverload<double>::of(&QDoubleSpinBox::valueChanged), reliefWidget_, &Orbital3DView::setDepthScale);
+    connect(reliefDepthScaleSpin_, QOverload<double>::of(&QDoubleSpinBox::valueChanged), reliefWidget_, &ReliefView::setDepthScale);
     depthRow->addWidget(reliefDepthScaleSpin_, 1);
     ctrlLayout->addLayout(depthRow);
 
     reliefUseAtlasCheck_ = new QCheckBox("Use Atlas (Island Leaping)");
     reliefUseAtlasCheck_->setChecked(true);
-    connect(reliefUseAtlasCheck_, &QCheckBox::toggled, reliefWidget_, &Orbital3DView::setUseAtlas);
+    connect(reliefUseAtlasCheck_, &QCheckBox::toggled, reliefWidget_, &ReliefView::setUseAtlas);
     ctrlLayout->addWidget(reliefUseAtlasCheck_);
+
+    QHBoxLayout* texTypeRow = new QHBoxLayout();
+    texTypeRow->addWidget(new QLabel("Texture Type:"));
+    reliefTextureTypeCombo_ = new QComboBox();
+    reliefTextureTypeCombo_->addItem("Depth Map", 0);
+    reliefTextureTypeCombo_->addItem("Height Map", 1);
+    connect(reliefTextureTypeCombo_, QOverload<int>::of(&QComboBox::currentIndexChanged), this, [this](int) {
+        reliefWidget_->setReliefTextureType(reliefTextureTypeCombo_->currentData().toInt());
+    });
+    texTypeRow->addWidget(reliefTextureTypeCombo_, 1);
+    ctrlLayout->addLayout(texTypeRow);
 
     QHBoxLayout* debugRow = new QHBoxLayout();
     debugRow->addWidget(new QLabel("Debug:"));
@@ -110,20 +112,20 @@ void ReliefModule::buildUI()
 
     QHBoxLayout* viewRow = new QHBoxLayout();
     reliefWireframeCheck_ = new QCheckBox("Wireframe");
-    connect(reliefWireframeCheck_, &QCheckBox::toggled, reliefWidget_,        &Orbital3DView::setWireframe);
+    connect(reliefWireframeCheck_, &QCheckBox::toggled, reliefWidget_,        &ReliefView::setWireframe);
     connect(reliefWireframeCheck_, &QCheckBox::toggled, reliefCompareWidget_,  &Orbital3DView::setWireframe);
     connect(reliefWireframeCheck_, &QCheckBox::toggled, reliefOriginalWidget_, &Orbital3DView::setWireframe);
     viewRow->addWidget(reliefWireframeCheck_);
     reliefCullFaceCheck_ = new QCheckBox("Backface Cull");
     reliefCullFaceCheck_->setChecked(true);
-    connect(reliefCullFaceCheck_, &QCheckBox::toggled, reliefWidget_,        &Orbital3DView::setCullFace);
+    connect(reliefCullFaceCheck_, &QCheckBox::toggled, reliefWidget_,        &ReliefView::setCullFace);
     connect(reliefCullFaceCheck_, &QCheckBox::toggled, reliefCompareWidget_,  &Orbital3DView::setCullFace);
     connect(reliefCullFaceCheck_, &QCheckBox::toggled, reliefOriginalWidget_, &Orbital3DView::setCullFace);
     viewRow->addWidget(reliefCullFaceCheck_);
     ctrlLayout->addLayout(viewRow);
 
     reliefResetCamBtn_ = new QPushButton("Reset Camera");
-    connect(reliefResetCamBtn_, &QPushButton::clicked, reliefWidget_,        &Orbital3DView::resetCamera);
+    connect(reliefResetCamBtn_, &QPushButton::clicked, this, [this]{ reliefWidget_->resetCamera(); });
     connect(reliefResetCamBtn_, &QPushButton::clicked, reliefCompareWidget_,  &Orbital3DView::resetCamera);
     connect(reliefResetCamBtn_, &QPushButton::clicked, reliefOriginalWidget_, &Orbital3DView::resetCamera);
     ctrlLayout->addWidget(reliefResetCamBtn_);

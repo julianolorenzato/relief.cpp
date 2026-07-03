@@ -13,8 +13,8 @@ uniform sampler2D Normal_Map;
 
 uniform bool ReliefEnabled;
 uniform bool UseAtlas;
+uniform int ReliefTextureType;   // 0 = depth map (white=deep), 1 = height map (white=high)
 uniform int LinearSteps;
-uniform int BinarySteps;
 uniform float DepthScale;
 uniform float LastMip;
 uniform float TexelSize;
@@ -121,7 +121,8 @@ vec3 Mip_Relief(
 
     for(int i = 0; i < maxSteps; i++) {
         stepsTaken = i + 1;
-        float depth = -textureLod(Relief_Map, pos.xy, mip).x * DepthScale;
+        float s = textureLod(Relief_Map, pos.xy, mip).x;
+        float depth = (ReliefTextureType == 1 ? s - 1.0 : -s) * DepthScale;
 
         if(UseAtlas)
             IslandLeap(Tangent_Direction, pos, invDir, leapingPoint, landingPoint, jumped, offsetSamples, numLeaps);
@@ -157,27 +158,13 @@ vec3 Mip_Relief(
     return pos;
 }
 
-vec2 BinarySearch(vec3 Starting_Point, vec3 Tangent_Direction, int Binary_Search_Steps) {
-    vec3 Current_Position = Starting_Point;
-    vec3 New_Tangent_Direction = Tangent_Direction;
-    for(int i = 0; i < Binary_Search_Steps; i++) {
-        float height = -textureLod(Relief_Map, Current_Position.xy, 0.0).x * DepthScale;
-        Current_Position = (Current_Position.z > height) ? Current_Position + New_Tangent_Direction : Current_Position - New_Tangent_Direction;
-        New_Tangent_Direction *= 0.5;
-    }
-    return Current_Position.xy;
-}
-
 vec2 ReliefMapping(vec3 Tangent_Direction, vec2 UV, out int leapCounter, out int stepsOut) {
     int numLeaps = 0, numSteps = 0;
     vec3 StartingPoint = Mip_Relief(Tangent_Direction, UV, LinearSteps, numLeaps, numSteps);
 
-    vec3 Tangent = Tangent_Direction * TexelSize;
-    vec2 FinalUV = BinarySearch(StartingPoint, Tangent, BinarySteps);
-
     leapCounter = numLeaps;
     stepsOut = numSteps;
-    return FinalUV;
+    return StartingPoint.xy;
 }
 
 void main() {
@@ -196,9 +183,8 @@ void main() {
         // because depth values are negative (z=0 is the untouched surface
         // plane, more negative is deeper) — see relief.ush's `depth` sign.
         // DepthScale scales the sampled height/depth values themselves (see
-        // Mip_Relief/BinarySearch), not this ray's slope — matching the UE
-        // material, and keeping the mip-marching step dynamics independent
-        // of the depth slider.
+        // Mip_Relief), not this ray's slope — matching the UE material, and
+        // keeping the mip-marching step dynamics independent of the depth slider.
         vec3 tangentDir = vec3(-viewTS.xy / max(abs(viewTS.z), 1e-4), -1.0);
         finalUV = ReliefMapping(tangentDir, TexCoord, leapCounter, stepsTaken);
     }

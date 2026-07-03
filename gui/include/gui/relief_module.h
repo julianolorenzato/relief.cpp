@@ -7,6 +7,7 @@
 #include <QPushButton>
 #include "relief/qem.h"
 #include "gui/orbital3dview.h"
+#include "gui/relief_view.h"
 #include "relief/textures.h"
 
 class ReliefModule : public QWidget {
@@ -31,17 +32,17 @@ private:
     void syncIfReady();
 
     // ── Viewports ─────────────────────────────────────────────────────────────
-    Orbital3DView* reliefWidget_         = nullptr;  // mode: Relief
+    ReliefView*    reliefWidget_          = nullptr;
     Orbital3DView* reliefCompareWidget_  = nullptr;  // mode: Textured
     Orbital3DView* reliefOriginalWidget_ = nullptr;  // mode: Textured
 
     // ── Controls ──────────────────────────────────────────────────────────────
     QCheckBox*      reliefEnabledCheck_       = nullptr;
     QSpinBox*       reliefStepsSpin_          = nullptr;
-    QSpinBox*       reliefBinaryStepsSpin_    = nullptr;
     QDoubleSpinBox* reliefDepthScaleSpin_     = nullptr;
-    QCheckBox*      reliefUseAtlasCheck_      = nullptr;
-    QComboBox*      reliefDebugViewCombo_     = nullptr;
+    QCheckBox*      reliefUseAtlasCheck_          = nullptr;
+    QComboBox*      reliefTextureTypeCombo_    = nullptr;
+    QComboBox*      reliefDebugViewCombo_         = nullptr;
     QCheckBox*      reliefWireframeCheck_     = nullptr;
     QCheckBox*      reliefCullFaceCheck_      = nullptr;
     QPushButton*    reliefResetCamBtn_        = nullptr;
