@@ -147,6 +147,11 @@ QWidget *ReliefTestModule::buildControls()
     QGroupBox *ctrlGroup = new QGroupBox("Relief Mapping Parameters");
     QVBoxLayout *ctrlLayout = new QVBoxLayout(ctrlGroup);
 
+    this->reliefEnabledCheck = new QCheckBox("Enable Relief Mapping");
+    this->reliefEnabledCheck->setChecked(true);
+    connect(this->reliefEnabledCheck, &QCheckBox::toggled, this->reliefView, &ReliefView::setReliefEnabled);
+    ctrlLayout->addWidget(this->reliefEnabledCheck);
+
     QHBoxLayout *stepsRow = new QHBoxLayout();
     stepsRow->addWidget(new QLabel("Steps:"));
     this->stepsSpin = new QSpinBox();

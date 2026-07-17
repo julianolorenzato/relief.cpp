@@ -58,15 +58,19 @@ bool QEMSimplifier::loadOBJ(const std::string &path)
         {
             double u, v;
             ss >> u >> v;
-            uvCoords.emplace_back(u, v);
+            // OBJ's vt has v=0 at the bottom of the image, but texture data
+            // is uploaded with row 0 = top (no flip elsewhere in the
+            // pipeline) — flip here so mesh UV matches texel rows.
+            uvCoords.emplace_back(u, 1.0 - v);
         }
         else if (tok == "f")
         {
-            Face fc;
-            for (int i = 0; i < 3; i++)
+            // Uma face "f" pode ter 3+ vértices (quads, n-gons); lê todos e
+            // faz fan-triangulation em vez de descartar os além do 3º.
+            std::vector<int> faceVerts;
+            std::string token;
+            while (ss >> token)
             {
-                std::string token;
-                ss >> token;
                 int pos_idx = -1, uv_idx = -1;
                 size_t s1 = token.find('/');
                 pos_idx = std::stoi(token.substr(0, s1)) - 1;
@@ -78,6 +82,8 @@ bool QEMSimplifier::loadOBJ(const std::string &path)
                     if (!uv_str.empty())
                         uv_idx = std::stoi(uv_str) - 1;
                 }
+                if (pos_idx < 0)
+                    pos_idx += (int)positions.size() + 1; // índice relativo negativo
                 auto key = std::make_pair(pos_idx, uv_idx);
                 auto [it, inserted] = vertexMap.emplace(key, (int)vertices.size());
                 if (inserted)
@@ -88,9 +94,16 @@ bool QEMSimplifier::loadOBJ(const std::string &path)
                         vx.uv = uvCoords[uv_idx];
                     vertices.push_back(vx);
                 }
-                fc.v[i] = it->second;
+                faceVerts.push_back(it->second);
             }
-            faces.push_back(fc);
+            for (size_t i = 1; i + 1 < faceVerts.size(); i++)
+            {
+                Face fc;
+                fc.v[0] = faceVerts[0];
+                fc.v[1] = faceVerts[i];
+                fc.v[2] = faceVerts[i + 1];
+                faces.push_back(fc);
+            }
         }
     }
     std::cout << "OBJ carregado: " << vertices.size()
@@ -133,7 +146,7 @@ bool QEMSimplifier::saveOBJ(const std::string &path) const
             if (!vertices[i].removed)
             {
                 const auto &uv = vertices[i].uv;
-                f << "vt " << uv.x() << " " << uv.y() << "\n";
+                f << "vt " << uv.x() << " " << 1.0 - uv.y() << "\n";
             }
         }
     }

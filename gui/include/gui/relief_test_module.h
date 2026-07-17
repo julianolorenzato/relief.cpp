@@ -48,6 +48,7 @@ private:
     QLabel *thumbNormal = nullptr;
 
     // ── Relief controls ───────────────────────────────────────────────────────
+    QCheckBox *reliefEnabledCheck = nullptr;
     QSpinBox *stepsSpin = nullptr;
     QDoubleSpinBox *depthScaleSpin = nullptr;
     QCheckBox *useAtlasCheck = nullptr;
