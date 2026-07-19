@@ -301,8 +301,7 @@ void TexturePrepModule::updateThumbnails()
     if (hmResult_.valid && !hmResult_.image.empty())
     {
         depthImg = QImage(hmResult_.image.data(), hmResult_.width, hmResult_.height,
-                          hmResult_.width, QImage::Format_Grayscale8)
-                       .mirrored(false, true);
+                          hmResult_.width, QImage::Format_Grayscale8);
     }
     setThumb(1, depthImg, "(not baked)");
 }

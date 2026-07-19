@@ -1,4 +1,5 @@
 #include "gui/relief_test_module.h"
+#include "gui/texture_inspector_dialog.h"
 #include "relief/uv_atlas.h"
 #include <algorithm>
 #include <cmath>
@@ -141,6 +142,10 @@ QWidget *ReliefTestModule::buildControls()
     makeTexRow("Depth", this->thumbDepth, this->loadDepthBtn, &ReliefTestModule::onLoadDepth);
     makeTexRow("Normal", this->thumbNormal, this->loadNormalBtn, &ReliefTestModule::onLoadNormal);
 
+    this->inspectTexturesBtn = new QPushButton("Inspect Textures…");
+    connect(this->inspectTexturesBtn, &QPushButton::clicked, this, &ReliefTestModule::onInspectTextures);
+    texLayout->addWidget(this->inspectTexturesBtn);
+
     layout->addWidget(texGroup);
 
     // ── Relief parameters group ───────────────────────────────────────────────
@@ -276,8 +281,8 @@ void ReliefTestModule::onLoadColor()
     QImage c = this->colorImg.convertToFormat(QImage::Format_RGBA8888);
     RawImage raw{c.constBits(), c.width(), c.height(), 4};
     auto mip0 = resampleColorRGBA(raw, kRes, kRes);
-    auto colorMap = Textures::buildBilinearPyramid(mip0, kRes, kRes, 4);
-    this->reliefView->setColorMap(colorMap);
+    this->colorMapData = Textures::buildBilinearPyramid(mip0, kRes, kRes, 4);
+    this->reliefView->setColorMap(this->colorMapData);
 }
 
 void ReliefTestModule::onLoadDepth()
@@ -316,8 +321,8 @@ void ReliefTestModule::onLoadNormal()
     QImage n = this->normalImg.convertToFormat(QImage::Format_RGB888);
     RawImage raw{n.constBits(), n.width(), n.height(), 3};
     auto mip0 = resampleNormalXYZ(raw, kRes, kRes);
-    auto normalMap = Textures::buildBilinearPyramid(mip0, kRes, kRes, 3, /*renormalizeAsNormal=*/true);
-    this->reliefView->setNormalMap(normalMap);
+    this->normalMapData = Textures::buildBilinearPyramid(mip0, kRes, kRes, 3, /*renormalizeAsNormal=*/true);
+    this->reliefView->setNormalMap(this->normalMapData);
 }
 
 void ReliefTestModule::recomputeDepthTextures()
@@ -338,10 +343,10 @@ void ReliefTestModule::recomputeDepthTextures()
     if (this->mesh)
     {
         auto faceIsland = UVAtlas::detectIslands(*this->mesh);
-        auto offsetMap  = UVAtlas::bakeOffsetMap(*this->mesh, faceIsland, kRes, kRes, kSeam);
+        this->offsetMapData = UVAtlas::bakeOffsetMap(*this->mesh, faceIsland, kRes, kRes, kSeam);
         for (size_t i = 0; i < (size_t)kRes * kRes; i++)
-            seamMip0[i] = offsetMap.data[i * 4 + 3];
-        this->reliefView->setOffsetMap(offsetMap);
+            seamMip0[i] = this->offsetMapData.data[i * 4 + 3];
+        this->reliefView->setOffsetMap(this->offsetMapData);
     }
 
     auto minPyr  = Textures::buildMinPyramid(depthMip0, kRes, kRes);
@@ -363,7 +368,22 @@ void ReliefTestModule::recomputeDepthTextures()
         }
         reliefMap.mips.push_back(std::move(mip));
     }
-    this->reliefView->setReliefMap(reliefMap);
+    this->reliefMapData = std::move(reliefMap);
+    this->reliefView->setReliefMap(this->reliefMapData);
+}
+
+void ReliefTestModule::onInspectTextures()
+{
+    if (this->colorMapData.levelCount() == 0 && this->reliefMapData.levelCount() == 0 &&
+        this->normalMapData.levelCount() == 0 && this->offsetMapData.width == 0)
+    {
+        QMessageBox::information(this, "Texture Inspector", "No textures loaded yet.");
+        return;
+    }
+
+    TextureInspectorDialog dlg(&this->colorMapData, &this->reliefMapData,
+                                &this->normalMapData, &this->offsetMapData, this);
+    dlg.exec();
 }
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────

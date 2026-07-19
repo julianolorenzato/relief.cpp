@@ -188,7 +188,6 @@ void HeightmapModule::onSaveHeightmap()
 
     QImage img(hmResult_.image.data(), hmResult_.width, hmResult_.height,
                hmResult_.width, QImage::Format_Grayscale8);
-    img = img.mirrored(false, true);
 
     if (img.save(fileName))
     {
@@ -285,7 +284,6 @@ void HeightmapModule::displayHeightmap(const HeightmapResult& r)
     }
 
     QImage img(r.image.data(), r.width, r.height, r.width, QImage::Format_Grayscale8);
-    img = img.mirrored(false, true);
 
     QPixmap px = QPixmap::fromImage(img);
     QSize labelSize = hmPreview_->size();

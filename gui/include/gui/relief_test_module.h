@@ -28,6 +28,7 @@ private slots:
     void onLoadColor();
     void onLoadDepth();
     void onLoadNormal();
+    void onInspectTextures();
 
 private:
     QWidget *buildControls();
@@ -46,6 +47,7 @@ private:
     QLabel *thumbColor = nullptr;
     QLabel *thumbDepth = nullptr;
     QLabel *thumbNormal = nullptr;
+    QPushButton *inspectTexturesBtn = nullptr;
 
     // ── Relief controls ───────────────────────────────────────────────────────
     QCheckBox *reliefEnabledCheck = nullptr;
@@ -61,4 +63,8 @@ private:
     // ── State ─────────────────────────────────────────────────────────────────
     std::unique_ptr<QEMSimplifier> mesh;
     QImage colorImg, depthImg, normalImg;
+
+    // Baked pyramids fed to ReliefView, kept around for the texture inspector.
+    MipPyramid colorMapData, reliefMapData, normalMapData;
+    OffsetMapResult offsetMapData;
 };
