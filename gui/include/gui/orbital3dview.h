@@ -16,8 +16,8 @@
 enum class RenderMode { Solid, Textured, Overlay, Relief, UV };
 
 // Unified orbital-camera 3D viewport. Replaces GLWidget, OverlayGLWidget, and
-// ReliefGLWidget with a single configurable widget. Vertex layout is 11 floats:
-// [pos(3) | normal(3) | uv(2) | tangent(3)], stride 44 bytes.
+// ReliefGLWidget with a single configurable widget. Vertex layout is 12 floats:
+// [pos(3) | normal(3) | uv(2) | tangent(4, w = handedness)], stride 48 bytes.
 class Orbital3DView : public QOpenGLWidget, protected QOpenGLFunctions_3_3_Core {
     Q_OBJECT
 

@@ -3,6 +3,7 @@ in vec3 FragPos;
 in vec3 Normal;
 in vec2 TexCoord;
 in vec3 Tangent;
+in float Handedness;
 in vec3 ViewDirTS;
 out vec4 FragColor;
 
@@ -170,7 +171,7 @@ vec2 ReliefMapping(vec3 Tangent_Direction, vec2 UV, out int leapCounter, out int
 void main() {
     vec3 N = normalize(Normal);
     vec3 T = normalize(Tangent - N * dot(N, Tangent));
-    vec3 B = cross(N, T);
+    vec3 B = cross(N, T) * Handedness;
     mat3 TBN = mat3(T, B, N);
 
     vec2 finalUV = TexCoord;

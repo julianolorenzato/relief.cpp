@@ -21,6 +21,7 @@ namespace
 
         std::vector<Eigen::Vector3d> normals(mesh->vertices.size(), Eigen::Vector3d::Zero());
         std::vector<Eigen::Vector3d> tangents(mesh->vertices.size(), Eigen::Vector3d::Zero());
+        std::vector<Eigen::Vector3d> bitangents(mesh->vertices.size(), Eigen::Vector3d::Zero());
 
         for (const auto &f : mesh->faces)
         {
@@ -45,20 +46,33 @@ namespace
             {
                 double r = 1.0 / det;
                 Eigen::Vector3d T = r * (d2.y() * e1 - d1.y() * e2);
+                Eigen::Vector3d B = r * (d1.x() * e2 - d2.x() * e1);
                 tangents[f.v[0]] += T;
                 tangents[f.v[1]] += T;
                 tangents[f.v[2]] += T;
+                bitangents[f.v[0]] += B;
+                bitangents[f.v[1]] += B;
+                bitangents[f.v[2]] += B;
             }
         }
 
         for (auto &n : normals)
             n = n.normalized();
+        // Per-vertex handedness (Lengyel): the accumulated tangent only fixes
+        // T up to sign — cross(N, T) in the shader needs to know whether the
+        // real bitangent (from the UV gradient) agrees with that cross product
+        // or points the opposite way, otherwise the "V" axis of the tangent
+        // frame silently flips for meshes whose UV winding differs (e.g. an
+        // OBJ mesh, whose V axis is flipped on load vs. glTF's).
+        std::vector<double> handedness(mesh->vertices.size(), 1.0);
         for (size_t i = 0; i < tangents.size(); i++)
         {
             const Eigen::Vector3d &n = normals[i];
             Eigen::Vector3d t = tangents[i] - n * n.dot(tangents[i]);
             double len = t.norm();
-            tangents[i] = len > 1e-8 ? t / len : Eigen::Vector3d(1.0, 0.0, 0.0);
+            t = len > 1e-8 ? t / len : Eigen::Vector3d(1.0, 0.0, 0.0);
+            tangents[i] = t;
+            handedness[i] = (n.cross(t).dot(bitangents[i]) < 0.0) ? -1.0 : 1.0;
         }
 
         std::vector<int> remap(mesh->vertices.size(), -1);
@@ -82,6 +96,7 @@ namespace
             verts.push_back((float)t.x());
             verts.push_back((float)t.y());
             verts.push_back((float)t.z());
+            verts.push_back((float)handedness[i]);
         }
         for (const auto &f : mesh->faces)
         {
@@ -349,7 +364,7 @@ void ReliefView::buildMeshBuffers()
     this->ebo.bind();
     this->ebo.allocate(idxs.data(), (int)(idxs.size() * sizeof(unsigned int)));
 
-    constexpr GLsizei stride = 11 * sizeof(float);
+    constexpr GLsizei stride = 12 * sizeof(float);
     glEnableVertexAttribArray(0);
     glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, stride, (void *)0);
     glEnableVertexAttribArray(1);
@@ -357,7 +372,7 @@ void ReliefView::buildMeshBuffers()
     glEnableVertexAttribArray(2);
     glVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE, stride, (void *)(6 * sizeof(float)));
     glEnableVertexAttribArray(3);
-    glVertexAttribPointer(3, 3, GL_FLOAT, GL_FALSE, stride, (void *)(8 * sizeof(float)));
+    glVertexAttribPointer(3, 4, GL_FLOAT, GL_FALSE, stride, (void *)(8 * sizeof(float)));
 
     this->vao.release();
 }

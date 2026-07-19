@@ -15,9 +15,11 @@
 
 namespace {
 
-// Build 11-float interleaved vertex array [pos|normal|uv|tangent] and an index
-// array for a QEMSimplifier mesh. Tangents are Gram-Schmidt-orthogonalised
-// against the normal using per-face UV deltas.
+// Build 12-float interleaved vertex array [pos|normal|uv|tangent(vec4, w = handedness)]
+// and an index array for a QEMSimplifier mesh. Tangents are Gram-Schmidt-orthogonalised
+// against the normal using per-face UV deltas; the accumulated bitangent is used only
+// to derive each vertex's handedness sign (Lengyel), since cross(N,T) alone can't tell
+// which way the mesh's actual V axis points.
 void buildMeshVerts(const QEMSimplifier* mesh,
                     std::vector<float>& verts,
                     std::vector<unsigned int>& idxs)
@@ -26,6 +28,7 @@ void buildMeshVerts(const QEMSimplifier* mesh,
 
     std::vector<Eigen::Vector3d> normals(mesh->vertices.size(), Eigen::Vector3d::Zero());
     std::vector<Eigen::Vector3d> tangents(mesh->vertices.size(), Eigen::Vector3d::Zero());
+    std::vector<Eigen::Vector3d> bitangents(mesh->vertices.size(), Eigen::Vector3d::Zero());
 
     for (const auto& f : mesh->faces) {
         if (f.removed) continue;
@@ -45,16 +48,21 @@ void buildMeshVerts(const QEMSimplifier* mesh,
         if (std::abs(det) > 1e-12) {
             double r = 1.0 / det;
             Eigen::Vector3d T = r * (d2.y() * e1 - d1.y() * e2);
+            Eigen::Vector3d B = r * (d1.x() * e2 - d2.x() * e1);
             tangents[f.v[0]] += T; tangents[f.v[1]] += T; tangents[f.v[2]] += T;
+            bitangents[f.v[0]] += B; bitangents[f.v[1]] += B; bitangents[f.v[2]] += B;
         }
     }
 
     for (auto& n : normals) n = n.normalized();
+    std::vector<double> handedness(mesh->vertices.size(), 1.0);
     for (size_t i = 0; i < tangents.size(); i++) {
         const Eigen::Vector3d& n = normals[i];
         Eigen::Vector3d t = tangents[i] - n * n.dot(tangents[i]);
         double len = t.norm();
-        tangents[i] = len > 1e-8 ? t / len : Eigen::Vector3d(1.0, 0.0, 0.0);
+        t = len > 1e-8 ? t / len : Eigen::Vector3d(1.0, 0.0, 0.0);
+        tangents[i] = t;
+        handedness[i] = (n.cross(t).dot(bitangents[i]) < 0.0) ? -1.0 : 1.0;
     }
 
     std::vector<int> remap(mesh->vertices.size(), -1);
@@ -69,6 +77,7 @@ void buildMeshVerts(const QEMSimplifier* mesh,
         verts.push_back((float)n.x());     verts.push_back((float)n.y());     verts.push_back((float)n.z());
         verts.push_back((float)v.uv.x());  verts.push_back((float)v.uv.y());
         verts.push_back((float)t.x());     verts.push_back((float)t.y());     verts.push_back((float)t.z());
+        verts.push_back((float)handedness[i]);
     }
     for (const auto& f : mesh->faces) {
         if (f.removed) continue;
@@ -78,7 +87,7 @@ void buildMeshVerts(const QEMSimplifier* mesh,
     }
 }
 
-// Upload interleaved vertex data to a VAO with the standard 11-float attribute layout.
+// Upload interleaved vertex data to a VAO with the standard 12-float attribute layout.
 // Caller must have already set up vao, vbo, ebo as created QOpenGLBuffer objects.
 void setupMeshVAO(QOpenGLFunctions_3_3_Core* gl,
                   const std::vector<float>& verts,
@@ -99,7 +108,7 @@ void setupMeshVAO(QOpenGLFunctions_3_3_Core* gl,
     ebo.bind();
     ebo.allocate(idxs.data(), (int)(idxs.size() * sizeof(unsigned int)));
 
-    constexpr GLsizei stride = 11 * sizeof(float);
+    constexpr GLsizei stride = 12 * sizeof(float);
     gl->glEnableVertexAttribArray(0);
     gl->glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, stride, (void*)0);
     gl->glEnableVertexAttribArray(1);
@@ -107,7 +116,7 @@ void setupMeshVAO(QOpenGLFunctions_3_3_Core* gl,
     gl->glEnableVertexAttribArray(2);
     gl->glVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE, stride, (void*)(6 * sizeof(float)));
     gl->glEnableVertexAttribArray(3);
-    gl->glVertexAttribPointer(3, 3, GL_FLOAT, GL_FALSE, stride, (void*)(8 * sizeof(float)));
+    gl->glVertexAttribPointer(3, 4, GL_FLOAT, GL_FALSE, stride, (void*)(8 * sizeof(float)));
 
     vao.release();
 }
