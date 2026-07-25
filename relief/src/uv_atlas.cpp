@@ -221,13 +221,18 @@ OffsetMapResult bakeOffsetMap(
              std::sin(theta),  std::cos(theta);
         Eigen::Vector2d t = uvB0 - R * uvA0;
 
-        // Band on island A's side: jump A -> B
-        rasterizeBand(uvA0, uvA1, theta, R, t, width, height, bandWidthUV, result.data, distBuf);
+        // Band on island A's side: jump A -> B.
+        // The baked angle is negated relative to theta because the shader's
+        // rotateXY(v, angle) implements R(-angle) (it mirrors RTMA_Functions.ush's
+        // mul(v, RotationMatrix) row-vector convention), while the position map
+        // above needs the direction vector rotated by R(+theta) to stay consistent
+        // with the position transform — so the encoded angle must be -theta.
+        rasterizeBand(uvA0, uvA1, -theta, R, t, width, height, bandWidthUV, result.data, distBuf);
 
-        // Band on island B's side: jump B -> A (inverse transform)
+        // Band on island B's side: jump B -> A (inverse transform, hence +theta).
         Eigen::Matrix2d Rinv = R.transpose();
         Eigen::Vector2d tInv = uvA0 - Rinv * uvB0;
-        rasterizeBand(uvB0, uvB1, -theta, Rinv, tInv, width, height, bandWidthUV, result.data, distBuf);
+        rasterizeBand(uvB0, uvB1, theta, Rinv, tInv, width, height, bandWidthUV, result.data, distBuf);
     }
 
     return result;

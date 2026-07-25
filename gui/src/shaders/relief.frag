@@ -100,7 +100,10 @@ void IslandLeap(
 // map's R channel (min depth) is used as the per-cell depth bound for now —
 // the G channel (max depth, pooled per mip region — see
 // downsampleReliefMixed) is reserved for a future conservative-stepping
-// optimization.
+// optimization. The B channel (max-pooled seam mask, see
+// relief_test_module.cpp's seamMip0) flags mip cells that touch a leap
+// band — without checking it, a coarse box-march step can be wider than
+// the band and skip clean over a seam without IslandLeap ever triggering.
 vec3 Mip_Relief(
     vec3 Tangent_Direction,
     vec2 UV,
@@ -121,12 +124,31 @@ vec3 Mip_Relief(
 
     for(int i = 0; i < maxSteps; i++) {
         stepsTaken = i + 1;
+
+        // A leap's offset transform maps a texel inside the departing island's
+        // band to a point inside the landing island's own band for that same
+        // seam (that's the whole point of the band), so checking IslandLeap
+        // unconditionally every iteration can leap straight back next
+        // iteration, then back again — an infinite-loop-shaped bug: bounded
+        // by maxSteps so it can't hang the GPU, but the ray can spend its
+        // entire step budget bouncing between the two islands without ever
+        // advancing in depth. `jumped` is a one-iteration cooldown: skip the
+        // check for exactly the iteration right after a leap, guaranteeing
+        // at least one real box-march step away from the seam before a leap
+        // is considered again.
+        if(UseAtlas) {
+            if(jumped)
+                jumped = false;
+            else
+                IslandLeap(Tangent_Direction, pos, invDir, leapingPoint, landingPoint, jumped, offsetSamples, numLeaps);
+        }
+
+        // Sampled after the potential leap so depth always matches the
+        // island pos.xy currently sits in — sampling before the leap would
+        // pair the departing island's depth with the landing island's AABB.
         vec2 rm = textureLod(Relief_Map, pos.xy, mip).xy;
         float s = (ReliefTextureType == 1) ? rm.y : rm.x;
         float depth = (ReliefTextureType == 1 ? s - 1.0 : -s) * DepthScale;
-
-        if(UseAtlas)
-            IslandLeap(Tangent_Direction, pos, invDir, leapingPoint, landingPoint, jumped, offsetSamples, numLeaps);
 
         vec3 aabbMin, aabbMax;
         BuildPixelAABB(pos.xy, depth, pixelSize, aabbMin, aabbMax);
