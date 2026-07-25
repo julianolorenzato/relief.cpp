@@ -4,9 +4,9 @@ in vec3 Normal;
 in vec2 TexCoord;
 in vec3 Tangent;
 in float Handedness;
-in vec3 ViewDirTS;
 out vec4 FragColor;
 
+uniform vec3 viewPosWorld;
 uniform sampler2D Color_Map;
 uniform sampler2D Relief_Map;
 uniform sampler2D Offset_Map;
@@ -200,7 +200,19 @@ void main() {
     int leapCounter = 0, stepsTaken = 0;
 
     if(ReliefEnabled) {
-        vec3 viewTS = normalize(ViewDirTS);
+        // Reconstructed here (rather than interpolated from a per-vertex
+        // ViewDirTS varying) so the ray direction uses the same per-pixel,
+        // renormalized T/B/N as the shading normal below. Interpolating a
+        // pre-transformed per-vertex vector instead would only match across
+        // triangle edges in value, not in slope — adjacent triangles pull it
+        // toward different third vertices — and the box-march below is a
+        // nonlinear, branchy function of ray direction (which AABB wall gets
+        // hit, mip promote/demote, island leaps), so that slope kink turns
+        // into a visible seam right on triangle edges. It's masked at
+        // near-normal angles but blown up at grazing ones by the 1/|viewTS.z|
+        // below, which is exactly where the reported distortion shows up.
+        vec3 viewDirWorld = normalize(viewPosWorld - FragPos);
+        vec3 viewTS = normalize(vec3(dot(viewDirWorld, T), dot(viewDirWorld, B), dot(viewDirWorld, N)));
         // Tangent-space ray marching into the surface: xy follows the view
         // direction's projection (silhouette-correct parallax), z is negative
         // because depth values are negative (z=0 is the untouched surface
