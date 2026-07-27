@@ -73,9 +73,11 @@ void PerformIslandLeap(
     numLeaps += 1;
 }
 
-// Skips the ray across a UV-atlas seam/edge: samples the Offset_Map at the
-// current position and, if it carries a leap (Offset_Map.w > 0), rotates the
-// tangent direction and relocates the ray to the island's landing point.
+// Skips the ray across a UV-atlas seam/edge: rotates the tangent direction
+// and relocates the ray to the island's landing point using the offset
+// stored at the current position. Offset_Map.w > 0 confirms this texel is
+// really a leap point rather than a coarse-mip false positive from the seam
+// mask that gates the call site below (TCC Bonorino sec. 4.4, Alg. 10).
 void IslandLeap(
     inout vec3 tangent_direction,
     inout vec3 Current_Position,
@@ -96,14 +98,13 @@ void IslandLeap(
 
 // GLSL port of relief.ush's CleanerRelief, with the project's UV-atlas
 // island-leap hook layered on top (relief.ush itself doesn't model atlas
-// seams: it works on a single, seamless depth channel). Only the relief
-// map's R channel (min depth) is used as the per-cell depth bound for now —
-// the G channel (max depth, pooled per mip region — see
-// downsampleReliefMixed) is reserved for a future conservative-stepping
-// optimization. The B channel (max-pooled seam mask, see
-// relief_test_module.cpp's seamMip0) flags mip cells that touch a leap
-// band — without checking it, a coarse box-march step can be wider than
-// the band and skip clean over a seam without IslandLeap ever triggering.
+// seams: it works on a single, seamless depth channel). The relief map's R
+// channel (min depth) is the per-cell depth bound; G (max depth) is
+// reserved for a future conservative-stepping optimization. B is the
+// max-pooled seam mask (relief_test_module.cpp's seamMip0/maskPyr): exact
+// per-texel at mip 0, and propagated (not averaged, per TCC Bonorino sec.
+// 4.4.1) into coarser mips, so a coarse cell reads nonzero whenever any
+// mip-0 texel beneath it touches a leap band.
 vec3 Mip_Relief(
     vec3 Tangent_Direction,
     vec2 UV,
@@ -125,6 +126,33 @@ vec3 Mip_Relief(
     for(int i = 0; i < maxSteps; i++) {
         stepsTaken = i + 1;
 
+        // Sampled first (rather than after the leap) so its B channel can
+        // gate the leap check itself — TCC Bonorino sec. 4.4, Alg. 10: only
+        // pay for the Offset_Map fetch when the current mip cell's seam
+        // mask says there might be an edge here. Confirmed by direct A/B
+        // test (this gate removed vs. present, both forced to mip 0) that
+        // this gate does not affect which pixels leap — B and Offset_Map.w
+        // come from the same source data, so at any mip they agree on
+        // whether a leap should fire; this is purely a texture-fetch-count
+        // optimization on top of that shared ground truth.
+        vec4 rm = textureLod(Relief_Map, pos.xy, mip);
+
+        // A coarse mip cell can be wider than the leap band it straddles: the
+        // box march below only samples once per cell (at pos.xy on entry),
+        // so a wide coarse cell can cross a seam without pos.xy ever landing
+        // on the narrow strip of texels whose Offset_Map.w is actually set,
+        // silently skipping the leap. B is max-pooled (sec. 4.4.1), so
+        // rm.z > 0 here is a reliable "a leap texel exists somewhere under
+        // this cell" signal even when mip is coarse — refine to mip 0 before
+        // treating this as a normal depth/AABB cell so the leap check and
+        // the box march both operate at full per-texel precision near seams.
+        if(rm.z > 0.0 && mip > 0.0) {
+            mip = 0.0;
+            pixelSize = pow(2.0, -LastMip);
+            wallCount = 0;
+            rm = textureLod(Relief_Map, pos.xy, mip);
+        }
+
         // A leap's offset transform maps a texel inside the departing island's
         // band to a point inside the landing island's own band for that same
         // seam (that's the whole point of the band), so checking IslandLeap
@@ -137,16 +165,18 @@ vec3 Mip_Relief(
         // at least one real box-march step away from the seam before a leap
         // is considered again.
         if(UseAtlas) {
-            if(jumped)
-                jumped = false;
-            else
+            if(jumped) {
+                // jumped = false;
+            } else if(rm.z > 0.0) {
                 IslandLeap(Tangent_Direction, pos, invDir, leapingPoint, landingPoint, jumped, offsetSamples, numLeaps);
+                // Re-sample: a successful leap just moved pos.xy onto the
+                // landing island, and depth/AABB below must match wherever
+                // the ray currently sits, not the island it left.
+                if(jumped)
+                    rm = textureLod(Relief_Map, pos.xy, mip);
+            }
         }
 
-        // Sampled after the potential leap so depth always matches the
-        // island pos.xy currently sits in — sampling before the leap would
-        // pair the departing island's depth with the landing island's AABB.
-        vec2 rm = textureLod(Relief_Map, pos.xy, mip).xy;
         float s = (ReliefTextureType == 1) ? rm.y : rm.x;
         float depth = (ReliefTextureType == 1 ? s - 1.0 : -s) * DepthScale;
 

@@ -35,6 +35,9 @@ public:
 
 signals:
     void cameraChanged(float rotX, float rotY, float zoom);
+    // Emitted after a click is resolved to a texture UV (see performPick).
+    // hit is false if the click didn't land on any mesh geometry.
+    void pixelPicked(QPointF uv, bool hit);
 
 public slots:
     void setReliefEnabled(bool v);
@@ -51,6 +54,7 @@ protected:
     void resizeGL(int w, int h) override;
     void paintGL() override;
     void mousePressEvent(QMouseEvent *e) override;
+    void mouseReleaseEvent(QMouseEvent *e) override;
     void mouseMoveEvent(QMouseEvent *e) override;
     void wheelEvent(QWheelEvent *e) override;
 
@@ -68,8 +72,20 @@ private:
     // Camera (spherical coordinates)
     float rotX = 0.f, rotY = 0.f, zoom = 3.f;
     QPoint lastMouse;
+    QPoint pressPos;
     QVector3D meshCenter{0.f, 0.f, 0.f};
     float meshNormScale = 1.f;
+
+    // Pixel picking: a click queues a widget-space position here; paintGL
+    // resolves it after the normal (visible) draw so picking never disturbs
+    // the on-screen frame.
+    bool pickPending = false;
+    QPoint pickPos;
+    GLuint pickFbo = 0, pickColorTex = 0, pickDepthRbo = 0;
+    int pickFboW = 0, pickFboH = 0;
+    void ensurePickFbo(int w, int h);
+    void deletePickFbo();
+    void performPick(const QPoint &widgetPos);
 
     // Mesh (not owned)
     const QEMSimplifier *mesh = nullptr;

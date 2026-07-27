@@ -128,6 +128,7 @@ ReliefView::~ReliefView()
     if (this->vao.isCreated())
         this->vao.destroy();
     deleteTextures();
+    deletePickFbo();
     doneCurrent();
 }
 
@@ -321,6 +322,132 @@ void ReliefView::paintGL()
 
     this->prog.release();
     glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
+
+    if (this->pickPending)
+    {
+        this->pickPending = false;
+        performPick(this->pickPos);
+    }
+}
+
+// ─── Pixel picking ────────────────────────────────────────────────────────────
+
+void ReliefView::ensurePickFbo(int w, int h)
+{
+    if (this->pickFbo != 0 && this->pickFboW == w && this->pickFboH == h)
+        return;
+
+    deletePickFbo();
+    if (w <= 0 || h <= 0)
+        return;
+
+    glGenTextures(1, &this->pickColorTex);
+    glBindTexture(GL_TEXTURE_2D, this->pickColorTex);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA32F, w, h, 0, GL_RGBA, GL_FLOAT, nullptr);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+
+    glGenRenderbuffers(1, &this->pickDepthRbo);
+    glBindRenderbuffer(GL_RENDERBUFFER, this->pickDepthRbo);
+    glRenderbufferStorage(GL_RENDERBUFFER, GL_DEPTH_COMPONENT24, w, h);
+
+    glGenFramebuffers(1, &this->pickFbo);
+    glBindFramebuffer(GL_FRAMEBUFFER, this->pickFbo);
+    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, this->pickColorTex, 0);
+    glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_RENDERBUFFER, this->pickDepthRbo);
+    glBindFramebuffer(GL_FRAMEBUFFER, defaultFramebufferObject());
+
+    this->pickFboW = w;
+    this->pickFboH = h;
+}
+
+void ReliefView::deletePickFbo()
+{
+    if (this->pickFbo)
+        glDeleteFramebuffers(1, &this->pickFbo);
+    if (this->pickColorTex)
+        glDeleteTextures(1, &this->pickColorTex);
+    if (this->pickDepthRbo)
+        glDeleteRenderbuffers(1, &this->pickDepthRbo);
+    this->pickFbo = this->pickColorTex = this->pickDepthRbo = 0;
+    this->pickFboW = this->pickFboH = 0;
+}
+
+// Re-renders the same frame into an offscreen float FBO with DebugView
+// forced to 3 (UV output — see relief.frag's main()), then reads back the
+// single clicked texel. Never touches the default framebuffer, so the
+// visible frame is unaffected. Alpha (always 1 where relief.frag writes a
+// fragment, 0 where the FBO was only cleared) distinguishes a real hit from
+// a click that missed all geometry.
+void ReliefView::performPick(const QPoint &widgetPos)
+{
+    if (!this->vao.isCreated() || this->indexCount == 0 || !hasTextures())
+        return;
+
+    int w = width(), h = height();
+    ensurePickFbo(w, h);
+    if (this->pickFbo == 0)
+        return;
+
+    glBindFramebuffer(GL_FRAMEBUFFER, this->pickFbo);
+    glViewport(0, 0, w, h);
+    glClearColor(0.f, 0.f, 0.f, 0.f);
+    glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+
+    if (this->cullFace)
+        glEnable(GL_CULL_FACE);
+    else
+        glDisable(GL_CULL_FACE);
+    glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
+
+    this->prog.bind();
+    this->prog.setUniformValue("projection", projMatrix());
+    this->prog.setUniformValue("view", viewMatrix());
+    this->prog.setUniformValue("model", modelMatrix());
+
+    float radX = qDegreesToRadians(this->rotX);
+    float radY = qDegreesToRadians(this->rotY);
+    QVector3D camPos(
+        this->zoom * sinf(radY) * cosf(radX),
+        this->zoom * sinf(radX),
+        this->zoom * cosf(radY) * cosf(radX));
+    this->prog.setUniformValue("viewPosWorld", camPos);
+
+    this->prog.setUniformValue("ReliefEnabled", this->reliefEnabled);
+    this->prog.setUniformValue("UseAtlas", this->useAtlas);
+    this->prog.setUniformValue("ReliefTextureType", this->reliefTextureType);
+    this->prog.setUniformValue("LinearSteps", this->steps);
+    this->prog.setUniformValue("DepthScale", this->depthScale);
+    float lastMip = std::log2((float)std::max(1, this->reliefTex->width()));
+    this->prog.setUniformValue("LastMip", lastMip);
+    this->prog.setUniformValue("DebugView", 3);
+
+    this->colorTex->bind(0);
+    this->prog.setUniformValue("Color_Map", 0);
+    this->reliefTex->bind(1);
+    this->prog.setUniformValue("Relief_Map", 1);
+    this->offsetTex->bind(2);
+    this->prog.setUniformValue("Offset_Map", 2);
+    this->normalTex->bind(3);
+    this->prog.setUniformValue("Normal_Map", 3);
+
+    this->vao.bind();
+    glDrawElements(GL_TRIANGLES, this->indexCount, GL_UNSIGNED_INT, nullptr);
+    this->vao.release();
+    this->prog.release();
+    glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
+
+    float pixel[4] = {0.f, 0.f, 0.f, 0.f};
+    int px = widgetPos.x();
+    int py = h - 1 - widgetPos.y(); // GL reads bottom-up, Qt widget coords are top-down
+    if (px >= 0 && px < w && py >= 0 && py < h)
+        glReadPixels(px, py, 1, 1, GL_RGBA, GL_FLOAT, pixel);
+
+    glBindFramebuffer(GL_FRAMEBUFFER, defaultFramebufferObject());
+    glViewport(0, 0, w, h);
+    glClearColor(0.12f, 0.12f, 0.12f, 1.0f);
+
+    emit pixelPicked(QPointF(pixel[0], pixel[1]), pixel[3] > 0.5f);
 }
 
 // ─── Buffer / texture helpers ─────────────────────────────────────────────────
@@ -495,6 +622,19 @@ QMatrix4x4 ReliefView::modelMatrix() const
 void ReliefView::mousePressEvent(QMouseEvent *e)
 {
     this->lastMouse = e->pos();
+    this->pressPos = e->pos();
+}
+
+void ReliefView::mouseReleaseEvent(QMouseEvent *e)
+{
+    // A left click that didn't turn into a drag (camera rotation) is
+    // treated as a pick request instead.
+    if (e->button() == Qt::LeftButton && (e->pos() - this->pressPos).manhattanLength() < 4)
+    {
+        this->pickPos = e->pos();
+        this->pickPending = true;
+        update();
+    }
 }
 
 void ReliefView::mouseMoveEvent(QMouseEvent *e)

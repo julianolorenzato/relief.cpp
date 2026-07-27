@@ -213,7 +213,12 @@ QImage TextureInspectorDialog::renderChannel(int channelIndex) const
                 int ch = (channelIndex == 0) ? k : channelOffset;
                 float v = data[i * c + ch];
                 float range = hi[k] - lo[k];
-                float n = (range > 1e-8f) ? (v - lo[k]) / range : 0.f;
+                // When a level has no internal variation to stretch contrast
+                // against, fall back to the raw (clamped) value instead of
+                // always going black — otherwise a uniformly-1.0 level (e.g.
+                // a seam mask fully saturated at a coarse mip) is visually
+                // indistinguishable from a uniformly-0.0 one.
+                float n = (range > 1e-8f) ? (v - lo[k]) / range : std::clamp(v, 0.f, 1.f);
                 rgb[k] = (uchar)std::clamp((int)std::lround(n * 255.f), 0, 255);
             }
             if (wantChannels == 1)

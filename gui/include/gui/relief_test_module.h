@@ -29,6 +29,7 @@ private slots:
     void onLoadDepth();
     void onLoadNormal();
     void onInspectTextures();
+    void onPixelPicked(QPointF uv, bool hit);
 
 private:
     QWidget *buildControls();
@@ -48,6 +49,8 @@ private:
     QLabel *thumbDepth = nullptr;
     QLabel *thumbNormal = nullptr;
     QPushButton *inspectTexturesBtn = nullptr;
+    QLabel *pickInfoLbl = nullptr;
+    QLabel *pickPreviewLbl = nullptr;
 
     // ── Relief controls ───────────────────────────────────────────────────────
     QCheckBox *reliefEnabledCheck = nullptr;

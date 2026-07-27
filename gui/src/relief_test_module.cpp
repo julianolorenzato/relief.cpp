@@ -10,6 +10,7 @@
 #include <QSplitter>
 #include <QFileDialog>
 #include <QMessageBox>
+#include <QPainter>
 
 // ─── Resample helpers (bilinear from RawImage → float mip0) ─────────────────
 
@@ -93,6 +94,7 @@ ReliefTestModule::ReliefTestModule(QWidget *parent)
     this->reliefView = new ReliefView();
     this->reliefView->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
     splitter->addWidget(this->reliefView);
+    connect(this->reliefView, &ReliefView::pixelPicked, this, &ReliefTestModule::onPixelPicked);
 
     QWidget *controls = buildControls();
     splitter->addWidget(controls);
@@ -147,6 +149,23 @@ QWidget *ReliefTestModule::buildControls()
     texLayout->addWidget(this->inspectTexturesBtn);
 
     layout->addWidget(texGroup);
+
+    // ── Pixel pick group ─────────────────────────────────────────────────────
+    QGroupBox *pickGroup = new QGroupBox("Pixel Pick");
+    QVBoxLayout *pickLayout = new QVBoxLayout(pickGroup);
+
+    this->pickInfoLbl = new QLabel("Click a pixel in the view to see where it samples the color texture.");
+    this->pickInfoLbl->setWordWrap(true);
+    this->pickInfoLbl->setStyleSheet("color: #aaa; font-size: 11px;");
+    pickLayout->addWidget(this->pickInfoLbl);
+
+    this->pickPreviewLbl = new QLabel();
+    this->pickPreviewLbl->setFixedSize(220, 220);
+    this->pickPreviewLbl->setAlignment(Qt::AlignCenter);
+    this->pickPreviewLbl->setStyleSheet("background-color:#1e1e1e; border:1px solid #555;");
+    pickLayout->addWidget(this->pickPreviewLbl);
+
+    layout->addWidget(pickGroup);
 
     // ── Relief parameters group ───────────────────────────────────────────────
     QGroupBox *ctrlGroup = new QGroupBox("Relief Mapping Parameters");
@@ -337,7 +356,7 @@ void ReliefTestModule::recomputeDepthTextures()
     RawImage rawDepth{d.constBits(), d.width(), d.height(), 1};
     auto depthMip0 = resampleDepthR(rawDepth, kRes, kRes);
 
-    constexpr int kSeam = 4;
+    constexpr int kSeam = 2;
     std::vector<float> seamMip0((size_t)kRes * kRes, 0.f);
 
     if (this->mesh)
@@ -384,6 +403,37 @@ void ReliefTestModule::onInspectTextures()
     TextureInspectorDialog dlg(&this->colorMapData, &this->reliefMapData,
                                 &this->normalMapData, &this->offsetMapData, this);
     dlg.exec();
+}
+
+void ReliefTestModule::onPixelPicked(QPointF uv, bool hit)
+{
+    if (!hit)
+    {
+        this->pickInfoLbl->setText("Click missed — no surface at that pixel.");
+        this->pickPreviewLbl->clear();
+        return;
+    }
+
+    this->pickInfoLbl->setText(QString("Texture UV: (%1, %2)").arg(uv.x(), 0, 'f', 4).arg(uv.y(), 0, 'f', 4));
+
+    if (this->colorImg.isNull())
+        return;
+
+    // colorMapData's mip0 row y == colorImg's row y (see resampleColorRGBA in
+    // ReliefTestModule::onLoadColor), so (u, v) maps onto colorImg with no flip.
+    QImage preview = this->colorImg
+                         .scaled(this->pickPreviewLbl->size(), Qt::KeepAspectRatio, Qt::SmoothTransformation)
+                         .convertToFormat(QImage::Format_RGB32);
+    QPainter p(&preview);
+    p.setPen(QPen(Qt::red, 2));
+    p.setBrush(Qt::NoBrush);
+    QPointF marker(uv.x() * preview.width(), uv.y() * preview.height());
+    p.drawEllipse(marker, 5, 5);
+    p.drawLine(marker - QPointF(8, 0), marker + QPointF(8, 0));
+    p.drawLine(marker - QPointF(0, 8), marker + QPointF(0, 8));
+    p.end();
+
+    this->pickPreviewLbl->setPixmap(QPixmap::fromImage(preview));
 }
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
