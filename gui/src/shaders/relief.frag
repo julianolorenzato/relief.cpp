@@ -146,7 +146,7 @@ vec3 Mip_Relief(
         // this cell" signal even when mip is coarse — refine to mip 0 before
         // treating this as a normal depth/AABB cell so the leap check and
         // the box march both operate at full per-texel precision near seams.
-        if(rm.z > 0.0 && mip > 0.0) {
+        if(UseAtlas && rm.z > 0.0 && mip > 0.0) {
             mip = 0.0;
             pixelSize = pow(2.0, -LastMip);
             wallCount = 0;
