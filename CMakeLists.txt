@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.16)
-project(relief CXX)
+project(relief.cpp CXX)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -16,8 +16,30 @@ endif()
 
 option(BUILD_APP "Compilar o executável Qt/OpenGL" ON)
 
-# ── Subdiretórios ─────────────────────────────────────────────────────────────
+# ── Doxygen Documentation ─────────────────────────────────────────────────────
+find_package(Doxygen REQUIRED dot OPTIONAL_COMPONENTS mscgen dia)
+if(DOXYGEN_FOUND)
+  set(DOXYGEN_GENERATE_HTML YES)
+  set(DOXYGEN_GENERATE_LATEX NO)
+  set(DOXYGEN_EXTRACT_ALL YES)
+  set(DOXYGEN_EXTRACT_PRIVATE YES)
+  set(DOXYGEN_EXTRACT_STATIC YES)
+  set(DOXYGEN_EXTRACT_LOCAL_CLASSES YES)
+  set(DOXYGEN_EXTRACT_LOCAL_METHODS YES)
+  set(DOXYGEN_USE_MDFILE_AS_MAINPAGE README.md)
+  set(DOXYGEN_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/docs)
 
+  doxygen_add_docs(docs
+    ${CMAKE_SOURCE_DIR}/README.md
+    ${CMAKE_CURRENT_SOURCE_DIR}/relief
+    ${CMAKE_CURRENT_SOURCE_DIR}/gui
+    COMMENT "Generating API documentation with Doxygen"
+  )
+else()
+  message(STATUS "Doxygen not found, unable to generate API documentation")
+endif()
+
+# ── Subdirectories ─────────────────────────────────────────────────────────────
 add_subdirectory(relief)
 
 if(BUILD_APP)
@@ -25,7 +47,6 @@ if(BUILD_APP)
 endif()
 
 # ── Install rules ─────────────────────────────────────────────────────────────
-
 include(GNUInstallDirs)
 
 if(BUILD_APP)
