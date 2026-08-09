@@ -1,3 +1,8 @@
+/**
+ * @file uv_atlas.cpp
+ * @brief UV-island detection (union-find over 3D-edge-adjacent, UV-matching
+ *        faces) and Offset_Map baking (per-texel cross-seam leap transforms).
+ */
 #include "relief/uv_atlas.h"
 #include <map>
 #include <tuple>
@@ -12,15 +17,18 @@ constexpr double kPi = 3.14159265358979323846;
 
 // ─── 3D-edge adjacency (shared by island detection and seam baking) ──────────
 
+/// One face's reference to a shared 3D edge, keyed by the edge's canonical vertex ids.
 struct EdgeRef {
     int face;
-    int vAtFirst;  // mesh vertex index whose canonical position == the edge key's smaller id
-    int vAtSecond; // mesh vertex index whose canonical position == the edge key's larger id
+    int vAtFirst;  ///< Mesh vertex index whose canonical position == the edge key's smaller id.
+    int vAtSecond; ///< Mesh vertex index whose canonical position == the edge key's larger id.
 };
+/// Maps a canonical (small id, large id) edge key to every face referencing it.
 using EdgeMap = std::map<std::pair<int, int>, std::vector<EdgeRef>>;
 
-// Welds vertices that share (approximately) the same 3D position, so faces split
-// across a UV seam can still be recognized as 3D-adjacent.
+/// Welds vertices that share (approximately) the same 3D position, so faces split
+/// across a UV seam can still be recognized as 3D-adjacent.
+/// @return Per-vertex canonical id (same id for welded vertices); -1 for removed vertices.
 std::vector<int> computeCanonicalPositions(const QEMSimplifier& mesh) {
     Eigen::Vector3d bmin(1e18, 1e18, 1e18), bmax(-1e18, -1e18, -1e18);
     bool any = false;
@@ -57,6 +65,7 @@ std::vector<int> computeCanonicalPositions(const QEMSimplifier& mesh) {
     return canon;
 }
 
+/// Builds the shared-edge map for `mesh`, keyed by canonical (welded) vertex ids.
 EdgeMap buildEdgeMap(const QEMSimplifier& mesh, const std::vector<int>& canon) {
     EdgeMap edgeMap;
     for (int f = 0; f < (int)mesh.faces.size(); f++) {
@@ -73,6 +82,7 @@ EdgeMap buildEdgeMap(const QEMSimplifier& mesh, const std::vector<int>& canon) {
     return edgeMap;
 }
 
+/// @return Shortest distance from point `p` to segment [a, b].
 double pointSegmentDistance(const Eigen::Vector2d& p, const Eigen::Vector2d& a, const Eigen::Vector2d& b) {
     Eigen::Vector2d ab = b - a;
     double len2 = ab.squaredNorm();
@@ -82,10 +92,20 @@ double pointSegmentDistance(const Eigen::Vector2d& p, const Eigen::Vector2d& a, 
     return (p - proj).norm();
 }
 
-// Rasterizes the band of texels near segment [p0,p1] (in "this" island's UV space),
-// writing the per-texel translation that maps each texel's own UV position into the
-// neighboring island via the rigid transform (R, t). Nearest-seam-wins: only
-// overwrites a texel if this segment is closer than whatever previously claimed it.
+/**
+ * @brief Rasterizes the band of texels near segment [p0,p1] (in "this"
+ *        island's UV space), writing the per-texel translation that maps
+ *        each texel's own UV position into the neighboring island via the
+ *        rigid transform (R, t). Nearest-seam-wins: only overwrites a texel
+ *        if this segment is closer than whatever previously claimed it.
+ * @param p0,p1 Seam segment endpoints, in UV space.
+ * @param theta Rotation (radians) encoded into the texel's z channel (as turns).
+ * @param R,t Rigid transform mapping a UV point on this segment to the neighbor island.
+ * @param width,height Offset map dimensions.
+ * @param bandWidthUV Half-width of the band, in UV units.
+ * @param[out] outData Offset map RGBA buffer being written into.
+ * @param[in,out] distBuf Per-texel nearest-seam distance, used for the nearest-seam-wins test.
+ */
 void rasterizeBand(
     const Eigen::Vector2d& p0, const Eigen::Vector2d& p1,
     double theta, const Eigen::Matrix2d& R, const Eigen::Vector2d& t,

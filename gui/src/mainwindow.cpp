@@ -1,3 +1,8 @@
+/**
+ * @file mainwindow.cpp
+ * @brief MainWindow implementation: builds the module widgets, wires their
+ *        signals into the pipeline, and sets up the toolbar/menu.
+ */
 #include "gui/mainwindow.h"
 #include <QMenuBar>
 #include <QMenu>

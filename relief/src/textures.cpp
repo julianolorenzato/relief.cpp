@@ -1,9 +1,16 @@
+/**
+ * @file textures.cpp
+ * @brief Mip pyramid downsampling kernels (average, min, max) and their
+ *        public builder entry points.
+ */
 #include "relief/textures.h"
 #include <algorithm>
 #include <cmath>
 
 namespace {
 
+/// Downsamples `src` by 2x2 box-average, per channel.
+/// @param[out] outW,outH Resulting dimensions.
 std::vector<float> downsampleAvg(const std::vector<float>& src, int w, int h, int channels, int& outW, int& outH) {
     outW = std::max(1, w / 2);
     outH = std::max(1, h / 2);
@@ -24,6 +31,8 @@ std::vector<float> downsampleAvg(const std::vector<float>& src, int w, int h, in
     return dst;
 }
 
+/// Downsamples a single-channel `src` by 2x2 minimum pooling.
+/// @param[out] outW,outH Resulting dimensions.
 std::vector<float> downsampleMin1ch(const std::vector<float>& src, int w, int h, int& outW, int& outH) {
     outW = std::max(1, w / 2);
     outH = std::max(1, h / 2);
@@ -40,6 +49,8 @@ std::vector<float> downsampleMin1ch(const std::vector<float>& src, int w, int h,
     return dst;
 }
 
+/// Downsamples a single-channel `src` by 2x2 maximum pooling.
+/// @param[out] outW,outH Resulting dimensions.
 std::vector<float> downsampleMax1ch(const std::vector<float>& src, int w, int h, int& outW, int& outH) {
     outW = std::max(1, w / 2);
     outH = std::max(1, h / 2);

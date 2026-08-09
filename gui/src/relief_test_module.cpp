@@ -1,3 +1,9 @@
+/**
+ * @file relief_test_module.cpp
+ * @brief ReliefTestModule implementation: loads a mesh plus color/depth/normal
+ *        images independently of the main pipeline, resamples them into mip0
+ *        buffers, and bakes/previews the relief maps synchronously.
+ */
 #include "gui/relief_test_module.h"
 #include "gui/texture_inspector_dialog.h"
 #include "relief/uv_atlas.h"
@@ -16,6 +22,8 @@
 
 namespace {
 
+/// Bilinearly samples `img` at normalized (u, v), writing up to 4 channels
+/// (in [0,1]) to `out`; unused channels are 0, except alpha which defaults to 1.
 void bilinearSampleF(const RawImage& img, double u, double v, float out[4]) {
     double x = u * img.width  - 0.5;
     double y = v * img.height - 0.5;
@@ -39,6 +47,7 @@ void bilinearSampleF(const RawImage& img, double u, double v, float out[4]) {
     for (int i = c; i < 4; i++) out[i] = (i == 3) ? 1.0f : 0.0f;
 }
 
+/// Resamples `img` to outW x outH RGBA float data via bilinear sampling.
 std::vector<float> resampleColorRGBA(const RawImage& img, int outW, int outH) {
     std::vector<float> out((size_t)outW * outH * 4);
     float s[4];
@@ -51,6 +60,7 @@ std::vector<float> resampleColorRGBA(const RawImage& img, int outW, int outH) {
     return out;
 }
 
+/// Resamples `img`'s red channel to outW x outH single-channel float data.
 std::vector<float> resampleDepthR(const RawImage& img, int outW, int outH) {
     std::vector<float> out((size_t)outW * outH);
     float s[4];
@@ -62,6 +72,8 @@ std::vector<float> resampleDepthR(const RawImage& img, int outW, int outH) {
     return out;
 }
 
+/// Resamples `img` (encoded as [0,1] RGB) to outW x outH unit-vector XYZ float
+/// data in [-1,1], renormalizing each resampled texel.
 std::vector<float> resampleNormalXYZ(const RawImage& img, int outW, int outH) {
     std::vector<float> out((size_t)outW * outH * 3);
     float s[4];

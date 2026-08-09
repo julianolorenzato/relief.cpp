@@ -1,3 +1,8 @@
+/**
+ * @file qem.cpp
+ * @brief QEMSimplifier implementation: OBJ I/O, quadric/envelope computation,
+ *        boundary/seam handling, and the greedy edge-collapse main loop.
+ */
 #include "relief/qem.h"
 #include <limits>
 
@@ -197,12 +202,13 @@ void QEMSimplifier::computeQ()
 }
 
 // Envelope Constraint (half-spaces)
-// Um ponto satisfaz um plano (n,d) orientado outward quando n·p + d ≥ -eps.
-// Como essa desigualdade é afim em p, se os 3 cantos de um triângulo a
-// satisfazem, todo ponto interno também satisfaz — é isso que permite usar
-// os planos acumulados por vértice como restrição de colapso e ainda assim
-// garantir a footprint inteira (ver docs/envelope-simplification-plan.md).
+// A point satisfies an outward-oriented plane (n,d) when n.p + d >= -eps.
+// Since this inequality is affine in p, if all 3 corners of a triangle
+// satisfy it, every interior point does too — this is what lets the planes
+// accumulated per vertex be used as a collapse constraint while still
+// guaranteeing the whole footprint (see docs/envelope-simplification-plan.md).
 
+/// @return true if `p` satisfies every outward-oriented half-space in `planes` (within `eps`).
 static bool pointSatisfiesPlanes(
     const Eigen::Vector3d &p,
     const std::vector<Eigen::Vector4d> &planes,
@@ -217,9 +223,15 @@ static bool pointSatisfiesPlanes(
     return true;
 }
 
-// Para um candidato de posição que não é nem v1, nem v2, nem o ponto médio
-// (caso do ótimo irrestrito da quádrica), não há UV "natural", projeta p
-// sobre o segmento a-b e interpola a UV por esse parâmetro, clampado a [0,1].
+/**
+ * Interpolates UV coordinates along a segment.
+ * @param p Query point.
+ * @param a First endpoint of the segment.
+ * @param uvA UV coordinate at `a`.
+ * @param b Second endpoint of the segment.
+ * @param uvB UV coordinate at `b`.
+ * @return Interpolated UV coordinate.
+ */
 static Eigen::Vector2d interpolateUVAlongSegment(
     const Eigen::Vector3d &p,
     const Eigen::Vector3d &a, const Eigen::Vector2d &uvA,
@@ -495,7 +507,7 @@ bool QEMSimplifier::computeCollapse(int v1, int v2, int tv1, int tv2, EdgeCollap
     return found;
 }
 
-//Marcação de vértices de boundary (para BoundaryMode::LockSeamVertices)
+// Marcação de vértices de boundary (para BoundaryMode::LockSeamVertices)
 void QEMSimplifier::markBoundaryVertices()
 {
     boundaryVertex.assign(vertices.size(), false);
@@ -541,7 +553,7 @@ void QEMSimplifier::buildSeamTwins()
     std::cout << "Seam twins: " << pairCount << " pares encontrados\n";
 }
 
-//Decide o tipo de candidato para a aresta (p,q)
+// Decide o tipo de candidato para a aresta (p,q)
 
 bool QEMSimplifier::buildCandidate(int p, int q, EdgeCollapse &out) const
 {
@@ -588,7 +600,7 @@ void QEMSimplifier::buildAdjacency()
     }
 }
 
-//Construir a fila de prioridade
+// Construir a fila de prioridade
 
 void QEMSimplifier::rebuildQueue(
     std::priority_queue<EdgeCollapse,

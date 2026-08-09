@@ -1,3 +1,8 @@
+/**
+ * @file relief_view.cpp
+ * @brief ReliefView implementation: interleaved vertex/tangent buffer
+ *        construction, GL texture upload, and the pixel-picking pass.
+ */
 #include "gui/relief_view.h"
 #include <QMouseEvent>
 #include <QWheelEvent>
@@ -12,6 +17,12 @@
 namespace
 {
 
+    /// @brief Builds the interleaved [pos(3)|normal(3)|uv(2)|tangent(4, w=handedness)]
+    ///        vertex buffer and triangle index buffer for `mesh`, computing
+    ///        per-vertex normals and Gram-Schmidt-orthogonalized tangents
+    ///        (with handedness resolved against the accumulated bitangent).
+    /// @param[out] verts Interleaved vertex data, 12 floats per vertex.
+    /// @param[out] idxs Triangle indices into `verts`.
     void buildMeshVerts(const QEMSimplifier *mesh,
                         std::vector<float> &verts,
                         std::vector<unsigned int> &idxs)

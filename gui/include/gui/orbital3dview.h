@@ -1,3 +1,9 @@
+/**
+ * @file orbital3dview.h
+ * @brief Unified orbital-camera OpenGL viewport used across the app's
+ *        pipeline stages (solid/textured mesh, overlay comparison, UV layout,
+ *        relief-mapped preview).
+ */
 #pragma once
 #include <QOpenGLWidget>
 #include <QOpenGLFunctions_3_3_Core>
@@ -13,11 +19,15 @@
 #include "relief/textures.h"
 #include "relief/uv_atlas.h"
 
+/// Selects what Orbital3DView renders and which shader/buffers it uses.
 enum class RenderMode { Solid, Textured, Overlay, Relief, UV };
 
-// Unified orbital-camera 3D viewport. Replaces GLWidget, OverlayGLWidget, and
-// ReliefGLWidget with a single configurable widget. Vertex layout is 12 floats:
-// [pos(3) | normal(3) | uv(2) | tangent(4, w = handedness)], stride 48 bytes.
+/**
+ * @brief Unified orbital-camera 3D viewport. Replaces GLWidget,
+ *        OverlayGLWidget, and ReliefGLWidget with a single configurable
+ *        widget. Vertex layout is 12 floats:
+ *        [pos(3) | normal(3) | uv(2) | tangent(4, w = handedness)], stride 48 bytes.
+ */
 class Orbital3DView : public QOpenGLWidget, protected QOpenGLFunctions_3_3_Core {
     Q_OBJECT
 
@@ -25,31 +35,42 @@ public:
     explicit Orbital3DView(RenderMode mode = RenderMode::Solid, const QString& title = {}, QWidget* parent = nullptr);
     ~Orbital3DView() override;
 
+    /// Switches render mode (and rebuilds the color-swatch row visibility for Overlay).
     void setMode(RenderMode mode);
+    /// Sets the title label shown above the viewport.
     void setTitle(const QString& title);
+    /// Updates the "N faces / N vertices" stats label.
     void setStats(int faces, int vertices);
 
-    // Single-mesh modes (Solid, Textured, Relief, UV)
+    /// Sets the mesh for single-mesh modes (Solid, Textured, Relief, UV).
     void setMesh(const QEMSimplifier* mesh);
-    // Two-mesh mode (Overlay: primary = blue, secondary = orange)
+    /// Sets both meshes for Overlay mode (primary = blue, secondary = orange).
     void setMeshes(const QEMSimplifier* primary, const QEMSimplifier* secondary);
-    // Live update of primary mesh data (inflate/deflate) — does not reset camera
+    /// Re-uploads the primary mesh's vertex data (e.g. after inflate/deflate) without resetting the camera.
     void updateMeshData();
-    // Live update of secondary mesh only (Overlay mode)
+    /// Re-uploads the secondary mesh's vertex data only (Overlay mode).
     void updateSecondaryMesh();
 
-    // Upload a float MipPyramid as color texture (overrides mesh's embedded texture)
+    /// Uploads a float MipPyramid as the color texture, overriding the mesh's embedded texture.
     void setColorTexture(const MipPyramid& pyr);
+    /// Sets the relief-mapping color map (Relief mode).
     void setColorMap(const MipPyramid& pyr);
+    /// Sets the relief-mapping depth/height map (Relief mode).
     void setReliefMap(const MipPyramid& pyr);
+    /// Sets the relief-mapping normal map (Relief mode).
     void setNormalMap(const MipPyramid& pyr);
+    /// Sets the cross-seam Offset_Map used to leap relief rays across UV islands (Relief mode).
     void setOffsetMap(const OffsetMapResult& off);
+    /// @return true once a color texture has been uploaded.
     bool hasTextures() const { return colorTex_ != 0; }
 
+    /// Resets the orbit camera to its default position.
     void resetCamera();
+    /// Applies external camera parameters (for syncing multiple linked viewports).
     void syncCamera(float rotX, float rotY, float z);
 
 signals:
+    /// Emitted after a mouse-driven camera change, so linked viewports can call syncCamera().
     void cameraChanged(float rotX, float rotY, float z);
 
 public slots:
@@ -170,22 +191,33 @@ private:
     GLuint offsetTex_ = 0;
     GLuint samplerPoint_ = 0;
 
+    /// Compiles/links all shader programs used by the different render modes.
     void createShaders();
-    void buildPrimaryBuffers();   // recomputes meshCenter_/meshNormScale_
-    void buildSecondaryBuffers(); // uses existing meshCenter_/meshNormScale_
+    void buildPrimaryBuffers();   ///< Uploads the primary mesh; recomputes meshCenter_/meshNormScale_.
+    void buildSecondaryBuffers(); ///< Uploads the secondary mesh; reuses existing meshCenter_/meshNormScale_.
+    /// Rebuilds the boundary/internal edge overlay buffer from the primary mesh.
     void buildEdgeBuffers();
+    /// Rebuilds the UV-space wireframe buffer from the primary mesh.
     void buildUVBuffers();
+    /// Uploads the primary mesh's embedded texture as colorTex_.
     void uploadColorFromMesh();
+    /// Uploads every level of `pyr` into a mip-mapped GL texture.
     void uploadPyramid(GLuint& texId, const MipPyramid& pyr);
+    /// Uploads an Offset_Map result as an RGBA32F GL texture.
     void uploadOffsetMap(GLuint& texId, const OffsetMapResult& off);
+    /// Deletes all owned GL texture objects.
     void deleteTextures();
 
     glm::mat4 viewMatrix() const;
     glm::mat4 modelMatrix() const;
     glm::mat4 projMatrix() const;
 
+    /// Draws Solid/Textured mode (and the edge overlay, if enabled).
     void paintSolid();
+    /// Draws Overlay mode (primary + secondary mesh, edge overlay).
     void paintOverlay();
+    /// Draws UV mode (UV-space wireframe over a checker background).
     void paintUV();
+    /// Draws Relief mode (relief-mapped surface using colorTex_/reliefTex_/normalTex_/offsetTex_).
     void paintRelief();
 };

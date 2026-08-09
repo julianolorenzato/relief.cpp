@@ -1,7 +1,13 @@
+/**
+ * @file heightmap_module.cpp
+ * @brief HeightmapModule implementation: UI for baking a displacement map on
+ *        a background QThread and previewing/saving the result.
+ */
 #include "gui/heightmap_module.h"
 #include "relief/heightmap.h"
 
 namespace {
+/// Runs HeightmapBaker::bakeUVDistance() on a worker thread, owned by HeightmapModule::launchBake().
 class HeightmapWorker : public QObject {
     Q_OBJECT
 public:
@@ -14,6 +20,7 @@ signals:
     void progress(int overall, const QString& text);
     void finished();
 public slots:
+    /// Bakes the heightmap and emits progress/finished; invoked on hmThread_'s event loop.
     void run() {
         emit progress(0, "UV Correspondence…");
         auto cb = [this](int pct) { emit progress(pct, "UV Correspondence…"); };

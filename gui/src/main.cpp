@@ -1,3 +1,7 @@
+/**
+ * @file main.cpp
+ * @brief Application entry point: creates the Qt application and the main window.
+ */
 #include <QApplication>
 #include "gui/mainwindow.h"
 #include <iostream>

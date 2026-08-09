@@ -1,3 +1,8 @@
+/**
+ * @file relief_module.h
+ * @brief Pipeline stage that previews the relief-mapped simplified mesh
+ *        against the original, high-detail mesh side by side.
+ */
 #pragma once
 #include <QWidget>
 #include <QCheckBox>
@@ -10,6 +15,9 @@
 #include "gui/relief_view.h"
 #include "relief/textures.h"
 
+/// @brief Widget hosting the relief-mapped preview, a textured comparison of
+///        the original mesh, and the relief-mapping controls (steps, depth
+///        scale, atlas leaping, debug view).
 class ReliefModule : public QWidget {
     Q_OBJECT
 
@@ -17,11 +25,11 @@ public:
     explicit ReliefModule(QWidget* parent = nullptr);
 
 public slots:
-    // Store mesh pointers and mark them pending for sync.
+    /// Stores the mesh pointers and marks them pending for sync.
     void setMeshes(QEMSimplifier* original, QEMSimplifier* simplified);
     // Store the texture prep result and mark it pending for sync.
     // void onTexturesReady(const TexturePrepResult& result); // disabled: TexturePrepResult removed
-    // Called when this tab is activated — flushes any pending data.
+    /// Called when this tab is activated — flushes any pending data.
     void onActivated();
 
 signals:
@@ -29,6 +37,7 @@ signals:
 
 private:
     void buildUI();
+    /// Pushes pending mesh/texture data into the viewports once both are available and the tab is visible.
     void syncIfReady();
 
     // ── Viewports ─────────────────────────────────────────────────────────────

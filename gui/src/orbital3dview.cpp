@@ -1,3 +1,8 @@
+/**
+ * @file orbital3dview.cpp
+ * @brief Orbital3DView implementation: GL buffer construction, shader setup,
+ *        and the per-mode paint routines (Solid, Overlay, UV, Relief).
+ */
 #include "gui/orbital3dview.h"
 #include <QColorDialog>
 #include <QHBoxLayout>
@@ -15,11 +20,15 @@
 
 namespace {
 
-// Build 12-float interleaved vertex array [pos|normal|uv|tangent(vec4, w = handedness)]
-// and an index array for a QEMSimplifier mesh. Tangents are Gram-Schmidt-orthogonalised
-// against the normal using per-face UV deltas; the accumulated bitangent is used only
-// to derive each vertex's handedness sign (Lengyel), since cross(N,T) alone can't tell
-// which way the mesh's actual V axis points.
+/// @brief Builds the 12-float interleaved vertex array
+///        [pos|normal|uv|tangent(vec4, w = handedness)] and an index array
+///        for a QEMSimplifier mesh. Tangents are Gram-Schmidt-orthogonalized
+///        against the normal using per-face UV deltas; the accumulated
+///        bitangent is used only to derive each vertex's handedness sign
+///        (Lengyel), since cross(N,T) alone can't tell which way the mesh's
+///        actual V axis points.
+/// @param[out] verts Interleaved vertex data, 12 floats per vertex.
+/// @param[out] idxs Triangle indices into `verts`.
 void buildMeshVerts(const QEMSimplifier* mesh,
                     std::vector<float>& verts,
                     std::vector<unsigned int>& idxs)
@@ -87,8 +96,9 @@ void buildMeshVerts(const QEMSimplifier* mesh,
     }
 }
 
-// Upload interleaved vertex data to a VAO with the standard 12-float attribute layout.
-// Caller must have already set up vao, vbo, ebo as created QOpenGLBuffer objects.
+/// Uploads interleaved vertex data to a VAO with the standard 12-float
+/// attribute layout. Caller must have already created `vao`, `vbo`, `ebo`.
+/// @param[out] indexCount Set to the number of indices uploaded.
 void setupMeshVAO(QOpenGLFunctions_3_3_Core* gl,
                   const std::vector<float>& verts,
                   const std::vector<unsigned int>& idxs,
@@ -121,6 +131,7 @@ void setupMeshVAO(QOpenGLFunctions_3_3_Core* gl,
     vao.release();
 }
 
+/// Converts a column-major glm::mat4 to the equivalent QMatrix4x4.
 QMatrix4x4 toQt(const glm::mat4& m) {
     return QMatrix4x4(glm::value_ptr(m)).transposed();
 }

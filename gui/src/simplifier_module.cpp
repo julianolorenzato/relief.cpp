@@ -1,3 +1,8 @@
+/**
+ * @file simplifier_module.cpp
+ * @brief SimplifierModule implementation: mesh loading, driving
+ *        QEMSimplifier, and the inflate/deflate preview.
+ */
 #include "gui/simplifier_module.h"
 #include <QVBoxLayout>
 #include <QHBoxLayout>

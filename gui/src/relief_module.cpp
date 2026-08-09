@@ -1,3 +1,8 @@
+/**
+ * @file relief_module.cpp
+ * @brief ReliefModule implementation: builds the relief-preview UI and
+ *        pushes pending mesh/texture data into the viewports once ready.
+ */
 #include "gui/relief_module.h"
 #include <QVBoxLayout>
 #include <QHBoxLayout>

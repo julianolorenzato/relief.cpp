@@ -1,3 +1,8 @@
+/**
+ * @file texture_prep_module.cpp
+ * @brief TexturePrepModule implementation: bakes and previews the
+ *        color/relief/normal mip pyramids and the Offset_Map.
+ */
 #include "gui/texture_prep_module.h"
 
 // TexturePrepWorker disabled — TextureBaker and TexturePrepResult have been removed.
@@ -17,6 +22,7 @@
 
 // ─── Static helpers ───────────────────────────────────────────────────────────
 
+/// Wraps a raw RGBA8 buffer (e.g. a mesh's embedded texture) in a detached QImage copy.
 static QImage rgbaTextureToQImage(const std::vector<uint8_t>& data, int w, int h)
 {
     if (data.empty() || w <= 0 || h <= 0)

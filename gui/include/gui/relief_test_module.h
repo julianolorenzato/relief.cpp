@@ -1,3 +1,8 @@
+/**
+ * @file relief_test_module.h
+ * @brief Standalone context for testing relief mapping in isolation, without
+ *        going through the simplification/texture-prep pipeline.
+ */
 #pragma once
 #include <QWidget>
 #include <QLabel>
@@ -13,9 +18,10 @@
 #include "relief/uv_atlas.h"
 #include "gui/relief_view.h"
 
-// Standalone context for testing relief mapping in isolation.
-// Load a mesh and three textures (color, depth, normal) via file dialogs,
-// bake synchronously, and inspect the result in a single ReliefView.
+/// @brief Standalone context for testing relief mapping in isolation.
+///        Loads a mesh and three textures (color, depth, normal) via file
+///        dialogs, bakes synchronously, and inspects the result in a single
+///        ReliefView.
 class ReliefTestModule : public QWidget
 {
     Q_OBJECT
@@ -24,19 +30,35 @@ public:
     explicit ReliefTestModule(QWidget *parent = nullptr);
 
 private slots:
+    /// Loads a mesh (OBJ/GLTF) via file dialog and rebuilds the view.
     void onLoadMesh();
+
+    /// Loads the color texture via file dialog.
     void onLoadColor();
+
+    /// Loads the depth/height texture via file dialog.
     void onLoadDepth();
+
+    /// Loads the normal texture via file dialog.
     void onLoadNormal();
+
+    /// Opens the TextureInspectorDialog over the currently baked pyramids.
     void onInspectTextures();
+
+    /// Handles a pick result forwarded from ReliefView, updating the pick preview panel.
     void onPixelPicked(QPointF uv, bool hit);
 
 private:
     QWidget *buildControls();
+
+    /// Scales `img` into `label` as a thumbnail preview.
     void setThumb(QLabel *label, const QImage &img);
+
+    /// Rebuilds the mip pyramids (color/relief/normal/offset) from the loaded images and pushes them to the view.
     void recomputeDepthTextures();
 
     // ── Viewport ──────────────────────────────────────────────────────────────
+    /// The widget that renders the mesh with relief mapping.
     ReliefView *reliefView = nullptr;
 
     // ── Load controls ─────────────────────────────────────────────────────────

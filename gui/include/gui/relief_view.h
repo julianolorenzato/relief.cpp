@@ -1,3 +1,8 @@
+/**
+ * @file relief_view.h
+ * @brief Dedicated OpenGL widget for relief mapping, including offscreen
+ *        pixel picking to resolve a screen click to a texture UV.
+ */
 #pragma once
 #include <QOpenGLWidget>
 #include <QOpenGLFunctions_3_3_Core>
@@ -12,9 +17,9 @@
 #include "relief/textures.h"
 #include "relief/uv_atlas.h"
 
-// Dedicated OpenGL widget for relief mapping.
-// Receives a simplified mesh and a TexturePrepResult, renders with the
-// mip-hierarchical relief mapping shader (relief.vert / relief.frag).
+/// @brief Dedicated OpenGL widget for relief mapping. Receives a simplified
+///        mesh and its baked maps (color/relief/normal/offset), and renders
+///        with the mip-hierarchical relief mapping shader (relief.vert / relief.frag).
 class ReliefView : public QOpenGLWidget, protected QOpenGLFunctions_3_3_Core
 {
     Q_OBJECT
@@ -23,20 +28,29 @@ public:
     explicit ReliefView(QWidget *parent = nullptr);
     ~ReliefView() override;
 
+    /// Sets the mesh to render (not owned).
     void setMesh(const QEMSimplifier *mesh);
+    /// Uploads the relief-mapping color map.
     void setColorMap(const MipPyramid& pyr);
+    /// Uploads the relief-mapping depth/height map.
     void setReliefMap(const MipPyramid& pyr);
+    /// Uploads the relief-mapping normal map.
     void setNormalMap(const MipPyramid& pyr);
+    /// Uploads the cross-seam Offset_Map used to leap relief rays across UV islands.
     void setOffsetMap(const OffsetMapResult& off);
+    /// @return true once all four textures (color/relief/normal/offset) have been uploaded.
     bool hasTextures() const { return colorTex && reliefTex && normalTex && offsetTex; }
 
+    /// Resets the orbit camera to its default position.
     void resetCamera();
+    /// Applies external camera parameters (for syncing with a linked viewport).
     void syncCamera(float rotX, float rotY, float zoom);
 
 signals:
+    /// Emitted after a mouse-driven camera change, so a linked viewport can call syncCamera().
     void cameraChanged(float rotX, float rotY, float zoom);
-    // Emitted after a click is resolved to a texture UV (see performPick).
-    // hit is false if the click didn't land on any mesh geometry.
+    /// Emitted after a click is resolved to a texture UV (see performPick).
+    /// hit is false if the click didn't land on any mesh geometry.
     void pixelPicked(QPointF uv, bool hit);
 
 public slots:
@@ -83,8 +97,11 @@ private:
     QPoint pickPos;
     GLuint pickFbo = 0, pickColorTex = 0, pickDepthRbo = 0;
     int pickFboW = 0, pickFboH = 0;
+    /// (Re)creates the offscreen pick FBO/textures at size w x h if the size changed.
     void ensurePickFbo(int w, int h);
+    /// Deletes the offscreen pick FBO/textures.
     void deletePickFbo();
+    /// Renders a UV-encoding pass into the pick FBO and reads back the texel at `widgetPos`, emitting pixelPicked.
     void performPick(const QPoint &widgetPos);
 
     // Mesh (not owned)
@@ -102,11 +119,17 @@ private:
     QOpenGLTexture *normalTex  = nullptr;
     QOpenGLTexture *offsetTex  = nullptr;
 
+    /// Uploads the mesh's vertex/index buffers.
     void buildMeshBuffers();
+    /// Uploads `pyr` as a mip-mapped color texture into `tex`.
     void uploadColorMap(QOpenGLTexture *&tex, const MipPyramid &pyr);
+    /// Uploads `pyr` as a mip-mapped normal texture into `tex`.
     void uploadNormalMap(QOpenGLTexture *&tex, const MipPyramid &pyr);
+    /// Uploads `pyr` as a mip-mapped relief (depth/height) texture into `tex`.
     void uploadReliefMap(QOpenGLTexture *&tex, const MipPyramid &pyr);
+    /// Uploads `off` as an RGBA32F offset-map texture into `tex`.
     void uploadOffsetMap(QOpenGLTexture *&tex, const OffsetMapResult &off);
+    /// Deletes all owned GL texture objects.
     void deleteTextures();
 
     QMatrix4x4 viewMatrix() const;

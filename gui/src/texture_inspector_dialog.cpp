@@ -1,3 +1,8 @@
+/**
+ * @file texture_inspector_dialog.cpp
+ * @brief TextureInspectorDialog implementation: map/channel/mip selection UI
+ *        and per-channel float-to-QImage rendering.
+ */
 #include "gui/texture_inspector_dialog.h"
 #include <algorithm>
 #include <limits>
