@@ -1,14 +1,13 @@
 /**
  * @file orbital3dview.cpp
  * @brief Orbital3DView implementation: GL buffer construction, shader setup,
- *        and the per-mode paint routines (Solid, Overlay, UV, Relief).
+ *        and the per-mode paint routines (Solid, Overlay, UV).
  */
 #include "gui/orbital3dview.h"
 #include <QColorDialog>
 #include <QHBoxLayout>
 #include <QMouseEvent>
 #include <QWheelEvent>
-#include <QPainter>
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
 #include <glm/gtc/type_ptr.hpp>
@@ -165,7 +164,6 @@ Orbital3DView::~Orbital3DView() {
     if (uvBgVbo_.isCreated())      uvBgVbo_.destroy();
     if (uvBgVao_.isCreated())      uvBgVao_.destroy();
     deleteTextures();
-    if (samplerPoint_) glDeleteSamplers(1, &samplerPoint_);
     doneCurrent();
 }
 
@@ -202,39 +200,6 @@ void Orbital3DView::updateSecondaryMesh() {
     update();
 }
 
-void Orbital3DView::setColorTexture(const MipPyramid& pyr) {
-    pendingColorPyr_ = &pyr;
-    colorPyrDirty_   = true;
-    update();
-}
-
-void Orbital3DView::setColorMap(const MipPyramid& pyr) {
-    pendingColorMap_ = &pyr;
-    reliefTexDirty_  = true;
-    update();
-}
-
-void Orbital3DView::setReliefMap(const MipPyramid& pyr) {
-    pendingReliefMap_ = &pyr;
-    reliefTexDirty_   = true;
-    int res = std::max(1, pyr.width);
-    lastMip_   = std::log2((float)res);
-    texelSize_ = 1.0f / (float)res;
-    update();
-}
-
-void Orbital3DView::setNormalMap(const MipPyramid& pyr) {
-    pendingNormalMap_ = &pyr;
-    reliefTexDirty_   = true;
-    update();
-}
-
-void Orbital3DView::setOffsetMap(const OffsetMapResult& off) {
-    pendingOffsetMap_ = &off;
-    reliefTexDirty_   = true;
-    update();
-}
-
 void Orbital3DView::resetCamera() {
     rotX_ = 0.f; rotY_ = 0.f; zoom_ = 3.f;
     update();
@@ -266,12 +231,6 @@ void Orbital3DView::setTextured(bool v)           { textured_     = v; update();
 void Orbital3DView::setUVMode(bool v)             { uvMode_       = v; update(); }
 void Orbital3DView::setShowBoundaryEdges(bool v)  { showBoundary_ = v; update(); }
 void Orbital3DView::setShowInternalEdges(bool v)  { showInternal_ = v; update(); }
-void Orbital3DView::setReliefEnabled(bool v)      { reliefEnabled_= v; update(); }
-void Orbital3DView::setUseAtlas(bool v)           { useAtlas_     = v; update(); }
-void Orbital3DView::setSteps(int v)               { steps_        = std::max(1, v); update(); }
-void Orbital3DView::setBinarySteps(int v)         { binarySteps_  = std::max(0, v); update(); }
-void Orbital3DView::setDepthScale(double v)       { depthScale_   = (float)v; update(); }
-void Orbital3DView::setDebugView(int v)           { debugView_    = v; update(); }
 
 // ─── GL lifecycle ─────────────────────────────────────────────────────────────
 
@@ -281,12 +240,6 @@ void Orbital3DView::initializeGL() {
     glEnable(GL_DEPTH_TEST);
 
     createShaders();
-
-    glGenSamplers(1, &samplerPoint_);
-    glSamplerParameteri(samplerPoint_, GL_TEXTURE_MIN_FILTER, GL_NEAREST_MIPMAP_NEAREST);
-    glSamplerParameteri(samplerPoint_, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
-    glSamplerParameteri(samplerPoint_, GL_TEXTURE_WRAP_S, GL_REPEAT);
-    glSamplerParameteri(samplerPoint_, GL_TEXTURE_WRAP_T, GL_REPEAT);
 }
 
 void Orbital3DView::resizeGL(int w, int h) {
@@ -536,16 +489,6 @@ void Orbital3DView::createShaders() {
         if (!uvLineProg_.link())
             std::cerr << "uvLineProg link error: " << uvLineProg_.log().toStdString() << "\n";
     }
-
-    // Relief — loaded from QRC resources (same sources as ReliefGLWidget)
-    {
-        if (!reliefProg_.addShaderFromSourceFile(QOpenGLShader::Vertex,   ":/shaders/relief.vert"))
-            std::cerr << "relief vert error: " << reliefProg_.log().toStdString() << "\n";
-        if (!reliefProg_.addShaderFromSourceFile(QOpenGLShader::Fragment, ":/shaders/relief.frag"))
-            std::cerr << "relief frag error: " << reliefProg_.log().toStdString() << "\n";
-        if (!reliefProg_.link())
-            std::cerr << "reliefProg link error: " << reliefProg_.log().toStdString() << "\n";
-    }
 }
 
 // ─── Buffer builders ──────────────────────────────────────────────────────────
@@ -680,50 +623,8 @@ void Orbital3DView::uploadColorFromMesh() {
     glBindTexture(GL_TEXTURE_2D, 0);
 }
 
-void Orbital3DView::uploadPyramid(GLuint& texId, const MipPyramid& pyr) {
-    if (texId) { glDeleteTextures(1, &texId); texId = 0; }
-    if (pyr.mips.empty()) return;
-
-    GLenum internalFmt = pyr.channels == 3 ? GL_RGB32F : GL_RGBA32F;
-    GLenum extFmt      = pyr.channels == 3 ? GL_RGB    : GL_RGBA;
-
-    glGenTextures(1, &texId);
-    glBindTexture(GL_TEXTURE_2D, texId);
-    int w = pyr.width, h = pyr.height;
-    for (int lvl = 0; lvl < pyr.levelCount(); lvl++) {
-        glTexImage2D(GL_TEXTURE_2D, lvl, internalFmt, w, h, 0, extFmt, GL_FLOAT, pyr.mips[lvl].data());
-        w = std::max(1, w / 2);
-        h = std::max(1, h / 2);
-    }
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAX_LEVEL, pyr.levelCount() - 1);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
-    glBindTexture(GL_TEXTURE_2D, 0);
-}
-
-void Orbital3DView::uploadOffsetMap(GLuint& texId, const OffsetMapResult& off) {
-    if (texId) { glDeleteTextures(1, &texId); texId = 0; }
-    if (off.data.empty()) return;
-
-    glGenTextures(1, &texId);
-    glBindTexture(GL_TEXTURE_2D, texId);
-    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA32F, off.width, off.height,
-                 0, GL_RGBA, GL_FLOAT, off.data.data());
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAX_LEVEL, 0);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
-    glBindTexture(GL_TEXTURE_2D, 0);
-}
-
 void Orbital3DView::deleteTextures() {
-    if (colorTex_)  { glDeleteTextures(1, &colorTex_);  colorTex_  = 0; }
-    if (reliefTex_) { glDeleteTextures(1, &reliefTex_); reliefTex_ = 0; }
-    if (normalTex_) { glDeleteTextures(1, &normalTex_); normalTex_ = 0; }
-    if (offsetTex_) { glDeleteTextures(1, &offsetTex_); offsetTex_ = 0; }
+    if (colorTex_) { glDeleteTextures(1, &colorTex_); colorTex_ = 0; }
 }
 
 // ─── Camera matrices ──────────────────────────────────────────────────────────
@@ -759,32 +660,6 @@ void Orbital3DView::paintGL() {
         buildSecondaryBuffers();
         secondaryMeshDirty_ = false;
     }
-    if (reliefTexDirty_) {
-        if (pendingColorMap_)  { uploadPyramid(colorTex_,  *pendingColorMap_);  pendingColorMap_  = nullptr; }
-        if (pendingReliefMap_) { uploadPyramid(reliefTex_, *pendingReliefMap_); pendingReliefMap_ = nullptr; }
-        if (pendingNormalMap_) { uploadPyramid(normalTex_, *pendingNormalMap_); pendingNormalMap_ = nullptr; }
-        if (pendingOffsetMap_) { uploadOffsetMap(offsetTex_, *pendingOffsetMap_); pendingOffsetMap_ = nullptr; }
-        reliefTexDirty_ = false;
-    }
-    if (colorPyrDirty_ && pendingColorPyr_) {
-        if (colorTex_) { glDeleteTextures(1, &colorTex_); colorTex_ = 0; }
-        const MipPyramid& p = *pendingColorPyr_;
-        if (!p.mips.empty()) {
-            GLenum ifmt = p.channels == 3 ? GL_RGB32F  : GL_RGBA32F;
-            GLenum efmt = p.channels == 3 ? GL_RGB     : GL_RGBA;
-            glGenTextures(1, &colorTex_);
-            glBindTexture(GL_TEXTURE_2D, colorTex_);
-            glTexImage2D(GL_TEXTURE_2D, 0, ifmt, p.width, p.height, 0, efmt, GL_FLOAT, p.mips[0].data());
-            glGenerateMipmap(GL_TEXTURE_2D);
-            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
-            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
-            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
-            glBindTexture(GL_TEXTURE_2D, 0);
-        }
-        colorPyrDirty_   = false;
-        pendingColorPyr_ = nullptr;
-    }
 
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
@@ -803,12 +678,6 @@ void Orbital3DView::paintGL() {
             break;
         case RenderMode::Overlay:
             paintOverlay();
-            break;
-        case RenderMode::UV:
-            paintUV();
-            break;
-        case RenderMode::Relief:
-            paintRelief();
             break;
     }
 }
@@ -926,60 +795,6 @@ void Orbital3DView::paintUV() {
     }
 
     glEnable(GL_DEPTH_TEST);
-}
-
-void Orbital3DView::paintRelief() {
-    // Show placeholder text when textures haven't been generated yet
-    if (!hasTextures()) {
-        glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
-        glDisable(GL_CULL_FACE);
-        // Draw plain background (already cleared to dark), then overlay text via QPainter
-        QPainter p(this);
-        p.setPen(QColor(160, 160, 160));
-        p.setFont(QFont("sans-serif", 14));
-        p.drawText(rect(), Qt::AlignCenter,
-                   "Run Textures Preparation first to view relief mapping.");
-        p.end();
-        return;
-    }
-
-    if (cullFace_) glEnable(GL_CULL_FACE); else glDisable(GL_CULL_FACE);
-    glPolygonMode(GL_FRONT_AND_BACK, wireframe_ ? GL_LINE : GL_FILL);
-
-    reliefProg_.bind();
-    reliefProg_.setUniformValue("projection", toQt(projMatrix()));
-    reliefProg_.setUniformValue("view",       toQt(viewMatrix()));
-    reliefProg_.setUniformValue("model",      toQt(modelMatrix()));
-
-    glm::mat4 v  = viewMatrix();
-    glm::vec3 cp = glm::vec3(glm::inverse(v)[3]);
-    reliefProg_.setUniformValue("viewPosWorld", QVector3D(cp.x, cp.y, cp.z));
-
-    reliefProg_.setUniformValue("ReliefEnabled", reliefEnabled_);
-    reliefProg_.setUniformValue("UseAtlas",      useAtlas_);
-    reliefProg_.setUniformValue("LinearSteps",   steps_);
-    reliefProg_.setUniformValue("BinarySteps",   binarySteps_);
-    reliefProg_.setUniformValue("DepthScale",    depthScale_);
-    reliefProg_.setUniformValue("LastMip",       lastMip_);
-    reliefProg_.setUniformValue("TexelSize",     texelSize_);
-    reliefProg_.setUniformValue("DebugView",     debugView_);
-
-    glActiveTexture(GL_TEXTURE0); glBindTexture(GL_TEXTURE_2D, colorTex_);  glBindSampler(0, 0);
-    reliefProg_.setUniformValue("Color_Map", 0);
-    glActiveTexture(GL_TEXTURE1); glBindTexture(GL_TEXTURE_2D, reliefTex_); glBindSampler(1, samplerPoint_);
-    reliefProg_.setUniformValue("Relief_Map", 1);
-    glActiveTexture(GL_TEXTURE2); glBindTexture(GL_TEXTURE_2D, offsetTex_); glBindSampler(2, 0);
-    reliefProg_.setUniformValue("Offset_Map", 2);
-    glActiveTexture(GL_TEXTURE3); glBindTexture(GL_TEXTURE_2D, normalTex_); glBindSampler(3, 0);
-    reliefProg_.setUniformValue("Normal_Map", 3);
-
-    primaryVao_.bind();
-    glDrawElements(GL_TRIANGLES, primaryIndexCount_, GL_UNSIGNED_INT, nullptr);
-    primaryVao_.release();
-
-    glBindSampler(1, 0);
-    reliefProg_.release();
-    glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
 }
 
 // ─── Mouse / camera ───────────────────────────────────────────────────────────

@@ -13,6 +13,7 @@
 #include "relief/qem.h"
 #include "gui/orbital3dview.h"
 #include "gui/relief_view.h"
+#include "gui/texture_prep_module.h"
 #include "relief/textures.h"
 
 /// @brief Widget hosting the relief-mapped preview, a textured comparison of
@@ -27,8 +28,8 @@ public:
 public slots:
     /// Stores the mesh pointers and marks them pending for sync.
     void setMeshes(QEMSimplifier* original, QEMSimplifier* simplified);
-    // Store the texture prep result and mark it pending for sync.
-    // void onTexturesReady(const TexturePrepResult& result); // disabled: TexturePrepResult removed
+    /// Stores the texture-prep source and marks its maps pending for sync.
+    void onTexturesReady(TexturePrepModule* source);
     /// Called when this tab is activated — flushes any pending data.
     void onActivated();
 
@@ -64,5 +65,6 @@ private:
     QEMSimplifier* originalMesh_   = nullptr;
     QEMSimplifier* simplifiedMesh_ = nullptr;
 
-    // TexturePrepResult tpResult_; // disabled: TexturePrepResult removed
+    // Non-owned texture-prep source
+    TexturePrepModule* texturePrepSource_ = nullptr;
 };

@@ -11,11 +11,11 @@
 #include <QPushButton>
 #include <QProgressBar>
 #include <QCheckBox>
-#include <QThread>
 #include <QImage>
 #include "relief/heightmap.h"
 #include "relief/qem.h"
 #include "relief/textures.h"
+#include "relief/uv_atlas.h"
 
 /// @brief Widget that generates the baked texture set (color, relief/height,
 ///        normal mip pyramids, plus the UV-atlas Offset_Map) from the
@@ -35,8 +35,23 @@ public slots:
     /// Called when a heightmap bake finishes: stores the result and refreshes.
     void onHeightmapReady(const HeightmapResult& result);
 
+    /// @return The baked color mip pyramid (valid once hasTextures() is true).
+    const MipPyramid& colorMap() const { return colorMapData_; }
+    /// @return The baked relief (min/max/seam-mask) mip pyramid.
+    const MipPyramid& reliefMap() const { return reliefMapData_; }
+    /// @return The baked normal mip pyramid.
+    const MipPyramid& normalMap() const { return normalMapData_; }
+    /// @return The baked cross-seam Offset_Map.
+    const OffsetMapResult& offsetMap() const { return offsetMapData_; }
+    /// @return true once all four baked outputs above are populated.
+    bool hasTextures() const {
+        return colorMapData_.levelCount() > 0 && reliefMapData_.levelCount() > 0 &&
+               normalMapData_.levelCount() > 0 && offsetMapData_.width > 0;
+    }
+
 signals:
-    // void texturesReady(const TexturePrepResult& result); // disabled: TexturePrepResult removed
+    /// Emitted once colorMap()/reliefMap()/normalMap()/offsetMap() are all freshly baked.
+    void texturesReady();
     void statusMessage(const QString& msg);
 
 private slots:
@@ -87,9 +102,8 @@ private:
     QCheckBox*   tpChannelCheck_[3][4] = {};
 
     // ── State ─────────────────────────────────────────────────────────────────
-    // TexturePrepResult tpResult_; // disabled: TexturePrepResult removed
-    QObject*           tpWorker_ = nullptr;
-    QThread*           tpThread_ = nullptr;
+    MipPyramid      colorMapData_, reliefMapData_, normalMapData_;
+    OffsetMapResult offsetMapData_;
 
     // Stored heightmap result (copy)
     HeightmapResult hmResult_;

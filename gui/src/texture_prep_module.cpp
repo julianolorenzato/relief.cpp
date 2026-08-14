@@ -4,11 +4,7 @@
  *        color/relief/normal mip pyramids and the Offset_Map.
  */
 #include "gui/texture_prep_module.h"
-
-// TexturePrepWorker disabled — TextureBaker and TexturePrepResult have been removed.
-// namespace {
-// class TexturePrepWorker : public QObject { ... }
-// } // namespace
+#include "gui/texture_resample.h"
 #include <QVBoxLayout>
 #include <QHBoxLayout>
 #include <QGroupBox>
@@ -219,7 +215,10 @@ void TexturePrepModule::onModelLoaded(QEMSimplifier* simplified)
 {
     simplifiedMesh_ = simplified;
     hmResult_ = HeightmapResult{};
-    // tpResult_ = TexturePrepResult{}; // disabled: TexturePrepResult removed
+    colorMapData_  = MipPyramid{};
+    reliefMapData_ = MipPyramid{};
+    normalMapData_ = MipPyramid{};
+    offsetMapData_ = OffsetMapResult{};
 
     for (int i = 0; i < 4; i++)
     {
@@ -253,10 +252,62 @@ void TexturePrepModule::onHeightmapReady(const HeightmapResult& result)
 
 void TexturePrepModule::onTpGenerate()
 {
-    // Disabled: TexturePrepWorker and TextureBaker have been removed.
-    QMessageBox::information(this, "Disabled",
-        "Texture generation from this module is temporarily disabled.\n"
-        "Use the Relief Test Module to bake textures directly.");
+    if (!simplifiedMesh_ || simplifiedMesh_->faceCount() == 0)
+        return;
+
+    int kRes     = tpResCombo_->currentData().toInt();
+    int seamBand = tpSeamBandSpin_->value();
+
+    tpGenerateBtn_->setEnabled(false);
+    onTpProgress(5, "Resampling color map...");
+    RawImage rawColor{simplifiedMesh_->textureData.data(),
+                       simplifiedMesh_->textureWidth, simplifiedMesh_->textureHeight, 4};
+    auto colorMip0 = resampleColorRGBA(rawColor, kRes, kRes);
+    colorMapData_ = Textures::buildBilinearPyramid(colorMip0, kRes, kRes, 4);
+
+    onTpProgress(30, "Resampling normal map...");
+    RawImage rawNormal{simplifiedMesh_->normalTextureData.data(),
+                        simplifiedMesh_->normalTextureWidth, simplifiedMesh_->normalTextureHeight, 4};
+    auto normalMip0 = resampleNormalXYZ(rawNormal, kRes, kRes);
+    normalMapData_ = Textures::buildBilinearPyramid(normalMip0, kRes, kRes, 3, /*renormalizeAsNormal=*/true);
+
+    onTpProgress(55, "Resampling depth map...");
+    RawImage rawDepth{hmResult_.image.data(), hmResult_.width, hmResult_.height, 1};
+    auto depthMip0 = resampleDepthR(rawDepth, kRes, kRes);
+
+    onTpProgress(70, "Baking UV-atlas offset map...");
+    auto faceIsland = UVAtlas::detectIslands(*simplifiedMesh_);
+    offsetMapData_ = UVAtlas::bakeOffsetMap(*simplifiedMesh_, faceIsland, kRes, kRes, seamBand);
+
+    std::vector<float> seamMip0((size_t)kRes * kRes, 0.f);
+    for (size_t i = 0; i < (size_t)kRes * kRes; i++)
+        seamMip0[i] = offsetMapData_.data[i * 4 + 3];
+
+    onTpProgress(85, "Building relief map...");
+    auto minPyr  = Textures::buildMinPyramid(depthMip0, kRes, kRes);
+    auto maxPyr  = Textures::buildMaxPyramid(depthMip0, kRes, kRes);
+    auto maskPyr = Textures::buildMaxPyramid(seamMip0,  kRes, kRes);
+
+    MipPyramid reliefMap;
+    reliefMap.width = kRes; reliefMap.height = kRes; reliefMap.channels = 4;
+    for (int lvl = 0; lvl < minPyr.levelCount(); lvl++)
+    {
+        int w = std::max(1, kRes >> lvl), h = std::max(1, kRes >> lvl);
+        std::vector<float> mip((size_t)w * h * 4);
+        for (size_t i = 0; i < (size_t)w * h; i++)
+        {
+            mip[i*4+0] = minPyr.mips[lvl][i];
+            mip[i*4+1] = maxPyr.mips[lvl][i];
+            mip[i*4+2] = maskPyr.mips[lvl][i];
+            mip[i*4+3] = 0.f;
+        }
+        reliefMap.mips.push_back(std::move(mip));
+    }
+    reliefMapData_ = std::move(reliefMap);
+
+    onTpDone();
+    emit texturesReady();
+    emit statusMessage("Texture generation complete.");
 }
 
 void TexturePrepModule::onTpProgress(int overall, const QString& text)
@@ -267,12 +318,45 @@ void TexturePrepModule::onTpProgress(int overall, const QString& text)
 
 void TexturePrepModule::onTpDone()
 {
-    // Disabled: TexturePrepWorker removed.
+    onTpProgress(100, "Done");
+    tpGenerateBtn_->setEnabled(true);
+
+    const MipPyramid* const pyramids[3] = {&colorMapData_, &reliefMapData_, &normalMapData_};
+    for (int i = 0; i < 3; i++)
+    {
+        int levels = pyramids[i]->levelCount();
+        tpMipSpin_[i]->setEnabled(levels > 0);
+        tpMipSpin_[i]->setRange(0, std::max(0, levels - 1));
+        tpSaveBtn_[i]->setEnabled(levels > 0);
+    }
+    tpMipSpin_[3]->setEnabled(offsetMapData_.width > 0);
+    tpMipSpin_[3]->setRange(0, 0);
+    tpSaveBtn_[3]->setEnabled(offsetMapData_.width > 0);
+
+    for (int i = 0; i < 4; i++)
+        updatePreview(i);
 }
 
-void TexturePrepModule::onTpSave(int /*idx*/)
+void TexturePrepModule::onTpSave(int idx)
 {
-    // Disabled: tpResult_ removed.
+    QString path = QFileDialog::getSaveFileName(this, "Save Texture", "", "PNG Image (*.png)");
+    if (path.isEmpty())
+        return;
+
+    QImage img;
+    if (idx == 3)
+    {
+        img = offsetMapMaskImage();
+    }
+    else
+    {
+        const MipPyramid& pyr = idx == 0 ? colorMapData_ : idx == 1 ? reliefMapData_ : normalMapData_;
+        if (!pyr.mips.empty())
+            img = mipLevelToQImage(pyr.mips[0], pyr.width, pyr.height, pyr.channels, /*remapSigned=*/idx == 2);
+    }
+
+    if (img.isNull() || !img.save(path))
+        QMessageBox::critical(this, "Error", "Failed to save image.");
 }
 
 // ─── Private methods ──────────────────────────────────────────────────────────
@@ -321,9 +405,47 @@ void TexturePrepModule::updateGenerateEnabled()
     tpGenerateBtn_->setEnabled(hasMesh && hasColor && hasNormal && hasDepth);
 }
 
-void TexturePrepModule::updatePreview(int /*idx*/)
+void TexturePrepModule::updatePreview(int idx)
 {
-    // Disabled: tpResult_ removed.
+    QImage img;
+    QString info = "—";
+
+    if (idx == 3)
+    {
+        if (offsetMapData_.width > 0)
+        {
+            img  = offsetMapMaskImage();
+            info = QString("%1 × %2").arg(offsetMapData_.width).arg(offsetMapData_.height);
+        }
+    }
+    else
+    {
+        const MipPyramid& pyr = idx == 0 ? colorMapData_ : idx == 1 ? reliefMapData_ : normalMapData_;
+        if (!pyr.mips.empty())
+        {
+            int mip = std::clamp(tpMipSpin_[idx]->value(), 0, pyr.levelCount() - 1);
+            int w = std::max(1, pyr.width  >> mip);
+            int h = std::max(1, pyr.height >> mip);
+            bool showChannels[4] = {
+                tpChannelCheck_[idx][0]->isChecked(), tpChannelCheck_[idx][1]->isChecked(),
+                tpChannelCheck_[idx][2]->isChecked(), tpChannelCheck_[idx][3]->isChecked()
+            };
+            img  = mipLevelToQImage(pyr.mips[mip], w, h, pyr.channels, /*remapSigned=*/idx == 2, showChannels);
+            info = QString("%1 × %2  ·  mip %3/%4").arg(w).arg(h).arg(mip).arg(pyr.levelCount() - 1);
+        }
+    }
+
+    if (img.isNull())
+    {
+        tpPreview_[idx]->setText("(not generated)");
+        tpPreview_[idx]->setPixmap(QPixmap());
+    }
+    else
+    {
+        tpPreview_[idx]->setPixmap(QPixmap::fromImage(img)
+            .scaled(tpPreview_[idx]->size(), Qt::KeepAspectRatio, Qt::SmoothTransformation));
+    }
+    tpInfoLabel_[idx]->setText(info);
 }
 
 QImage TexturePrepModule::mipLevelToQImage(const std::vector<float>& data, int w, int h,
@@ -354,8 +476,18 @@ QImage TexturePrepModule::mipLevelToQImage(const std::vector<float>& data, int w
 
 QImage TexturePrepModule::offsetMapMaskImage() const
 {
-    // Disabled: tpResult_ removed.
-    return QImage();
-}
+    if (offsetMapData_.width <= 0 || offsetMapData_.height <= 0)
+        return QImage();
 
-// #include "texture_prep_module.moc" — removed: TexturePrepWorker (the Q_OBJECT class it served) was disabled
+    QImage img(offsetMapData_.width, offsetMapData_.height, QImage::Format_Grayscale8);
+    for (int y = 0; y < offsetMapData_.height; y++)
+    {
+        for (int x = 0; x < offsetMapData_.width; x++)
+        {
+            size_t i = ((size_t)y * offsetMapData_.width + x) * 4;
+            int v = offsetMapData_.data[i + 3] > 0.f ? 255 : 0;
+            img.setPixelColor(x, y, QColor(v, v, v));
+        }
+    }
+    return img;
+}
