@@ -93,28 +93,93 @@ double pointSegmentDistance(const Eigen::Vector2d& p, const Eigen::Vector2d& a, 
 }
 
 /**
+ * @brief Computes 2D barycentric coordinates of (px, py) in triangle (a, b, c).
+ * @param px,py Query point.
+ * @param ax,ay,bx,by,cx,cy Triangle vertices.
+ * @param[out] w0,w1,w2 Barycentric weights on success.
+ * @return false if the triangle is degenerate (near-zero area).
+ */
+bool bary2D(double px, double py,
+            double ax, double ay, double bx, double by, double cx, double cy,
+            double& w0, double& w1, double& w2) {
+    double denom = (by - cy) * (ax - cx) + (cx - bx) * (ay - cy);
+    if (std::abs(denom) < 1e-10) return false;
+    w0 = ((by - cy) * (px - cx) + (cx - bx) * (py - cy)) / denom;
+    w1 = ((cy - ay) * (px - cx) + (ax - cx) * (py - cy)) / denom;
+    w2 = 1.0 - w0 - w1;
+    return true;
+}
+
+/**
+ * @brief Rasterizes every active face's UV triangle onto a width x height
+ *        grid (same texel-center sampling convention as the rest of the
+ *        atlas bake), recording which island truly covers each texel.
+ *
+ *        This is the ground truth for "is this texel part of the island's
+ *        own valid footprint" — the same barycentric test HeightmapBaker
+ *        uses to decide which texels get real relief data. rasterizeBand
+ *        uses it instead of approximating the footprint from a single seam
+ *        edge's local geometry, which breaks down near seam vertices where
+ *        consecutive edges meet at an angle (very common after mesh
+ *        simplification): the true boundary bends away from either edge's
+ *        infinite line there, so a per-edge half-plane test misclassifies
+ *        texels that are still genuinely inside the island as "outside",
+ *        letting the leap band bleed a texel or two into the island.
+ * @param mesh Mesh whose UV layout defines the islands.
+ * @param faceIsland Per-face island id, as produced by detectIslands().
+ * @param width,height Offset map dimensions.
+ * @return Per-texel island id (whichever face's UV triangle covers that
+ *         texel's center), or -1 if no face covers it.
+ */
+std::vector<int> buildIslandTexelMap(
+    const QEMSimplifier& mesh, const std::vector<int>& faceIsland,
+    int width, int height) {
+    std::vector<int> islandAt((size_t)width * height, -1);
+
+    for (int fi = 0; fi < (int)mesh.faces.size(); fi++) {
+        const Face& f = mesh.faces[fi];
+        if (f.removed || faceIsland[fi] < 0) continue;
+
+        Eigen::Vector2d uv0 = mesh.vertices[f.v[0]].uv;
+        Eigen::Vector2d uv1 = mesh.vertices[f.v[1]].uv;
+        Eigen::Vector2d uv2 = mesh.vertices[f.v[2]].uv;
+        double u0 = uv0.x() * width, v0 = uv0.y() * height;
+        double u1 = uv1.x() * width, v1 = uv1.y() * height;
+        double u2 = uv2.x() * width, v2 = uv2.y() * height;
+
+        int minX = std::max(0, (int)std::floor(std::min({u0, u1, u2})));
+        int maxX = std::min(width - 1, (int)std::ceil(std::max({u0, u1, u2})));
+        int minY = std::max(0, (int)std::floor(std::min({v0, v1, v2})));
+        int maxY = std::min(height - 1, (int)std::ceil(std::max({v0, v1, v2})));
+
+        for (int py = minY; py <= maxY; py++) {
+            for (int px = minX; px <= maxX; px++) {
+                double w0, w1, w2;
+                if (!bary2D(px + 0.5, py + 0.5, u0, v0, u1, v1, u2, v2, w0, w1, w2))
+                    continue;
+                if (w0 < -1e-4 || w1 < -1e-4 || w2 < -1e-4) continue;
+                islandAt[(size_t)py * width + px] = faceIsland[fi];
+            }
+        }
+    }
+    return islandAt;
+}
+
+/**
  * @brief Rasterizes the band of texels near segment [p0,p1] (in "this"
  *        island's UV space), writing the per-texel translation that maps
  *        each texel's own UV position into the neighboring island via the
  *        rigid transform (R, t). Nearest-seam-wins: only overwrites a texel
  *        if this segment is closer than whatever previously claimed it.
  *
- *        Only texels on the far side of [p0,p1] from `insideRef` are
- *        written — i.e. the band starts right where this island's own UV
- *        footprint ends and extends outward, rather than also covering the
- *        island's interior. A ray marching inside the island must reach the
- *        true edge (using this island's own, correct relief data all the
- *        way there) before it finds a texel it's allowed to leap from;
- *        otherwise it leaps early, `bandWidthUV` before the edge it's
- *        supposed to be crossing. A half-texel tolerance on the interior
- *        side absorbs the case where the true edge falls between texel
- *        centers, so the boundary texel itself is never missed.
+ *        Texels that `islandAt` says are already covered by `islandId`
+ *        itself are skipped — the band must not eat into the island's own
+ *        valid footprint (see buildIslandTexelMap).
  * @param p0,p1 Seam segment endpoints, in UV space.
  * @param theta Rotation (radians) encoded into the texel's z channel (as turns).
  * @param R,t Rigid transform mapping a UV point on this segment to the neighbor island.
- * @param insideRef A point known to lie inside this island (e.g. the seam
- *        face's third vertex), used to tell the interior side of [p0,p1]
- *        from the exterior side.
+ * @param islandId Island id this band is being written for (the "this" island).
+ * @param islandAt Per-texel island coverage, from buildIslandTexelMap.
  * @param width,height Offset map dimensions.
  * @param bandWidthUV Half-width of the band, in UV units.
  * @param[out] outData Offset map RGBA buffer being written into.
@@ -123,7 +188,7 @@ double pointSegmentDistance(const Eigen::Vector2d& p, const Eigen::Vector2d& a, 
 void rasterizeBand(
     const Eigen::Vector2d& p0, const Eigen::Vector2d& p1,
     double theta, const Eigen::Matrix2d& R, const Eigen::Vector2d& t,
-    const Eigen::Vector2d& insideRef,
+    int islandId, const std::vector<int>& islandAt,
     int width, int height, double bandWidthUV,
     std::vector<float>& outData, std::vector<float>& distBuf) {
     double minU = std::min(p0.x(), p1.x()) - bandWidthUV;
@@ -139,29 +204,14 @@ void rasterizeBand(
 
     float thetaTurns = (float)(theta / (2.0 * kPi));
 
-    Eigen::Vector2d ab = p1 - p0;
-    double abLen = ab.norm();
-    // Signed perpendicular distance from the (infinite) line through p0,p1:
-    // positive on one side, negative on the other. Dividing by abLen turns
-    // the raw 2D cross product into an actual UV-space distance.
-    auto signedDist = [&](const Eigen::Vector2d& q) {
-        double cross = ab.x() * (q.y() - p0.y()) - ab.y() * (q.x() - p0.x());
-        return abLen > 1e-12 ? cross / abLen : 0.0;
-    };
-    double insideSign = signedDist(insideRef) >= 0.0 ? 1.0 : -1.0;
-    double texelTol = 0.5 / (double)std::min(width, height);
-
     for (int iy = iy0; iy <= iy1; iy++) {
         for (int ix = ix0; ix <= ix1; ix++) {
             Eigen::Vector2d p((ix + 0.5) / width, (iy + 0.5) / height);
             double dist = pointSegmentDistance(p, p0, p1);
             if (dist > bandWidthUV) continue;
 
-            // Reject texels clearly on the interior side of the edge — the
-            // leap band must not eat into the island's own valid footprint.
-            if (signedDist(p) * insideSign > texelTol) continue;
-
             size_t idx = (size_t)iy * width + ix;
+            if (islandAt[idx] == islandId) continue;
             if (dist >= distBuf[idx]) continue;
             distBuf[idx] = (float)dist;
 
@@ -242,6 +292,7 @@ OffsetMapResult bakeOffsetMap(
 
     std::vector<float> distBuf((size_t)width * height, std::numeric_limits<float>::max());
     double bandWidthUV = (double)std::max(1, seamBandTexels) / (double)std::min(width, height);
+    std::vector<int> islandAt = buildIslandTexelMap(mesh, faceIsland, width, height);
 
     std::vector<int> canon = computeCanonicalPositions(mesh);
     EdgeMap edgeMap = buildEdgeMap(mesh, canon);
@@ -259,30 +310,31 @@ OffsetMapResult bakeOffsetMap(
         Eigen::Vector2d uvA0 = mesh.vertices[e0.vAtFirst].uv,  uvA1 = mesh.vertices[e0.vAtSecond].uv;
         Eigen::Vector2d uvB0 = mesh.vertices[e1.vAtFirst].uv,  uvB1 = mesh.vertices[e1.vAtSecond].uv;
 
-        // The face's third vertex (not on the seam edge) sits inside its
-        // own island's UV footprint, giving rasterizeBand a reference point
-        // to tell that footprint's interior from the exterior side.
-        auto thirdVertexUV = [&](const EdgeRef& e) {
-            const Face& f = mesh.faces[e.face];
-            for (int k = 0; k < 3; k++)
-                if (f.v[k] != e.vAtFirst && f.v[k] != e.vAtSecond)
-                    return mesh.vertices[f.v[k]].uv;
-            return mesh.vertices[e.vAtFirst].uv; // unreachable for a valid triangle
-        };
-        Eigen::Vector2d insideA = thirdVertexUV(e0);
-        Eigen::Vector2d insideB = thirdVertexUV(e1);
-
         Eigen::Vector2d dirA = uvA1 - uvA0;
         Eigen::Vector2d dirB = uvB1 - uvB0;
-        if (dirA.norm() < 1e-9 || dirB.norm() < 1e-9) continue;
+        double lenA = dirA.norm(), lenB = dirB.norm();
+        if (lenA < 1e-9 || lenB < 1e-9) continue;
 
         double angA = std::atan2(dirA.y(), dirA.x());
         double angB = std::atan2(dirB.y(), dirB.x());
         double theta = angB - angA;
 
-        Eigen::Matrix2d R;
-        R << std::cos(theta), -std::sin(theta),
-             std::sin(theta),  std::cos(theta);
+        Eigen::Matrix2d Rot;
+        Rot << std::cos(theta), -std::sin(theta),
+               std::sin(theta),  std::cos(theta);
+        Eigen::Matrix2d RotInv = Rot.transpose(); // = Rot(-theta)
+
+        // Islands aren't guaranteed to share the same UV texel density along
+        // a seam edge (e.g. independently-scaled unwrap charts), so the
+        // transform is a similarity (rotation + uniform scale), not a pure
+        // rigid rotation: scaleAB maps island A's edge length onto island
+        // B's. Without it, only the anchor vertex (uvA0 -> uvB0) lands
+        // exactly and the far vertex of the seam edge drifts by
+        // |dirA| - |dirB|, leaving a thin gap/overlap along the leap.
+        double scaleAB = lenB / lenA; // A -> B
+        double scaleBA = lenA / lenB; // B -> A (inverse of scaleAB)
+
+        Eigen::Matrix2d R = scaleAB * Rot;
         Eigen::Vector2d t = uvB0 - R * uvA0;
 
         // Band on island A's side: jump A -> B.
@@ -291,12 +343,12 @@ OffsetMapResult bakeOffsetMap(
         // mul(v, RotationMatrix) row-vector convention), while the position map
         // above needs the direction vector rotated by R(+theta) to stay consistent
         // with the position transform — so the encoded angle must be -theta.
-        rasterizeBand(uvA0, uvA1, -theta, R, t, insideA, width, height, bandWidthUV, result.data, distBuf);
+        rasterizeBand(uvA0, uvA1, -theta, R, t, islandA, islandAt, width, height, bandWidthUV, result.data, distBuf);
 
         // Band on island B's side: jump B -> A (inverse transform, hence +theta).
-        Eigen::Matrix2d Rinv = R.transpose();
+        Eigen::Matrix2d Rinv = scaleBA * RotInv;
         Eigen::Vector2d tInv = uvA0 - Rinv * uvB0;
-        rasterizeBand(uvB0, uvB1, theta, Rinv, tInv, insideB, width, height, bandWidthUV, result.data, distBuf);
+        rasterizeBand(uvB0, uvB1, theta, Rinv, tInv, islandB, islandAt, width, height, bandWidthUV, result.data, distBuf);
     }
 
     return result;

@@ -35,9 +35,12 @@ std::vector<int> detectIslands(const QEMSimplifier& mesh);
 /**
  * @brief Bakes the Offset_Map: for texels within `seamBandTexels` of a UV
  *        seam edge that crosses an island boundary, encodes the
- *        translation/rotation needed to continue a relief-mapping ray into
- *        the neighboring island. Assumes uniform UV texel density across
- *        islands (no per-island UV scale correction).
+ *        translation/rotation/scale needed to continue a relief-mapping ray
+ *        into the neighboring island. The per-edge transform is a
+ *        similarity (rotation + uniform scale, fit to the two islands'
+ *        respective UV texel density along that edge), not a pure rigid
+ *        rotation, so both endpoints of the seam edge land exactly even
+ *        when the islands don't share the same UV scale.
  * @param mesh Mesh whose UV layout defines the seams.
  * @param faceIsland Per-face island id, as produced by detectIslands().
  * @param width Output map width in texels.
