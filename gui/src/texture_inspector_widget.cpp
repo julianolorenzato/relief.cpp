@@ -1,9 +1,9 @@
 /**
- * @file texture_inspector_dialog.cpp
- * @brief TextureInspectorDialog implementation: map/channel/mip selection UI
+ * @file texture_inspector_widget.cpp
+ * @brief TextureInspectorWidget implementation: map/channel/mip selection UI
  *        and per-channel float-to-QImage rendering.
  */
-#include "gui/texture_inspector_dialog.h"
+#include "gui/texture_inspector_widget.h"
 #include <algorithm>
 #include <limits>
 #include <QVBoxLayout>
@@ -13,28 +13,21 @@
 #include <QLabel>
 #include <QScrollArea>
 
-TextureInspectorDialog::TextureInspectorDialog(const MipPyramid *colorMap,
+TextureInspectorWidget::TextureInspectorWidget(const MipPyramid *colorMap,
                                                 const MipPyramid *reliefMap,
                                                 const MipPyramid *normalMap,
                                                 const MipPyramid *offsetMap,
                                                 QWidget *parent)
-    : QDialog(parent),
+    : QWidget(parent),
       colorMap_(colorMap), reliefMap_(reliefMap), normalMap_(normalMap), offsetMap_(offsetMap)
 {
-    setWindowTitle("Texture Inspector");
-    resize(640, 720);
-
-    rebuildMapList();
-
     QVBoxLayout *layout = new QVBoxLayout(this);
 
     QHBoxLayout *mapRow = new QHBoxLayout();
     mapRow->addWidget(new QLabel("Map:"));
     this->mapCombo = new QComboBox();
-    for (const auto &m : this->maps)
-        this->mapCombo->addItem(m.label);
     connect(this->mapCombo, QOverload<int>::of(&QComboBox::currentIndexChanged),
-            this, &TextureInspectorDialog::onMapChanged);
+            this, &TextureInspectorWidget::onMapChanged);
     mapRow->addWidget(this->mapCombo, 1);
     layout->addLayout(mapRow);
 
@@ -42,14 +35,14 @@ TextureInspectorDialog::TextureInspectorDialog(const MipPyramid *colorMap,
     channelRow->addWidget(new QLabel("Channel:"));
     this->channelCombo = new QComboBox();
     connect(this->channelCombo, QOverload<int>::of(&QComboBox::currentIndexChanged),
-            this, &TextureInspectorDialog::onChannelChanged);
+            this, &TextureInspectorWidget::onChannelChanged);
     channelRow->addWidget(this->channelCombo, 1);
     layout->addLayout(channelRow);
 
     QHBoxLayout *mipRow = new QHBoxLayout();
     mipRow->addWidget(new QLabel("Mip Level:"));
     this->mipSlider = new QSlider(Qt::Horizontal);
-    connect(this->mipSlider, &QSlider::valueChanged, this, &TextureInspectorDialog::onMipChanged);
+    connect(this->mipSlider, &QSlider::valueChanged, this, &TextureInspectorWidget::onMipChanged);
     mipRow->addWidget(this->mipSlider, 1);
     this->mipLbl = new QLabel();
     this->mipLbl->setMinimumWidth(110);
@@ -69,11 +62,57 @@ TextureInspectorDialog::TextureInspectorDialog(const MipPyramid *colorMap,
     this->rangeLbl->setStyleSheet("color:#aaa; font-size:11px;");
     layout->addWidget(this->rangeLbl);
 
-    if (!this->maps.empty())
-        onMapChanged(0);
+    refreshMaps();
 }
 
-void TextureInspectorDialog::rebuildMapList()
+void TextureInspectorWidget::refreshMaps()
+{
+    QString prevLabel = (this->mapCombo->currentIndex() >= 0 &&
+                          this->mapCombo->currentIndex() < (int)this->maps.size())
+                             ? this->maps[this->mapCombo->currentIndex()].label
+                             : QString();
+
+    rebuildMapList();
+
+    this->mapCombo->blockSignals(true);
+    this->mapCombo->clear();
+    for (const auto &m : this->maps)
+        this->mapCombo->addItem(m.label);
+    this->mapCombo->blockSignals(false);
+
+    if (this->maps.empty())
+    {
+        this->channelCombo->blockSignals(true);
+        this->channelCombo->clear();
+        this->channelCombo->blockSignals(false);
+        this->channelCombo->setEnabled(false);
+
+        this->mipSlider->blockSignals(true);
+        this->mipSlider->setRange(0, 0);
+        this->mipSlider->blockSignals(false);
+        this->mipSlider->setEnabled(false);
+
+        this->mipLbl->clear();
+        this->rangeLbl->clear();
+        this->imageLbl->setPixmap(QPixmap());
+        this->imageLbl->setText("No textures loaded yet.");
+        return;
+    }
+
+    this->channelCombo->setEnabled(true);
+    this->mipSlider->setEnabled(true);
+
+    int newIdx = 0;
+    for (int i = 0; i < (int)this->maps.size(); i++)
+        if (this->maps[i].label == prevLabel) { newIdx = i; break; }
+
+    if (this->mapCombo->currentIndex() == newIdx)
+        onMapChanged(newIdx);
+    else
+        this->mapCombo->setCurrentIndex(newIdx);
+}
+
+void TextureInspectorWidget::rebuildMapList()
 {
     this->maps.clear();
 
@@ -126,12 +165,12 @@ void TextureInspectorDialog::rebuildMapList()
     }
 }
 
-void TextureInspectorDialog::onMapChanged(int)
+void TextureInspectorWidget::onMapChanged(int)
 {
     refreshChannelCombo();
 }
 
-void TextureInspectorDialog::refreshChannelCombo()
+void TextureInspectorWidget::refreshChannelCombo()
 {
     int idx = this->mapCombo->currentIndex();
     if (idx < 0 || idx >= (int)this->maps.size())
@@ -153,17 +192,17 @@ void TextureInspectorDialog::refreshChannelCombo()
     refreshImage();
 }
 
-void TextureInspectorDialog::onChannelChanged(int)
+void TextureInspectorWidget::onChannelChanged(int)
 {
     refreshImage();
 }
 
-void TextureInspectorDialog::onMipChanged(int)
+void TextureInspectorWidget::onMipChanged(int)
 {
     refreshImage();
 }
 
-QImage TextureInspectorDialog::renderChannel(int channelIndex) const
+QImage TextureInspectorWidget::renderChannel(int channelIndex) const
 {
     int mapIdx = this->mapCombo->currentIndex();
     if (mapIdx < 0 || mapIdx >= (int)this->maps.size())
@@ -235,7 +274,7 @@ QImage TextureInspectorDialog::renderChannel(int channelIndex) const
     return img;
 }
 
-void TextureInspectorDialog::refreshImage()
+void TextureInspectorWidget::refreshImage()
 {
     int mapIdx = this->mapCombo->currentIndex();
     if (mapIdx < 0 || mapIdx >= (int)this->maps.size())

@@ -18,7 +18,7 @@ add_executable(gui
     include/gui/relief_module.h
     include/gui/relief_view.h
     include/gui/relief_sandbox_module.h
-    include/gui/texture_inspector_dialog.h
+    include/gui/texture_inspector_widget.h
     src/main.cpp
     src/mainwindow.cpp
     src/orbital3dview.cpp
@@ -28,7 +28,7 @@ add_executable(gui
     src/relief_module.cpp
     src/relief_view.cpp
     src/relief_sandbox_module.cpp
-    src/texture_inspector_dialog.cpp
+    src/texture_inspector_widget.cpp
     src/shaders/shaders.qrc
 )
 
