@@ -306,8 +306,8 @@ void ReliefSandboxModule::onLoadColor() {
 
     QImage c = this->colorImg.convertToFormat(QImage::Format_RGBA8888);
     RawImage raw{c.constBits(), c.width(), c.height(), 4};
-    this->colorMapData = Textures::buildColorMap(raw, kRes, kRes);
-    this->reliefView->setColorMap(this->colorMapData);
+    this->colorMap = Textures::buildColorMap(raw, kRes, kRes);
+    this->reliefView->setColorMap(this->colorMap);
 }
 
 void ReliefSandboxModule::onLoadDepth() {
@@ -341,8 +341,8 @@ void ReliefSandboxModule::onLoadNormal() {
 
     QImage n = this->normalImg.convertToFormat(QImage::Format_RGB888);
     RawImage raw{n.constBits(), n.width(), n.height(), 3};
-    this->normalMapData = Textures::buildNormalMap(raw, kRes, kRes);
-    this->reliefView->setNormalMap(this->normalMapData);
+    this->normalMap = Textures::buildNormalMap(raw, kRes, kRes);
+    this->reliefView->setNormalMap(this->normalMap);
 }
 
 void ReliefSandboxModule::recomputeDepthTextures() {
@@ -356,27 +356,27 @@ void ReliefSandboxModule::recomputeDepthTextures() {
 
     constexpr int kSeam = 16;
     if (this->mesh) {
-        this->offsetMapData = UVAtlas::buildOffsetMap(*this->mesh, kRes, kRes, kSeam);
-        this->reliefView->setOffsetMap(this->offsetMapData);
+        this->offsetMap = UVAtlas::buildOffsetMap(*this->mesh, kRes, kRes, kSeam);
+        this->reliefView->setOffsetMap(this->offsetMap);
     }
 
-    this->reliefMapData =
-        Textures::buildReliefMap(rawDepth, kRes, kRes, this->offsetMapData);
-    this->reliefView->setReliefMap(this->reliefMapData);
+    this->reliefMap =
+        Textures::buildReliefMap(rawDepth, kRes, kRes, this->offsetMap);
+    this->reliefView->setReliefMap(this->reliefMap);
 }
 
 void ReliefSandboxModule::onInspectTextures() {
-    if (this->colorMapData.levelCount() == 0 &&
-        this->reliefMapData.levelCount() == 0 &&
-        this->normalMapData.levelCount() == 0 &&
-        this->offsetMapData.width == 0) {
+    if (this->colorMap.levelCount() == 0 &&
+        this->reliefMap.levelCount() == 0 &&
+        this->normalMap.levelCount() == 0 &&
+        this->offsetMap.width == 0) {
         QMessageBox::information(this, "Texture Inspector",
                                  "No textures loaded yet.");
         return;
     }
 
-    TextureInspectorDialog dlg(&this->colorMapData, &this->reliefMapData,
-                               &this->normalMapData, &this->offsetMapData,
+    TextureInspectorDialog dlg(&this->colorMap, &this->reliefMap,
+                               &this->normalMap, &this->offsetMap,
                                this);
     dlg.exec();
 }
@@ -395,7 +395,7 @@ void ReliefSandboxModule::onPixelPicked(QPointF uv, bool hit) {
 
     if (this->colorImg.isNull()) return;
 
-    // colorMapData's mip0 row y == colorImg's row y (see
+    // colorMap's mip0 row y == colorImg's row y (see
     // Textures::buildColorMap's resampling in ReliefSandboxModule::onLoadColor),
     // so (u, v) maps onto colorImg with no flip.
     QImage preview = this->colorImg

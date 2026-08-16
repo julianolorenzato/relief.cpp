@@ -130,7 +130,7 @@ class ReliefSandboxModule : public QWidget {
      * Baked pyramids fed to ReliefView,
      * kept around for the texture inspector.
      */
-    MipPyramid colorMapData, reliefMapData, normalMapData, offsetMapData;
+    MipPyramid colorMap, reliefMap, normalMap, offsetMap;
 
     MeshControls meshControls;
     TextureControls textureControls;
