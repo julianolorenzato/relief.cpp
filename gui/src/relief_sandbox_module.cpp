@@ -1,10 +1,10 @@
 /**
- * @file relief_test_module.cpp
- * @brief ReliefTestModule implementation: loads a mesh plus color/depth/normal
+ * @file relief_sandbox_module.cpp
+ * @brief ReliefSandboxModule implementation: loads a mesh plus color/depth/normal
  *        images independently of the main pipeline, resamples them into mip0
  *        buffers, and bakes/previews the relief maps synchronously.
  */
-#include "gui/relief_test_module.h"
+#include "gui/relief_sandbox_module.h"
 #include "gui/texture_inspector_dialog.h"
 #include "relief/textures.h"
 #include "relief/uv_atlas.h"
@@ -21,7 +21,7 @@
 
 // ─── Constructor ─────────────────────────────────────────────────────────────
 
-ReliefTestModule::ReliefTestModule(QWidget *parent)
+ReliefSandboxModule::ReliefSandboxModule(QWidget *parent)
     : QWidget(parent)
 {
     QHBoxLayout *outerLayout = new QHBoxLayout(this);
@@ -33,13 +33,13 @@ ReliefTestModule::ReliefTestModule(QWidget *parent)
     this->reliefView = new ReliefView();
     this->reliefView->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
     splitter->addWidget(this->reliefView);
-    connect(this->reliefView, &ReliefView::pixelPicked, this, &ReliefTestModule::onPixelPicked);
+    connect(this->reliefView, &ReliefView::pixelPicked, this, &ReliefSandboxModule::onPixelPicked);
 
     QWidget *controls = buildControls();
     splitter->addWidget(controls);
 }
 
-QWidget *ReliefTestModule::buildControls()
+QWidget *ReliefSandboxModule::buildControls()
 {
     QWidget *controls = new QWidget();
     QVBoxLayout *layout = new QVBoxLayout(controls);
@@ -50,7 +50,7 @@ QWidget *ReliefTestModule::buildControls()
     QVBoxLayout *meshLayout = new QVBoxLayout(meshGroup);
 
     this->loadMeshBtn = new QPushButton("Load Mesh (OBJ / GLTF)…");
-    connect(this->loadMeshBtn, &QPushButton::clicked, this, &ReliefTestModule::onLoadMesh);
+    connect(this->loadMeshBtn, &QPushButton::clicked, this, &ReliefSandboxModule::onLoadMesh);
     meshLayout->addWidget(this->loadMeshBtn);
 
     this->meshStatusLbl = new QLabel("No mesh loaded");
@@ -79,12 +79,12 @@ QWidget *ReliefTestModule::buildControls()
         texLayout->addLayout(row);
     };
 
-    makeTexRow("Color", this->thumbColor, this->loadColorBtn, &ReliefTestModule::onLoadColor);
-    makeTexRow("Depth", this->thumbDepth, this->loadDepthBtn, &ReliefTestModule::onLoadDepth);
-    makeTexRow("Normal", this->thumbNormal, this->loadNormalBtn, &ReliefTestModule::onLoadNormal);
+    makeTexRow("Color", this->thumbColor, this->loadColorBtn, &ReliefSandboxModule::onLoadColor);
+    makeTexRow("Depth", this->thumbDepth, this->loadDepthBtn, &ReliefSandboxModule::onLoadDepth);
+    makeTexRow("Normal", this->thumbNormal, this->loadNormalBtn, &ReliefSandboxModule::onLoadNormal);
 
     this->inspectTexturesBtn = new QPushButton("Inspect Textures…");
-    connect(this->inspectTexturesBtn, &QPushButton::clicked, this, &ReliefTestModule::onInspectTextures);
+    connect(this->inspectTexturesBtn, &QPushButton::clicked, this, &ReliefSandboxModule::onInspectTextures);
     texLayout->addWidget(this->inspectTexturesBtn);
 
     layout->addWidget(texGroup);
@@ -191,7 +191,7 @@ QWidget *ReliefTestModule::buildControls()
 
 // ─── Slots ────────────────────────────────────────────────────────────────────
 
-void ReliefTestModule::onLoadMesh()
+void ReliefSandboxModule::onLoadMesh()
 {
     QString path = QFileDialog::getOpenFileName(this, "Open Mesh File", "",
                                                 "Model Files (*.obj *.gltf *.glb);;OBJ Files (*.obj);;GLTF Files (*.gltf *.glb);;All Files (*)");
@@ -219,7 +219,7 @@ void ReliefTestModule::onLoadMesh()
         recomputeDepthTextures();
 }
 
-void ReliefTestModule::onLoadColor()
+void ReliefSandboxModule::onLoadColor()
 {
     QString path = QFileDialog::getOpenFileName(this, "Open Color Texture", "",
                                                 "Images (*.png *.jpg *.jpeg *.bmp *.tga);;All Files (*)");
@@ -243,7 +243,7 @@ void ReliefTestModule::onLoadColor()
     this->reliefView->setColorMap(this->colorMapData);
 }
 
-void ReliefTestModule::onLoadDepth()
+void ReliefSandboxModule::onLoadDepth()
 {
     QString path = QFileDialog::getOpenFileName(this, "Open Depth (Heightmap) Texture", "",
                                                 "Images (*.png *.jpg *.jpeg *.bmp *.tga);;All Files (*)");
@@ -259,7 +259,7 @@ void ReliefTestModule::onLoadDepth()
     recomputeDepthTextures();
 }
 
-void ReliefTestModule::onLoadNormal()
+void ReliefSandboxModule::onLoadNormal()
 {
     QString path = QFileDialog::getOpenFileName(this, "Open Normal Map Texture", "",
                                                 "Images (*.png *.jpg *.jpeg *.bmp *.tga);;All Files (*)");
@@ -283,7 +283,7 @@ void ReliefTestModule::onLoadNormal()
     this->reliefView->setNormalMap(this->normalMapData);
 }
 
-void ReliefTestModule::recomputeDepthTextures()
+void ReliefSandboxModule::recomputeDepthTextures()
 {
     if (this->depthImg.isNull())
         return;
@@ -330,7 +330,7 @@ void ReliefTestModule::recomputeDepthTextures()
     this->reliefView->setReliefMap(this->reliefMapData);
 }
 
-void ReliefTestModule::onInspectTextures()
+void ReliefSandboxModule::onInspectTextures()
 {
     if (this->colorMapData.levelCount() == 0 && this->reliefMapData.levelCount() == 0 &&
         this->normalMapData.levelCount() == 0 && this->offsetMapData.width == 0)
@@ -344,7 +344,7 @@ void ReliefTestModule::onInspectTextures()
     dlg.exec();
 }
 
-void ReliefTestModule::onPixelPicked(QPointF uv, bool hit)
+void ReliefSandboxModule::onPixelPicked(QPointF uv, bool hit)
 {
     if (!hit)
     {
@@ -359,7 +359,7 @@ void ReliefTestModule::onPixelPicked(QPointF uv, bool hit)
         return;
 
     // colorMapData's mip0 row y == colorImg's row y (see Textures::resampleColorRGBA
-    // in ReliefTestModule::onLoadColor), so (u, v) maps onto colorImg with no flip.
+    // in ReliefSandboxModule::onLoadColor), so (u, v) maps onto colorImg with no flip.
     QImage preview = this->colorImg
                          .scaled(this->pickPreviewLbl->size(), Qt::KeepAspectRatio, Qt::SmoothTransformation)
                          .convertToFormat(QImage::Format_RGB32);
@@ -377,7 +377,7 @@ void ReliefTestModule::onPixelPicked(QPointF uv, bool hit)
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
-void ReliefTestModule::setThumb(QLabel *label, const QImage &img)
+void ReliefSandboxModule::setThumb(QLabel *label, const QImage &img)
 {
     label->setPixmap(QPixmap::fromImage(img)
                          .scaled(label->size(), Qt::KeepAspectRatio, Qt::SmoothTransformation));

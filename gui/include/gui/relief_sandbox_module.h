@@ -1,5 +1,5 @@
 /**
- * @file relief_test_module.h
+ * @file relief_sandbox_module.h
  * @brief Standalone context for testing relief mapping in isolation, without
  *        going through the simplification/texture-prep pipeline.
  */
@@ -22,12 +22,12 @@
 ///        Loads a mesh and three textures (color, depth, normal) via file
 ///        dialogs, bakes synchronously, and inspects the result in a single
 ///        ReliefView.
-class ReliefTestModule : public QWidget
+class ReliefSandboxModule : public QWidget
 {
     Q_OBJECT
 
 public:
-    explicit ReliefTestModule(QWidget *parent = nullptr);
+    explicit ReliefSandboxModule(QWidget *parent = nullptr);
 
 private slots:
     /// Loads a mesh (OBJ/GLTF) via file dialog and rebuilds the view.

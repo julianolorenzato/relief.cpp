@@ -30,7 +30,7 @@ void MainWindow::setupUI() {
   this->heightmap = new HeightmapModule(this);
   this->texturePrep = new TexturePrepModule(this);
   this->relief = new ReliefModule(this);
-  this->reliefTest = new ReliefTestModule(this);
+  this->reliefSandbox = new ReliefSandboxModule(this);
 
   // ── Context toolbar ────────────────────────────────────────────────────
   this->contextToolBar = addToolBar("Contexts");
@@ -45,7 +45,7 @@ void MainWindow::setupUI() {
   auto *group = new QActionGroup(this);
   group->setExclusive(true);
   const char *labels[] = {"Mesh", "Heightmap", "Textures", "Relief",
-                          "Relief Test"};
+                          "Relief Sandbox"};
   for (int i = 0; i < 5; ++i) {
     auto *act = new QAction(labels[i], this);
     act->setCheckable(true);
@@ -62,7 +62,7 @@ void MainWindow::setupUI() {
   this->viewportStack->addWidget(this->heightmap);
   this->viewportStack->addWidget(this->texturePrep);
   this->viewportStack->addWidget(this->relief);
-  this->viewportStack->addWidget(this->reliefTest);
+  this->viewportStack->addWidget(this->reliefSandbox);
   setCentralWidget(this->viewportStack);
 
   // ── Status bar ───────────────────────────────────────────────────────────

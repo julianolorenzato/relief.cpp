@@ -12,10 +12,10 @@
 #include "gui/heightmap_module.h"
 #include "gui/texture_prep_module.h"
 #include "gui/relief_module.h"
-#include "gui/relief_test_module.h"
+#include "gui/relief_sandbox_module.h"
 
 /// @brief Main application window; wires the pipeline modules (simplifier,
-///        heightmap baker, texture prep, relief viewer, relief test) together
+///        heightmap baker, texture prep, relief viewer, relief sandbox) together
 ///        via a context toolbar and a QStackedWidget.
 class MainWindow : public QMainWindow {
     Q_OBJECT
@@ -43,6 +43,6 @@ private:
     SimplifierModule*   simplifier   = nullptr;
     HeightmapModule*    heightmap    = nullptr;
     TexturePrepModule*  texturePrep  = nullptr;
-    ReliefModule*       relief       = nullptr;
-    ReliefTestModule*   reliefTest   = nullptr;
+    ReliefModule*        relief        = nullptr;
+    ReliefSandboxModule* reliefSandbox = nullptr;
 };

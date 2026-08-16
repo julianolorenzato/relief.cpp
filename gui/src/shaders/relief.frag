@@ -101,7 +101,7 @@ void IslandLeap(
 // seams: it works on a single, seamless depth channel). The relief map's R
 // channel (min depth) is the per-cell depth bound; G (max depth) is
 // reserved for a future conservative-stepping optimization. B is the
-// max-pooled seam mask (relief_test_module.cpp's seamMip0/maskPyr): exact
+// max-pooled seam mask (relief_sandbox_module.cpp's seamMip0/maskPyr): exact
 // per-texel at mip 0, and propagated (not averaged, per TCC Bonorino sec.
 // 4.4.1) into coarser mips, so a coarse cell reads nonzero whenever any
 // mip-0 texel beneath it touches a leap band.

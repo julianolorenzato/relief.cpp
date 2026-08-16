@@ -17,7 +17,7 @@ add_executable(gui
     include/gui/texture_prep_module.h
     include/gui/relief_module.h
     include/gui/relief_view.h
-    include/gui/relief_test_module.h
+    include/gui/relief_sandbox_module.h
     include/gui/texture_inspector_dialog.h
     src/main.cpp
     src/mainwindow.cpp
@@ -27,7 +27,7 @@ add_executable(gui
     src/texture_prep_module.cpp
     src/relief_module.cpp
     src/relief_view.cpp
-    src/relief_test_module.cpp
+    src/relief_sandbox_module.cpp
     src/texture_inspector_dialog.cpp
     src/shaders/shaders.qrc
 )

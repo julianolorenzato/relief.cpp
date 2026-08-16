@@ -17,7 +17,7 @@ class QLabel;
 /// @brief Modal dialog to inspect the baked mip pyramids (color, relief,
 ///        normal, offset) fed to ReliefView: pick a map, a channel, and a mip
 ///        level, and see it as an image. Data pointers are read-only views
-///        into ReliefTestModule's state; the dialog does not own or outlive
+///        into ReliefSandboxModule's state; the dialog does not own or outlive
 ///        the caller's data (it's modal, so the parent can't mutate them
 ///        while it's open).
 class TextureInspectorDialog : public QDialog
