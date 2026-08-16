@@ -4,7 +4,7 @@
  *        color/relief/normal mip pyramids and the Offset_Map.
  */
 #include "gui/texture_prep_module.h"
-#include "gui/texture_resample.h"
+#include "relief/textures.h"
 #include <QVBoxLayout>
 #include <QHBoxLayout>
 #include <QGroupBox>
@@ -262,18 +262,18 @@ void TexturePrepModule::onTpGenerate()
     onTpProgress(5, "Resampling color map...");
     RawImage rawColor{simplifiedMesh_->textureData.data(),
                        simplifiedMesh_->textureWidth, simplifiedMesh_->textureHeight, 4};
-    auto colorMip0 = resampleColorRGBA(rawColor, kRes, kRes);
+    auto colorMip0 = Textures::resampleColorRGBA(rawColor, kRes, kRes);
     colorMapData_ = Textures::buildBilinearPyramid(colorMip0, kRes, kRes, 4);
 
     onTpProgress(30, "Resampling normal map...");
     RawImage rawNormal{simplifiedMesh_->normalTextureData.data(),
                         simplifiedMesh_->normalTextureWidth, simplifiedMesh_->normalTextureHeight, 4};
-    auto normalMip0 = resampleNormalXYZ(rawNormal, kRes, kRes);
+    auto normalMip0 = Textures::resampleNormalXYZ(rawNormal, kRes, kRes);
     normalMapData_ = Textures::buildBilinearPyramid(normalMip0, kRes, kRes, 3, /*renormalizeAsNormal=*/true);
 
     onTpProgress(55, "Resampling depth map...");
     RawImage rawDepth{hmResult_.image.data(), hmResult_.width, hmResult_.height, 1};
-    auto depthMip0 = resampleDepthR(rawDepth, kRes, kRes);
+    auto depthMip0 = Textures::resampleDepthR(rawDepth, kRes, kRes);
 
     onTpProgress(70, "Baking UV-atlas offset map...");
     auto faceIsland = UVAtlas::detectIslands(*simplifiedMesh_);

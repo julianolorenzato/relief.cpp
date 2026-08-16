@@ -73,4 +73,14 @@ MipPyramid buildMaxPyramid(
     const std::vector<float>& mip0,
     int width, int height);
 
+/// Resamples `img` to outW x outH RGBA float data via bilinear sampling.
+std::vector<float> resampleColorRGBA(const RawImage& img, int outW, int outH);
+
+/// Resamples `img`'s red channel to outW x outH single-channel float data.
+std::vector<float> resampleDepthR(const RawImage& img, int outW, int outH);
+
+/// Resamples `img` (encoded as [0,1] RGB) to outW x outH unit-vector XYZ float
+/// data in [-1,1], renormalizing each resampled texel.
+std::vector<float> resampleNormalXYZ(const RawImage& img, int outW, int outH);
+
 } // namespace Textures

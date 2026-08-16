@@ -40,9 +40,9 @@ private:
     QStackedWidget* viewportStack  = nullptr;
     QLabel*         statusLabel    = nullptr;
 
-    SimplifierModule*   simplifier_   = nullptr;
-    HeightmapModule*    heightmap_    = nullptr;
-    TexturePrepModule*  texturePrep_  = nullptr;
-    ReliefModule*       relief_       = nullptr;
-    ReliefTestModule*   reliefTest_   = nullptr;
+    SimplifierModule*   simplifier   = nullptr;
+    HeightmapModule*    heightmap    = nullptr;
+    TexturePrepModule*  texturePrep  = nullptr;
+    ReliefModule*       relief       = nullptr;
+    ReliefTestModule*   reliefTest   = nullptr;
 };

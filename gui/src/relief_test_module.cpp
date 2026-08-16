@@ -6,7 +6,7 @@
  */
 #include "gui/relief_test_module.h"
 #include "gui/texture_inspector_dialog.h"
-#include "gui/texture_resample.h"
+#include "relief/textures.h"
 #include "relief/uv_atlas.h"
 #include <algorithm>
 #include <cmath>
@@ -238,7 +238,7 @@ void ReliefTestModule::onLoadColor()
 
     QImage c = this->colorImg.convertToFormat(QImage::Format_RGBA8888);
     RawImage raw{c.constBits(), c.width(), c.height(), 4};
-    auto mip0 = resampleColorRGBA(raw, kRes, kRes);
+    auto mip0 = Textures::resampleColorRGBA(raw, kRes, kRes);
     this->colorMapData = Textures::buildBilinearPyramid(mip0, kRes, kRes, 4);
     this->reliefView->setColorMap(this->colorMapData);
 }
@@ -278,7 +278,7 @@ void ReliefTestModule::onLoadNormal()
 
     QImage n = this->normalImg.convertToFormat(QImage::Format_RGB888);
     RawImage raw{n.constBits(), n.width(), n.height(), 3};
-    auto mip0 = resampleNormalXYZ(raw, kRes, kRes);
+    auto mip0 = Textures::resampleNormalXYZ(raw, kRes, kRes);
     this->normalMapData = Textures::buildBilinearPyramid(mip0, kRes, kRes, 3, /*renormalizeAsNormal=*/true);
     this->reliefView->setNormalMap(this->normalMapData);
 }
@@ -293,7 +293,7 @@ void ReliefTestModule::recomputeDepthTextures()
 
     QImage d = this->depthImg.convertToFormat(QImage::Format_Grayscale8);
     RawImage rawDepth{d.constBits(), d.width(), d.height(), 1};
-    auto depthMip0 = resampleDepthR(rawDepth, kRes, kRes);
+    auto depthMip0 = Textures::resampleDepthR(rawDepth, kRes, kRes);
 
     constexpr int kSeam = 16;
     std::vector<float> seamMip0((size_t)kRes * kRes, 0.f);
@@ -358,8 +358,8 @@ void ReliefTestModule::onPixelPicked(QPointF uv, bool hit)
     if (this->colorImg.isNull())
         return;
 
-    // colorMapData's mip0 row y == colorImg's row y (see resampleColorRGBA in
-    // ReliefTestModule::onLoadColor), so (u, v) maps onto colorImg with no flip.
+    // colorMapData's mip0 row y == colorImg's row y (see Textures::resampleColorRGBA
+    // in ReliefTestModule::onLoadColor), so (u, v) maps onto colorImg with no flip.
     QImage preview = this->colorImg
                          .scaled(this->pickPreviewLbl->size(), Qt::KeepAspectRatio, Qt::SmoothTransformation)
                          .convertToFormat(QImage::Format_RGB32);

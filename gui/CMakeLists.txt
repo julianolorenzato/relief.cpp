@@ -19,7 +19,6 @@ add_executable(gui
     include/gui/relief_view.h
     include/gui/relief_test_module.h
     include/gui/texture_inspector_dialog.h
-    include/gui/texture_resample.h
     src/main.cpp
     src/mainwindow.cpp
     src/orbital3dview.cpp
