@@ -7,12 +7,17 @@
 
 #include "gui/relief_sandbox_module.h"
 
+#include <QCheckBox>
+#include <QComboBox>
+#include <QDoubleSpinBox>
 #include <QFileDialog>
 #include <QGroupBox>
 #include <QHBoxLayout>
 #include <QMessageBox>
 #include <QPainter>
+#include <QPushButton>
 #include <QScrollArea>
+#include <QSpinBox>
 #include <QSplitter>
 #include <QVBoxLayout>
 #include <algorithm>
@@ -77,151 +82,169 @@ ReliefSandboxModule::ReliefSandboxModule(QWidget* parent) : QWidget(parent) {
     splitter->addWidget(controls);
 }
 
+MeshControls::MeshControls(QWidget* outerControls, ReliefSandboxModule* self) {
+    QGroupBox* group = new QGroupBox("Mesh");
+    QVBoxLayout* meshLayout = new QVBoxLayout(group);
+
+    QPushButton* loadBtn = new QPushButton("Load Mesh (OBJ / GLTF)…");
+    QObject::connect(loadBtn, &QPushButton::clicked, self,
+                     &ReliefSandboxModule::onLoadMesh);
+    meshLayout->addWidget(loadBtn);
+
+    this->statusLbl = new QLabel("No mesh loaded");
+    this->statusLbl->setWordWrap(true);
+    this->statusLbl->setStyleSheet("color: #aaa; font-size: 11px;");
+    meshLayout->addWidget(this->statusLbl);
+
+    outerControls->layout()->addWidget(group);
+}
+
+TextureControls::TextureControls(QWidget* outerControls,
+                                 ReliefSandboxModule* self) {
+    QGroupBox* group = new QGroupBox("Input Textures");
+    QVBoxLayout* texLayout = new QVBoxLayout(group);
+
+    QPushButton* btn = nullptr;
+    makeTexRow(texLayout, self, "Color", this->thumbColor, btn,
+               &ReliefSandboxModule::onLoadColor);
+    makeTexRow(texLayout, self, "Depth", this->thumbDepth, btn,
+               &ReliefSandboxModule::onLoadDepth);
+    makeTexRow(texLayout, self, "Normal", this->thumbNormal, btn,
+               &ReliefSandboxModule::onLoadNormal);
+
+    QPushButton* inspectBtn = new QPushButton("Inspect Textures…");
+    QObject::connect(inspectBtn, &QPushButton::clicked, self,
+                     &ReliefSandboxModule::onInspectTextures);
+    texLayout->addWidget(inspectBtn);
+
+    outerControls->layout()->addWidget(group);
+}
+
+PixelPickControls::PixelPickControls(QWidget* outerControls) {
+    QGroupBox* group = new QGroupBox("Pixel Pick");
+    QVBoxLayout* pickLayout = new QVBoxLayout(group);
+
+    this->infoLbl = new QLabel(
+        "Click a pixel in the view to see where it samples the color texture.");
+    this->infoLbl->setWordWrap(true);
+    this->infoLbl->setStyleSheet("color: #aaa; font-size: 11px;");
+    pickLayout->addWidget(this->infoLbl);
+
+    this->previewLbl = new QLabel();
+    this->previewLbl->setFixedSize(220, 220);
+    this->previewLbl->setAlignment(Qt::AlignCenter);
+    this->previewLbl->setStyleSheet(
+        "background-color:#1e1e1e; border:1px solid #555;");
+    pickLayout->addWidget(this->previewLbl);
+
+    outerControls->layout()->addWidget(group);
+}
+
+void ReliefSandboxModule::buildReliefParamsGroup(QWidget* outerControls) {
+    QGroupBox* ctrlGroup = new QGroupBox("Relief Mapping Parameters");
+    QVBoxLayout* ctrlLayout = new QVBoxLayout(ctrlGroup);
+
+    // Enabled
+    QCheckBox* reliefEnabledCheck = new QCheckBox("Enable Relief Mapping");
+    reliefEnabledCheck->setChecked(true);
+    connect(reliefEnabledCheck, &QCheckBox::toggled, this->reliefView,
+            &ReliefView::setReliefEnabled);
+    ctrlLayout->addWidget(reliefEnabledCheck);
+
+    // Steps
+    QHBoxLayout* stepsRow = new QHBoxLayout();
+    stepsRow->addWidget(new QLabel("Steps:"));
+    QSpinBox* stepsSpin = new QSpinBox();
+    stepsSpin->setRange(1, 512);
+    stepsSpin->setValue(256);
+    connect(stepsSpin, QOverload<int>::of(&QSpinBox::valueChanged),
+            this->reliefView, &ReliefView::setSteps);
+    stepsRow->addWidget(stepsSpin, 1);
+    ctrlLayout->addLayout(stepsRow);
+
+    // Depth Scale
+    QHBoxLayout* depthRow = new QHBoxLayout();
+    depthRow->addWidget(new QLabel("Depth Scale:"));
+    QDoubleSpinBox* depthScaleSpin = new QDoubleSpinBox();
+    depthScaleSpin->setRange(0.0, 2.0);
+    depthScaleSpin->setSingleStep(0.01);
+    depthScaleSpin->setDecimals(4);
+    depthScaleSpin->setValue(0.05);
+    connect(depthScaleSpin,
+            QOverload<double>::of(&QDoubleSpinBox::valueChanged),
+            this->reliefView, &ReliefView::setDepthScale);
+    depthRow->addWidget(depthScaleSpin, 1);
+    ctrlLayout->addLayout(depthRow);
+
+    // Use Atlas
+    QCheckBox* useAtlasCheck = new QCheckBox("Use Atlas (Island Leaping)");
+    useAtlasCheck->setChecked(true);
+    connect(useAtlasCheck, &QCheckBox::toggled, this->reliefView,
+            &ReliefView::setUseAtlas);
+    ctrlLayout->addWidget(useAtlasCheck);
+
+    // Texture Type
+    QHBoxLayout* texTypeRow = new QHBoxLayout();
+    texTypeRow->addWidget(new QLabel("Texture Type:"));
+    QComboBox* textureTypeCombo = new QComboBox();
+    textureTypeCombo->addItem("Depth Map", 0);
+    textureTypeCombo->addItem("Height Map", 1);
+    connect(textureTypeCombo,
+            QOverload<int>::of(&QComboBox::currentIndexChanged), this,
+            [this, textureTypeCombo](int) {
+                this->reliefView->setReliefTextureType(
+                    textureTypeCombo->currentData().toInt());
+            });
+    texTypeRow->addWidget(textureTypeCombo, 1);
+    ctrlLayout->addLayout(texTypeRow);
+
+    // Debug Type
+    QHBoxLayout* debugRow = new QHBoxLayout();
+    debugRow->addWidget(new QLabel("Debug:"));
+    QComboBox* debugViewCombo = new QComboBox();
+    debugViewCombo->addItem("Shaded", 0);
+    debugViewCombo->addItem("Step Count", 1);
+    debugViewCombo->addItem("Leap Count", 2);
+    debugViewCombo->addItem("UV After Relief", 3);
+    connect(debugViewCombo, QOverload<int>::of(&QComboBox::currentIndexChanged),
+            this, [this, debugViewCombo](int) {
+                this->reliefView->setDebugView(
+                    debugViewCombo->currentData().toInt());
+            });
+    debugRow->addWidget(debugViewCombo, 1);
+    ctrlLayout->addLayout(debugRow);
+
+    // View Type
+    QHBoxLayout* viewRow = new QHBoxLayout();
+    QCheckBox* wireframeCheck = new QCheckBox("Wireframe");
+    connect(wireframeCheck, &QCheckBox::toggled, this->reliefView,
+            &ReliefView::setWireframe);
+    viewRow->addWidget(wireframeCheck);
+    QCheckBox* cullFaceCheck = new QCheckBox("Backface Cull");
+    cullFaceCheck->setChecked(true);
+    connect(cullFaceCheck, &QCheckBox::toggled, this->reliefView,
+            &ReliefView::setCullFace);
+    viewRow->addWidget(cullFaceCheck);
+    ctrlLayout->addLayout(viewRow);
+
+    QPushButton* resetCamBtn = new QPushButton("Reset Camera");
+    connect(resetCamBtn, &QPushButton::clicked, this->reliefView,
+            &ReliefView::resetCamera);
+    ctrlLayout->addWidget(resetCamBtn);
+
+    outerControls->layout()->addWidget(ctrlGroup);
+}
+
 QWidget* ReliefSandboxModule::buildControls() {
     QWidget* controls = new QWidget();
     QVBoxLayout* layout = new QVBoxLayout(controls);
     layout->setContentsMargins(4, 4, 4, 4);
 
-    // ── Mesh group ───────────────────────────────────────────────────────────
-    QGroupBox* meshGroup = new QGroupBox("Mesh");
-    QVBoxLayout* meshLayout = new QVBoxLayout(meshGroup);
+    this->meshControls = MeshControls(controls, this);
+    this->textureControls = TextureControls(controls, this);
+    this->pixelPickControls = PixelPickControls(controls);
+    buildReliefParamsGroup(controls);
 
-    this->loadMeshBtn = new QPushButton("Load Mesh (OBJ / GLTF)…");
-    connect(this->loadMeshBtn, &QPushButton::clicked, this,
-            &ReliefSandboxModule::onLoadMesh);
-    meshLayout->addWidget(this->loadMeshBtn);
-
-    this->meshStatusLbl = new QLabel("No mesh loaded");
-    this->meshStatusLbl->setWordWrap(true);
-    this->meshStatusLbl->setStyleSheet("color: #aaa; font-size: 11px;");
-    meshLayout->addWidget(this->meshStatusLbl);
-
-    layout->addWidget(meshGroup);
-
-    // ── Input textures group ─────────────────────────────────────────────────
-    QGroupBox* texGroup = new QGroupBox("Input Textures");
-    QVBoxLayout* texLayout = new QVBoxLayout(texGroup);
-
-    makeTexRow(texLayout, this, "Color", this->thumbColor, this->loadColorBtn,
-               &ReliefSandboxModule::onLoadColor);
-    makeTexRow(texLayout, this, "Depth", this->thumbDepth, this->loadDepthBtn,
-               &ReliefSandboxModule::onLoadDepth);
-    makeTexRow(texLayout, this, "Normal", this->thumbNormal,
-               this->loadNormalBtn, &ReliefSandboxModule::onLoadNormal);
-
-    this->inspectTexturesBtn = new QPushButton("Inspect Textures…");
-    connect(this->inspectTexturesBtn, &QPushButton::clicked, this,
-            &ReliefSandboxModule::onInspectTextures);
-    texLayout->addWidget(this->inspectTexturesBtn);
-
-    layout->addWidget(texGroup);
-
-    // ── Pixel pick group ─────────────────────────────────────────────────────
-    QGroupBox* pickGroup = new QGroupBox("Pixel Pick");
-    QVBoxLayout* pickLayout = new QVBoxLayout(pickGroup);
-
-    this->pickInfoLbl = new QLabel(
-        "Click a pixel in the view to see where it samples the color texture.");
-    this->pickInfoLbl->setWordWrap(true);
-    this->pickInfoLbl->setStyleSheet("color: #aaa; font-size: 11px;");
-    pickLayout->addWidget(this->pickInfoLbl);
-
-    this->pickPreviewLbl = new QLabel();
-    this->pickPreviewLbl->setFixedSize(220, 220);
-    this->pickPreviewLbl->setAlignment(Qt::AlignCenter);
-    this->pickPreviewLbl->setStyleSheet(
-        "background-color:#1e1e1e; border:1px solid #555;");
-    pickLayout->addWidget(this->pickPreviewLbl);
-
-    layout->addWidget(pickGroup);
-
-    // --- Relief parameters group ---
-    QGroupBox* ctrlGroup = new QGroupBox("Relief Mapping Parameters");
-    QVBoxLayout* ctrlLayout = new QVBoxLayout(ctrlGroup);
-
-    this->reliefEnabledCheck = new QCheckBox("Enable Relief Mapping");
-    this->reliefEnabledCheck->setChecked(true);
-    connect(this->reliefEnabledCheck, &QCheckBox::toggled, this->reliefView,
-            &ReliefView::setReliefEnabled);
-    ctrlLayout->addWidget(this->reliefEnabledCheck);
-
-    QHBoxLayout* stepsRow = new QHBoxLayout();
-    stepsRow->addWidget(new QLabel("Steps:"));
-    this->stepsSpin = new QSpinBox();
-    this->stepsSpin->setRange(1, 256);
-    this->stepsSpin->setValue(64);
-    connect(this->stepsSpin, QOverload<int>::of(&QSpinBox::valueChanged),
-            this->reliefView, &ReliefView::setSteps);
-    stepsRow->addWidget(this->stepsSpin, 1);
-    ctrlLayout->addLayout(stepsRow);
-
-    QHBoxLayout* depthRow = new QHBoxLayout();
-    depthRow->addWidget(new QLabel("Depth Scale:"));
-    this->depthScaleSpin = new QDoubleSpinBox();
-    this->depthScaleSpin->setRange(0.0, 2.0);
-    this->depthScaleSpin->setSingleStep(0.01);
-    this->depthScaleSpin->setDecimals(4);
-    this->depthScaleSpin->setValue(0.05);
-    connect(this->depthScaleSpin,
-            QOverload<double>::of(&QDoubleSpinBox::valueChanged),
-            this->reliefView, &ReliefView::setDepthScale);
-    depthRow->addWidget(this->depthScaleSpin, 1);
-    ctrlLayout->addLayout(depthRow);
-
-    this->useAtlasCheck = new QCheckBox("Use Atlas (Island Leaping)");
-    this->useAtlasCheck->setChecked(true);
-    connect(this->useAtlasCheck, &QCheckBox::toggled, this->reliefView,
-            &ReliefView::setUseAtlas);
-    ctrlLayout->addWidget(this->useAtlasCheck);
-
-    QHBoxLayout* texTypeRow = new QHBoxLayout();
-    texTypeRow->addWidget(new QLabel("Texture Type:"));
-    this->textureTypeCombo = new QComboBox();
-    this->textureTypeCombo->addItem("Depth Map", 0);
-    this->textureTypeCombo->addItem("Height Map", 1);
-    connect(this->textureTypeCombo,
-            QOverload<int>::of(&QComboBox::currentIndexChanged), this,
-            [this](int) {
-                this->reliefView->setReliefTextureType(
-                    this->textureTypeCombo->currentData().toInt());
-            });
-    texTypeRow->addWidget(this->textureTypeCombo, 1);
-    ctrlLayout->addLayout(texTypeRow);
-
-    QHBoxLayout* debugRow = new QHBoxLayout();
-    debugRow->addWidget(new QLabel("Debug:"));
-    this->debugViewCombo = new QComboBox();
-    this->debugViewCombo->addItem("Shaded", 0);
-    this->debugViewCombo->addItem("Step Count", 1);
-    this->debugViewCombo->addItem("Leap Count", 2);
-    this->debugViewCombo->addItem("UV After Relief", 3);
-    connect(this->debugViewCombo,
-            QOverload<int>::of(&QComboBox::currentIndexChanged), this,
-            [this](int) {
-                this->reliefView->setDebugView(
-                    this->debugViewCombo->currentData().toInt());
-            });
-    debugRow->addWidget(this->debugViewCombo, 1);
-    ctrlLayout->addLayout(debugRow);
-
-    QHBoxLayout* viewRow = new QHBoxLayout();
-    this->wireframeCheck = new QCheckBox("Wireframe");
-    connect(this->wireframeCheck, &QCheckBox::toggled, this->reliefView,
-            &ReliefView::setWireframe);
-    viewRow->addWidget(this->wireframeCheck);
-    this->cullFaceCheck = new QCheckBox("Backface Cull");
-    this->cullFaceCheck->setChecked(true);
-    connect(this->cullFaceCheck, &QCheckBox::toggled, this->reliefView,
-            &ReliefView::setCullFace);
-    viewRow->addWidget(this->cullFaceCheck);
-    ctrlLayout->addLayout(viewRow);
-
-    this->resetCamBtn = new QPushButton("Reset Camera");
-    connect(this->resetCamBtn, &QPushButton::clicked, this->reliefView,
-            &ReliefView::resetCamera);
-    ctrlLayout->addWidget(this->resetCamBtn);
-
-    layout->addWidget(ctrlGroup);
     layout->addStretch();
 
     QScrollArea* scrollArea = new QScrollArea();
@@ -257,9 +280,9 @@ void ReliefSandboxModule::onLoadMesh() {
     this->reliefView->setMesh(this->mesh.get());
 
     QFileInfo fi(path);
-    this->meshStatusLbl->setText(QString("%1  (%2 faces)")
-                                     .arg(fi.fileName())
-                                     .arg(this->mesh->faceCount()));
+    this->meshControls.statusLbl->setText(QString("%1  (%2 faces)")
+                                              .arg(fi.fileName())
+                                              .arg(this->mesh->faceCount()));
 
     if (!this->depthImg.isNull()) recomputeDepthTextures();
 }
@@ -276,7 +299,7 @@ void ReliefSandboxModule::onLoadColor() {
         return;
     }
 
-    setThumb(this->thumbColor, this->colorImg);
+    setThumb(this->textureControls.thumbColor, this->colorImg);
 
     int kRes = 1;
     while (kRes < std::max(this->colorImg.width(), this->colorImg.height()))
@@ -299,7 +322,7 @@ void ReliefSandboxModule::onLoadDepth() {
         QMessageBox::critical(this, "Error", "Failed to load depth image.");
         return;
     }
-    setThumb(this->thumbDepth, this->depthImg);
+    setThumb(this->textureControls.thumbDepth, this->depthImg);
     recomputeDepthTextures();
 }
 
@@ -313,7 +336,7 @@ void ReliefSandboxModule::onLoadNormal() {
         QMessageBox::critical(this, "Error", "Failed to load normal image.");
         return;
     }
-    setThumb(this->thumbNormal, this->normalImg);
+    setThumb(this->textureControls.thumbNormal, this->normalImg);
 
     int kRes = 1;
     while (kRes < std::max(this->normalImg.width(), this->normalImg.height()))
@@ -391,14 +414,15 @@ void ReliefSandboxModule::onInspectTextures() {
 
 void ReliefSandboxModule::onPixelPicked(QPointF uv, bool hit) {
     if (!hit) {
-        this->pickInfoLbl->setText("Click missed — no surface at that pixel.");
-        this->pickPreviewLbl->clear();
+        this->pixelPickControls.infoLbl->setText(
+            "Click missed — no surface at that pixel.");
+        this->pixelPickControls.previewLbl->clear();
         return;
     }
 
-    this->pickInfoLbl->setText(QString("Texture UV: (%1, %2)")
-                                   .arg(uv.x(), 0, 'f', 4)
-                                   .arg(uv.y(), 0, 'f', 4));
+    this->pixelPickControls.infoLbl->setText(QString("Texture UV: (%1, %2)")
+                                                 .arg(uv.x(), 0, 'f', 4)
+                                                 .arg(uv.y(), 0, 'f', 4));
 
     if (this->colorImg.isNull()) return;
 
@@ -406,7 +430,7 @@ void ReliefSandboxModule::onPixelPicked(QPointF uv, bool hit) {
     // Textures::resampleColorRGBA in ReliefSandboxModule::onLoadColor), so (u,
     // v) maps onto colorImg with no flip.
     QImage preview = this->colorImg
-                         .scaled(this->pickPreviewLbl->size(),
+                         .scaled(this->pixelPickControls.previewLbl->size(),
                                  Qt::KeepAspectRatio, Qt::SmoothTransformation)
                          .convertToFormat(QImage::Format_RGB32);
     QPainter p(&preview);
@@ -418,5 +442,5 @@ void ReliefSandboxModule::onPixelPicked(QPointF uv, bool hit) {
     p.drawLine(marker - QPointF(0, 8), marker + QPointF(0, 8));
     p.end();
 
-    this->pickPreviewLbl->setPixmap(QPixmap::fromImage(preview));
+    this->pixelPickControls.previewLbl->setPixmap(QPixmap::fromImage(preview));
 }

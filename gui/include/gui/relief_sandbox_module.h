@@ -4,13 +4,8 @@
  *        going through the simplification/texture-prep pipeline.
  */
 #pragma once
-#include <QCheckBox>
-#include <QComboBox>
-#include <QDoubleSpinBox>
 #include <QImage>
 #include <QLabel>
-#include <QPushButton>
-#include <QSpinBox>
 #include <QWidget>
 #include <memory>
 
@@ -18,6 +13,46 @@
 #include "relief/qem.h"
 #include "relief/textures.h"
 #include "relief/uv_atlas.h"
+
+class ReliefSandboxModule;
+
+/**
+ * Builds the "Mesh" group box, appends it to `outerControls`'s layout, and
+ * wires its button to `self`'s slots. Holds only the controls read back
+ * afterwards.
+ */
+struct MeshControls {
+    QLabel *statusLbl = nullptr;
+
+    MeshControls() = default;
+    MeshControls(QWidget *outerControls, ReliefSandboxModule *self);
+};
+
+/**
+ * Builds the "Input Textures" group box, appends it to `outerControls`'s
+ * layout, and wires its buttons to `self`'s slots. Holds only the controls
+ * read back afterwards.
+ */
+struct TextureControls {
+    QLabel *thumbColor = nullptr;
+    QLabel *thumbDepth = nullptr;
+    QLabel *thumbNormal = nullptr;
+
+    TextureControls() = default;
+    TextureControls(QWidget *outerControls, ReliefSandboxModule *self);
+};
+
+/**
+ * Builds the "Pixel Pick" group box and appends it to `outerControls`'s
+ * layout. Holds only the controls read back afterwards.
+ */
+struct PixelPickControls {
+    QLabel *infoLbl = nullptr;
+    QLabel *previewLbl = nullptr;
+
+    PixelPickControls() = default;
+    explicit PixelPickControls(QWidget *outerControls);
+};
 
 /**
  * @brief Standalone context for testing relief mapping in isolation.
@@ -27,6 +62,10 @@
  */
 class ReliefSandboxModule : public QWidget {
     Q_OBJECT
+
+    // Struct constructors wire buttons directly to our private slots.
+    friend struct MeshControls;
+    friend struct TextureControls;
 
    public:
     explicit ReliefSandboxModule(QWidget *parent = nullptr);
@@ -57,6 +96,15 @@ class ReliefSandboxModule : public QWidget {
     QWidget *buildControls();
 
     /**
+     * Builds the "Relief Mapping Parameters" group box and appends it to
+     * `outerControls`'s layout. None of its controls are read back
+     * afterwards (they push their state straight into `reliefView` via
+     * signal/slot connections), so unlike the other groups it needs no
+     * accompanying struct.
+     */
+    void buildReliefParamsGroup(QWidget *outerControls);
+
+    /**
      * Rebuilds the mip pyramids (color/relief/normal/offset) from the
      * loaded images and pushes them to the view.
      */
@@ -85,27 +133,7 @@ class ReliefSandboxModule : public QWidget {
     MipPyramid colorMapData, reliefMapData, normalMapData;
     OffsetMapResult offsetMapData;
 
-    // ── Load controls ---
-    QPushButton *loadMeshBtn = nullptr;
-    QLabel *meshStatusLbl = nullptr;
-    QPushButton *loadColorBtn = nullptr;
-    QPushButton *loadDepthBtn = nullptr;
-    QPushButton *loadNormalBtn = nullptr;
-    QLabel *thumbColor = nullptr;
-    QLabel *thumbDepth = nullptr;
-    QLabel *thumbNormal = nullptr;
-    QPushButton *inspectTexturesBtn = nullptr;
-    QLabel *pickInfoLbl = nullptr;
-    QLabel *pickPreviewLbl = nullptr;
-
-    // ── Relief controls ---
-    QCheckBox *reliefEnabledCheck = nullptr;
-    QSpinBox *stepsSpin = nullptr;
-    QDoubleSpinBox *depthScaleSpin = nullptr;
-    QCheckBox *useAtlasCheck = nullptr;
-    QComboBox *textureTypeCombo = nullptr;
-    QComboBox *debugViewCombo = nullptr;
-    QCheckBox *wireframeCheck = nullptr;
-    QCheckBox *cullFaceCheck = nullptr;
-    QPushButton *resetCamBtn = nullptr;
+    MeshControls meshControls;
+    TextureControls textureControls;
+    PixelPickControls pixelPickControls;
 };
