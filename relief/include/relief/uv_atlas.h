@@ -9,7 +9,7 @@
 #include <vector>
 
 /// UV-island detection and cross-seam offset map baking.
-namespace UVAtlas {
+namespace uv_atlas {
 
 /**
  * @brief Bakes the offset (atlas-leap) map: for texels within
@@ -41,4 +41,4 @@ MipPyramid buildOffsetMap(
     int width, int height,
     int seamBandTexels);
 
-} // namespace UVAtlas
+} // namespace uv_atlas

@@ -262,19 +262,19 @@ void TexturePrepModule::onTpGenerate()
     onTpProgress(5, "Resampling color map...");
     RawImage rawColor{simplifiedMesh_->textureData.data(),
                        simplifiedMesh_->textureWidth, simplifiedMesh_->textureHeight, 4};
-    colorMapData_ = Textures::buildColorMap(rawColor, kRes, kRes);
+    colorMapData_ = textures::buildColorMap(rawColor, kRes, kRes);
 
     onTpProgress(30, "Resampling normal map...");
     RawImage rawNormal{simplifiedMesh_->normalTextureData.data(),
                         simplifiedMesh_->normalTextureWidth, simplifiedMesh_->normalTextureHeight, 4};
-    normalMapData_ = Textures::buildNormalMap(rawNormal, kRes, kRes);
+    normalMapData_ = textures::buildNormalMap(rawNormal, kRes, kRes);
 
     onTpProgress(70, "Baking UV-atlas offset map...");
-    offsetMapData_ = UVAtlas::buildOffsetMap(*simplifiedMesh_, kRes, kRes, seamBand);
+    offsetMapData_ = uv_atlas::buildOffsetMap(*simplifiedMesh_, kRes, kRes, seamBand);
 
     onTpProgress(85, "Building relief map...");
     RawImage rawDepth{hmResult_.image.data(), hmResult_.width, hmResult_.height, 1};
-    reliefMapData_ = Textures::buildReliefMap(rawDepth, kRes, kRes, offsetMapData_);
+    reliefMapData_ = textures::buildReliefMap(rawDepth, kRes, kRes, offsetMapData_);
 
     onTpDone();
     emit texturesReady();

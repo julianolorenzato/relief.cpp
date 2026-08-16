@@ -205,7 +205,7 @@ std::vector<float> extractChannel(const std::vector<float>& data, size_t texelCo
 
 } // namespace
 
-namespace Textures {
+namespace textures {
 
 int nextPowerOfTwo(int minSize) {
     int size = 1;
@@ -252,4 +252,4 @@ MipPyramid buildReliefMap(const RawImage& depthImg, int width, int height, const
     return reliefMap;
 }
 
-} // namespace Textures
+} // namespace textures

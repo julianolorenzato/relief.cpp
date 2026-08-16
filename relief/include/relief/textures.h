@@ -34,7 +34,7 @@ struct MipPyramid {
 };
 
 /// Map builders for the different texture kinds used by relief mapping.
-namespace Textures {
+namespace textures {
 
 /// @return The smallest power of two >= minSize (minimum 1).
 int nextPowerOfTwo(int minSize);
@@ -67,7 +67,7 @@ MipPyramid buildNormalMap(const RawImage& img, int width, int height);
  * @param depthImg Source depth/heightmap image.
  * @param width Target base-level width.
  * @param height Target base-level height.
- * @param offsetMap Previously baked offset map (see UVAtlas::buildOffsetMap);
+ * @param offsetMap Previously baked offset map (see uv_atlas::buildOffsetMap);
  *        its w (validity) channel is used as the seam mask. Pass an empty
  *        MipPyramid{} if no offset map is available yet — the seam mask then
  *        defaults to all-zero (no island leaping).
@@ -79,4 +79,4 @@ MipPyramid buildReliefMap(
     int width, int height,
     const MipPyramid& offsetMap);
 
-} // namespace Textures
+} // namespace textures

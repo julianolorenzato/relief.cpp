@@ -311,12 +311,12 @@ void ReliefSandboxModule::onLoadColor() {
 
     setThumb(this->textureControls.thumbColor, this->colorImg);
 
-    int kRes = Textures::nextPowerOfTwo(
+    int kRes = textures::nextPowerOfTwo(
         std::max(this->colorImg.width(), this->colorImg.height()));
 
     QImage c = this->colorImg.convertToFormat(QImage::Format_RGBA8888);
     RawImage raw{c.constBits(), c.width(), c.height(), 4};
-    this->colorMap = Textures::buildColorMap(raw, kRes, kRes);
+    this->colorMap = textures::buildColorMap(raw, kRes, kRes);
     this->reliefView->setColorMap(this->colorMap);
     this->textureInspector->refreshMaps();
 }
@@ -347,12 +347,12 @@ void ReliefSandboxModule::onLoadNormal() {
     }
     setThumb(this->textureControls.thumbNormal, this->normalImg);
 
-    int kRes = Textures::nextPowerOfTwo(
+    int kRes = textures::nextPowerOfTwo(
         std::max(this->normalImg.width(), this->normalImg.height()));
 
     QImage n = this->normalImg.convertToFormat(QImage::Format_RGB888);
     RawImage raw{n.constBits(), n.width(), n.height(), 3};
-    this->normalMap = Textures::buildNormalMap(raw, kRes, kRes);
+    this->normalMap = textures::buildNormalMap(raw, kRes, kRes);
     this->reliefView->setNormalMap(this->normalMap);
     this->textureInspector->refreshMaps();
 }
@@ -360,7 +360,7 @@ void ReliefSandboxModule::onLoadNormal() {
 void ReliefSandboxModule::recomputeDepthTextures() {
     if (this->depthImg.isNull()) return;
 
-    int kRes = Textures::nextPowerOfTwo(
+    int kRes = textures::nextPowerOfTwo(
         std::max(this->depthImg.width(), this->depthImg.height()));
 
     QImage d = this->depthImg.convertToFormat(QImage::Format_Grayscale8);
@@ -368,12 +368,12 @@ void ReliefSandboxModule::recomputeDepthTextures() {
 
     constexpr int kSeam = 16;
     if (this->mesh) {
-        this->offsetMap = UVAtlas::buildOffsetMap(*this->mesh, kRes, kRes, kSeam);
+        this->offsetMap = uv_atlas::buildOffsetMap(*this->mesh, kRes, kRes, kSeam);
         this->reliefView->setOffsetMap(this->offsetMap);
     }
 
     this->reliefMap =
-        Textures::buildReliefMap(rawDepth, kRes, kRes, this->offsetMap);
+        textures::buildReliefMap(rawDepth, kRes, kRes, this->offsetMap);
     this->reliefView->setReliefMap(this->reliefMap);
     this->textureInspector->refreshMaps();
 }
@@ -397,7 +397,7 @@ void ReliefSandboxModule::onPixelPicked(QPointF uv, bool hit) {
     if (this->colorImg.isNull()) return;
 
     // colorMap's mip0 row y == colorImg's row y (see
-    // Textures::buildColorMap's resampling in ReliefSandboxModule::onLoadColor),
+    // textures::buildColorMap's resampling in ReliefSandboxModule::onLoadColor),
     // so (u, v) maps onto colorImg with no flip.
     QImage preview = this->colorImg
                          .scaled(this->pixelPickControls.previewLbl->size(),

@@ -284,7 +284,7 @@ std::vector<int> detectIslands(const QEMSimplifier& mesh) {
 
 } // namespace
 
-namespace UVAtlas {
+namespace uv_atlas {
 
 MipPyramid buildOffsetMap(
     const QEMSimplifier& mesh,
@@ -368,4 +368,4 @@ MipPyramid buildOffsetMap(
     return pyr;
 }
 
-} // namespace UVAtlas
+} // namespace uv_atlas
