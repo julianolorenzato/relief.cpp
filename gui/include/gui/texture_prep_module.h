@@ -42,7 +42,7 @@ public slots:
     /// @return The baked normal mip pyramid.
     const MipPyramid& normalMap() const { return normalMapData_; }
     /// @return The baked cross-seam Offset_Map.
-    const OffsetMapResult& offsetMap() const { return offsetMapData_; }
+    const MipPyramid& offsetMap() const { return offsetMapData_; }
     /// @return true once all four baked outputs above are populated.
     bool hasTextures() const {
         return colorMapData_.levelCount() > 0 && reliefMapData_.levelCount() > 0 &&
@@ -102,8 +102,7 @@ private:
     QCheckBox*   tpChannelCheck_[3][4] = {};
 
     // ── State ─────────────────────────────────────────────────────────────────
-    MipPyramid      colorMapData_, reliefMapData_, normalMapData_;
-    OffsetMapResult offsetMapData_;
+    MipPyramid colorMapData_, reliefMapData_, normalMapData_, offsetMapData_;
 
     // Stored heightmap result (copy)
     HeightmapResult hmResult_;

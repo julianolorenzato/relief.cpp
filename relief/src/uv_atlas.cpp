@@ -225,10 +225,14 @@ void rasterizeBand(
     }
 }
 
-} // namespace
-
-namespace UVAtlas {
-
+/**
+ * @brief Assigns each active face an island id via flood fill over
+ *        3D-edge-adjacent faces whose UV coordinates agree at the shared edge
+ *        (within epsilon). Faces sharing a 3D edge but disagreeing on UV at
+ *        that edge are considered seam-separated (different islands).
+ * @param mesh Mesh to partition into UV islands.
+ * @return One island id per face, in face order; removed faces get id -1.
+ */
 std::vector<int> detectIslands(const QEMSimplifier& mesh) {
     int nf = (int)mesh.faces.size();
     std::vector<int> island(nf, -1);
@@ -278,17 +282,24 @@ std::vector<int> detectIslands(const QEMSimplifier& mesh) {
     return island;
 }
 
-OffsetMapResult bakeOffsetMap(
+} // namespace
+
+namespace UVAtlas {
+
+MipPyramid buildOffsetMap(
     const QEMSimplifier& mesh,
-    const std::vector<int>& faceIsland,
     int width, int height,
     int seamBandTexels) {
-    OffsetMapResult result;
-    result.width = width;
-    result.height = height;
-    result.data.assign((size_t)width * height * 4, 0.0f);
+    std::vector<int> faceIsland = detectIslands(mesh);
 
-    if (width <= 0 || height <= 0 || mesh.faces.empty()) return result;
+    std::vector<float> data((size_t)width * height * 4, 0.0f);
+
+    if (width <= 0 || height <= 0 || mesh.faces.empty()) {
+        MipPyramid pyr;
+        pyr.width = width; pyr.height = height; pyr.channels = 4;
+        pyr.mips.push_back(std::move(data));
+        return pyr;
+    }
 
     std::vector<float> distBuf((size_t)width * height, std::numeric_limits<float>::max());
     double bandWidthUV = (double)std::max(1, seamBandTexels) / (double)std::min(width, height);
@@ -343,15 +354,18 @@ OffsetMapResult bakeOffsetMap(
         // mul(v, RotationMatrix) row-vector convention), while the position map
         // above needs the direction vector rotated by R(+theta) to stay consistent
         // with the position transform — so the encoded angle must be -theta.
-        rasterizeBand(uvA0, uvA1, -theta, R, t, islandA, islandAt, width, height, bandWidthUV, result.data, distBuf);
+        rasterizeBand(uvA0, uvA1, -theta, R, t, islandA, islandAt, width, height, bandWidthUV, data, distBuf);
 
         // Band on island B's side: jump B -> A (inverse transform, hence +theta).
         Eigen::Matrix2d Rinv = scaleBA * RotInv;
         Eigen::Vector2d tInv = uvA0 - Rinv * uvB0;
-        rasterizeBand(uvB0, uvB1, theta, Rinv, tInv, islandB, islandAt, width, height, bandWidthUV, result.data, distBuf);
+        rasterizeBand(uvB0, uvB1, theta, Rinv, tInv, islandB, islandAt, width, height, bandWidthUV, data, distBuf);
     }
 
-    return result;
+    MipPyramid pyr;
+    pyr.width = width; pyr.height = height; pyr.channels = 4;
+    pyr.mips.push_back(std::move(data));
+    return pyr;
 }
 
 } // namespace UVAtlas

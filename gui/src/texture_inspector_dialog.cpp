@@ -16,7 +16,7 @@
 TextureInspectorDialog::TextureInspectorDialog(const MipPyramid *colorMap,
                                                 const MipPyramid *reliefMap,
                                                 const MipPyramid *normalMap,
-                                                const OffsetMapResult *offsetMap,
+                                                const MipPyramid *offsetMap,
                                                 QWidget *parent)
     : QDialog(parent),
       colorMap_(colorMap), reliefMap_(reliefMap), normalMap_(normalMap), offsetMap_(offsetMap)
@@ -81,7 +81,7 @@ void TextureInspectorDialog::rebuildMapList()
     {
         MapInfo m;
         m.label = "Color";
-        m.externalMips = &this->colorMap_->mips;
+        m.mips = &this->colorMap_->mips;
         m.width = this->colorMap_->width;
         m.height = this->colorMap_->height;
         m.channels = this->colorMap_->channels;
@@ -93,7 +93,7 @@ void TextureInspectorDialog::rebuildMapList()
     {
         MapInfo m;
         m.label = "Relief (Depth Min/Max/Seam)";
-        m.externalMips = &this->reliefMap_->mips;
+        m.mips = &this->reliefMap_->mips;
         m.width = this->reliefMap_->width;
         m.height = this->reliefMap_->height;
         m.channels = this->reliefMap_->channels;
@@ -105,7 +105,7 @@ void TextureInspectorDialog::rebuildMapList()
     {
         MapInfo m;
         m.label = "Normal";
-        m.externalMips = &this->normalMap_->mips;
+        m.mips = &this->normalMap_->mips;
         m.width = this->normalMap_->width;
         m.height = this->normalMap_->height;
         m.channels = this->normalMap_->channels;
@@ -113,15 +113,14 @@ void TextureInspectorDialog::rebuildMapList()
         this->maps.push_back(std::move(m));
     }
 
-    if (this->offsetMap_ && this->offsetMap_->width > 0 && this->offsetMap_->height > 0)
+    if (this->offsetMap_ && this->offsetMap_->levelCount() > 0)
     {
         MapInfo m;
         m.label = "Offset (Atlas Leap)";
-        m.localMips.push_back(this->offsetMap_->data); // single-level "pyramid"
-        m.useLocalMips = true;
+        m.mips = &this->offsetMap_->mips;
         m.width = this->offsetMap_->width;
         m.height = this->offsetMap_->height;
-        m.channels = 4;
+        m.channels = this->offsetMap_->channels;
         m.channelNames = {"RGB (combined)", "Leap U", "Leap V", "Rotation", "Validity"};
         this->maps.push_back(std::move(m));
     }
@@ -144,7 +143,7 @@ void TextureInspectorDialog::refreshChannelCombo()
     this->channelCombo->blockSignals(false);
 
     const auto &m = this->maps[idx];
-    int levels = (int)m.mips().size();
+    int levels = (int)m.mips->size();
     this->mipSlider->blockSignals(true);
     this->mipSlider->setRange(0, std::max(0, levels - 1));
     this->mipSlider->setValue(0);
@@ -171,8 +170,8 @@ QImage TextureInspectorDialog::renderChannel(int channelIndex) const
         return QImage();
 
     const MapInfo &m = this->maps[mapIdx];
-    int lvl = std::clamp(this->mipSlider->value(), 0, (int)m.mips().size() - 1);
-    const std::vector<float> &data = m.mips()[lvl];
+    int lvl = std::clamp(this->mipSlider->value(), 0, (int)m.mips->size() - 1);
+    const std::vector<float> &data = (*m.mips)[lvl];
     int w = std::max(1, m.width >> lvl);
     int h = std::max(1, m.height >> lvl);
     int c = m.channels;

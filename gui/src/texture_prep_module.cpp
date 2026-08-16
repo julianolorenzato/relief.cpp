@@ -218,7 +218,7 @@ void TexturePrepModule::onModelLoaded(QEMSimplifier* simplified)
     colorMapData_  = MipPyramid{};
     reliefMapData_ = MipPyramid{};
     normalMapData_ = MipPyramid{};
-    offsetMapData_ = OffsetMapResult{};
+    offsetMapData_ = MipPyramid{};
 
     for (int i = 0; i < 4; i++)
     {
@@ -262,48 +262,19 @@ void TexturePrepModule::onTpGenerate()
     onTpProgress(5, "Resampling color map...");
     RawImage rawColor{simplifiedMesh_->textureData.data(),
                        simplifiedMesh_->textureWidth, simplifiedMesh_->textureHeight, 4};
-    auto colorMip0 = Textures::resampleColorRGBA(rawColor, kRes, kRes);
-    colorMapData_ = Textures::buildBilinearPyramid(colorMip0, kRes, kRes, 4);
+    colorMapData_ = Textures::buildColorMap(rawColor, kRes, kRes);
 
     onTpProgress(30, "Resampling normal map...");
     RawImage rawNormal{simplifiedMesh_->normalTextureData.data(),
                         simplifiedMesh_->normalTextureWidth, simplifiedMesh_->normalTextureHeight, 4};
-    auto normalMip0 = Textures::resampleNormalXYZ(rawNormal, kRes, kRes);
-    normalMapData_ = Textures::buildBilinearPyramid(normalMip0, kRes, kRes, 3, /*renormalizeAsNormal=*/true);
-
-    onTpProgress(55, "Resampling depth map...");
-    RawImage rawDepth{hmResult_.image.data(), hmResult_.width, hmResult_.height, 1};
-    auto depthMip0 = Textures::resampleDepthR(rawDepth, kRes, kRes);
+    normalMapData_ = Textures::buildNormalMap(rawNormal, kRes, kRes);
 
     onTpProgress(70, "Baking UV-atlas offset map...");
-    auto faceIsland = UVAtlas::detectIslands(*simplifiedMesh_);
-    offsetMapData_ = UVAtlas::bakeOffsetMap(*simplifiedMesh_, faceIsland, kRes, kRes, seamBand);
-
-    std::vector<float> seamMip0((size_t)kRes * kRes, 0.f);
-    for (size_t i = 0; i < (size_t)kRes * kRes; i++)
-        seamMip0[i] = offsetMapData_.data[i * 4 + 3];
+    offsetMapData_ = UVAtlas::buildOffsetMap(*simplifiedMesh_, kRes, kRes, seamBand);
 
     onTpProgress(85, "Building relief map...");
-    auto minPyr  = Textures::buildMinPyramid(depthMip0, kRes, kRes);
-    auto maxPyr  = Textures::buildMaxPyramid(depthMip0, kRes, kRes);
-    auto maskPyr = Textures::buildMaxPyramid(seamMip0,  kRes, kRes);
-
-    MipPyramid reliefMap;
-    reliefMap.width = kRes; reliefMap.height = kRes; reliefMap.channels = 4;
-    for (int lvl = 0; lvl < minPyr.levelCount(); lvl++)
-    {
-        int w = std::max(1, kRes >> lvl), h = std::max(1, kRes >> lvl);
-        std::vector<float> mip((size_t)w * h * 4);
-        for (size_t i = 0; i < (size_t)w * h; i++)
-        {
-            mip[i*4+0] = minPyr.mips[lvl][i];
-            mip[i*4+1] = maxPyr.mips[lvl][i];
-            mip[i*4+2] = maskPyr.mips[lvl][i];
-            mip[i*4+3] = 0.f;
-        }
-        reliefMap.mips.push_back(std::move(mip));
-    }
-    reliefMapData_ = std::move(reliefMap);
+    RawImage rawDepth{hmResult_.image.data(), hmResult_.width, hmResult_.height, 1};
+    reliefMapData_ = Textures::buildReliefMap(rawDepth, kRes, kRes, offsetMapData_);
 
     onTpDone();
     emit texturesReady();
@@ -485,7 +456,7 @@ QImage TexturePrepModule::offsetMapMaskImage() const
         for (int x = 0; x < offsetMapData_.width; x++)
         {
             size_t i = ((size_t)y * offsetMapData_.width + x) * 4;
-            int v = offsetMapData_.data[i + 3] > 0.f ? 255 : 0;
+            int v = offsetMapData_.mips[0][i + 3] > 0.f ? 255 : 0;
             img.setPixelColor(x, y, QColor(v, v, v));
         }
     }

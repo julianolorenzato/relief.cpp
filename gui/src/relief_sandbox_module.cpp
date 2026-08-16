@@ -301,14 +301,12 @@ void ReliefSandboxModule::onLoadColor() {
 
     setThumb(this->textureControls.thumbColor, this->colorImg);
 
-    int kRes = 1;
-    while (kRes < std::max(this->colorImg.width(), this->colorImg.height()))
-        kRes <<= 1;
+    int kRes = Textures::nextPowerOfTwo(
+        std::max(this->colorImg.width(), this->colorImg.height()));
 
     QImage c = this->colorImg.convertToFormat(QImage::Format_RGBA8888);
     RawImage raw{c.constBits(), c.width(), c.height(), 4};
-    auto mip0 = Textures::resampleColorRGBA(raw, kRes, kRes);
-    this->colorMapData = Textures::buildBilinearPyramid(mip0, kRes, kRes, 4);
+    this->colorMapData = Textures::buildColorMap(raw, kRes, kRes);
     this->reliefView->setColorMap(this->colorMapData);
 }
 
@@ -338,61 +336,32 @@ void ReliefSandboxModule::onLoadNormal() {
     }
     setThumb(this->textureControls.thumbNormal, this->normalImg);
 
-    int kRes = 1;
-    while (kRes < std::max(this->normalImg.width(), this->normalImg.height()))
-        kRes <<= 1;
+    int kRes = Textures::nextPowerOfTwo(
+        std::max(this->normalImg.width(), this->normalImg.height()));
 
     QImage n = this->normalImg.convertToFormat(QImage::Format_RGB888);
     RawImage raw{n.constBits(), n.width(), n.height(), 3};
-    auto mip0 = Textures::resampleNormalXYZ(raw, kRes, kRes);
-    this->normalMapData = Textures::buildBilinearPyramid(
-        mip0, kRes, kRes, 3, /*renormalizeAsNormal=*/true);
+    this->normalMapData = Textures::buildNormalMap(raw, kRes, kRes);
     this->reliefView->setNormalMap(this->normalMapData);
 }
 
 void ReliefSandboxModule::recomputeDepthTextures() {
     if (this->depthImg.isNull()) return;
 
-    int kRes = 1;
-    while (kRes < std::max(this->depthImg.width(), this->depthImg.height()))
-        kRes <<= 1;
+    int kRes = Textures::nextPowerOfTwo(
+        std::max(this->depthImg.width(), this->depthImg.height()));
 
     QImage d = this->depthImg.convertToFormat(QImage::Format_Grayscale8);
     RawImage rawDepth{d.constBits(), d.width(), d.height(), 1};
-    auto depthMip0 = Textures::resampleDepthR(rawDepth, kRes, kRes);
 
     constexpr int kSeam = 16;
-    std::vector<float> seamMip0((size_t)kRes * kRes, 0.f);
-
     if (this->mesh) {
-        auto faceIsland = UVAtlas::detectIslands(*this->mesh);
-        this->offsetMapData =
-            UVAtlas::bakeOffsetMap(*this->mesh, faceIsland, kRes, kRes, kSeam);
-        for (size_t i = 0; i < (size_t)kRes * kRes; i++)
-            seamMip0[i] = this->offsetMapData.data[i * 4 + 3];
+        this->offsetMapData = UVAtlas::buildOffsetMap(*this->mesh, kRes, kRes, kSeam);
         this->reliefView->setOffsetMap(this->offsetMapData);
     }
 
-    auto minPyr = Textures::buildMinPyramid(depthMip0, kRes, kRes);
-    auto maxPyr = Textures::buildMaxPyramid(depthMip0, kRes, kRes);
-    auto maskPyr = Textures::buildMaxPyramid(seamMip0, kRes, kRes);
-
-    MipPyramid reliefMap;
-    reliefMap.width = kRes;
-    reliefMap.height = kRes;
-    reliefMap.channels = 4;
-    for (int lvl = 0; lvl < minPyr.levelCount(); lvl++) {
-        int w = std::max(1, kRes >> lvl), h = std::max(1, kRes >> lvl);
-        std::vector<float> mip((size_t)w * h * 4);
-        for (size_t i = 0; i < (size_t)w * h; i++) {
-            mip[i * 4 + 0] = minPyr.mips[lvl][i];
-            mip[i * 4 + 1] = maxPyr.mips[lvl][i];
-            mip[i * 4 + 2] = maskPyr.mips[lvl][i];
-            mip[i * 4 + 3] = 0.f;
-        }
-        reliefMap.mips.push_back(std::move(mip));
-    }
-    this->reliefMapData = std::move(reliefMap);
+    this->reliefMapData =
+        Textures::buildReliefMap(rawDepth, kRes, kRes, this->offsetMapData);
     this->reliefView->setReliefMap(this->reliefMapData);
 }
 
@@ -427,8 +396,8 @@ void ReliefSandboxModule::onPixelPicked(QPointF uv, bool hit) {
     if (this->colorImg.isNull()) return;
 
     // colorMapData's mip0 row y == colorImg's row y (see
-    // Textures::resampleColorRGBA in ReliefSandboxModule::onLoadColor), so (u,
-    // v) maps onto colorImg with no flip.
+    // Textures::buildColorMap's resampling in ReliefSandboxModule::onLoadColor),
+    // so (u, v) maps onto colorImg with no flip.
     QImage preview = this->colorImg
                          .scaled(this->pixelPickControls.previewLbl->size(),
                                  Qt::KeepAspectRatio, Qt::SmoothTransformation)

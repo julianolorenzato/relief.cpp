@@ -1,7 +1,7 @@
 /**
  * @file textures.cpp
- * @brief Mip pyramid downsampling kernels (average, min, max) and their
- *        public builder entry points.
+ * @brief Mip pyramid downsampling kernels (average, min, max) and the public
+ *        per-map builder entry points that compose them.
  */
 #include "relief/textures.h"
 #include <algorithm>
@@ -92,11 +92,10 @@ void bilinearSampleF(const RawImage& img, double u, double v, float out[4]) {
     for (int i = c; i < 4; i++) out[i] = (i == 3) ? 1.0f : 0.0f;
 }
 
-} // namespace
-
-namespace Textures {
-
-MipPyramid buildBilinearPyramid(const std::vector<float>& mip0, int width, int height, int channels, bool renormalizeAsNormal) {
+/// Builds a full mip pyramid using 2x2 average (bilinear) downsampling.
+/// `renormalizeAsNormal`, if true, renormalizes each downsampled level so
+/// every texel remains a unit vector (use for normal maps in [-1,1]).
+MipPyramid buildBilinearPyramid(const std::vector<float>& mip0, int width, int height, int channels, bool renormalizeAsNormal = false) {
     MipPyramid pyr;
     pyr.width = width; pyr.height = height; pyr.channels = channels;
     pyr.mips.push_back(mip0);
@@ -119,6 +118,8 @@ MipPyramid buildBilinearPyramid(const std::vector<float>& mip0, int width, int h
     return pyr;
 }
 
+/// Builds a mip pyramid using 2x2 minimum pooling — single channel. Each
+/// coarser level stores the minimum value seen in its 2x2 footprint.
 MipPyramid buildMinPyramid(const std::vector<float>& mip0, int width, int height) {
     MipPyramid pyr;
     pyr.width = width; pyr.height = height; pyr.channels = 1;
@@ -134,6 +135,8 @@ MipPyramid buildMinPyramid(const std::vector<float>& mip0, int width, int height
     return pyr;
 }
 
+/// Builds a mip pyramid using 2x2 maximum pooling — single channel. Each
+/// coarser level stores the maximum value seen in its 2x2 footprint.
 MipPyramid buildMaxPyramid(const std::vector<float>& mip0, int width, int height) {
     MipPyramid pyr;
     pyr.width = width; pyr.height = height; pyr.channels = 1;
@@ -149,6 +152,7 @@ MipPyramid buildMaxPyramid(const std::vector<float>& mip0, int width, int height
     return pyr;
 }
 
+/// Resamples `img` to outW x outH RGBA float data via bilinear sampling.
 std::vector<float> resampleColorRGBA(const RawImage& img, int outW, int outH) {
     std::vector<float> out((size_t)outW * outH * 4);
     float s[4];
@@ -161,6 +165,7 @@ std::vector<float> resampleColorRGBA(const RawImage& img, int outW, int outH) {
     return out;
 }
 
+/// Resamples `img`'s red channel to outW x outH single-channel float data.
 std::vector<float> resampleDepthR(const RawImage& img, int outW, int outH) {
     std::vector<float> out((size_t)outW * outH);
     float s[4];
@@ -172,6 +177,8 @@ std::vector<float> resampleDepthR(const RawImage& img, int outW, int outH) {
     return out;
 }
 
+/// Resamples `img` (encoded as [0,1] RGB) to outW x outH unit-vector XYZ
+/// float data in [-1,1], renormalizing each resampled texel.
 std::vector<float> resampleNormalXYZ(const RawImage& img, int outW, int outH) {
     std::vector<float> out((size_t)outW * outH * 3);
     float s[4];
@@ -186,6 +193,63 @@ std::vector<float> resampleNormalXYZ(const RawImage& img, int outW, int outH) {
             out[idx+0] = nx; out[idx+1] = ny; out[idx+2] = nz;
         }
     return out;
+}
+
+/// Extracts one channel out of packed interleaved float data (e.g. the w
+/// channel of a baked offset map, used as relief mapping's seam mask).
+std::vector<float> extractChannel(const std::vector<float>& data, size_t texelCount, int channels, int channelIndex) {
+    std::vector<float> out(texelCount);
+    for (size_t i = 0; i < texelCount; i++) out[i] = data[i * channels + channelIndex];
+    return out;
+}
+
+} // namespace
+
+namespace Textures {
+
+int nextPowerOfTwo(int minSize) {
+    int size = 1;
+    while (size < minSize) size <<= 1;
+    return size;
+}
+
+MipPyramid buildColorMap(const RawImage& img, int width, int height) {
+    auto mip0 = resampleColorRGBA(img, width, height);
+    return buildBilinearPyramid(mip0, width, height, 4);
+}
+
+MipPyramid buildNormalMap(const RawImage& img, int width, int height) {
+    auto mip0 = resampleNormalXYZ(img, width, height);
+    return buildBilinearPyramid(mip0, width, height, 3, /*renormalizeAsNormal=*/true);
+}
+
+MipPyramid buildReliefMap(const RawImage& depthImg, int width, int height, const MipPyramid& offsetMap) {
+    auto depthMip0 = resampleDepthR(depthImg, width, height);
+
+    std::vector<float> seamMip0;
+    if (!offsetMap.mips.empty())
+        seamMip0 = extractChannel(offsetMap.mips[0], (size_t)width * height, offsetMap.channels, 3);
+    else
+        seamMip0.assign((size_t)width * height, 0.f);
+
+    auto minPyr = buildMinPyramid(depthMip0, width, height);
+    auto maxPyr = buildMaxPyramid(depthMip0, width, height);
+    auto maskPyr = buildMaxPyramid(seamMip0, width, height);
+
+    MipPyramid reliefMap;
+    reliefMap.width = width; reliefMap.height = height; reliefMap.channels = 4;
+    for (int lvl = 0; lvl < minPyr.levelCount(); lvl++) {
+        int w = std::max(1, width >> lvl), h = std::max(1, height >> lvl);
+        std::vector<float> mip((size_t)w * h * 4);
+        for (size_t i = 0; i < (size_t)w * h; i++) {
+            mip[i*4+0] = minPyr.mips[lvl][i];
+            mip[i*4+1] = maxPyr.mips[lvl][i];
+            mip[i*4+2] = maskPyr.mips[lvl][i];
+            mip[i*4+3] = 0.f;
+        }
+        reliefMap.mips.push_back(std::move(mip));
+    }
+    return reliefMap;
 }
 
 } // namespace Textures

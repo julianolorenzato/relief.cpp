@@ -8,7 +8,6 @@
 #include <QImage>
 #include <vector>
 #include "relief/textures.h"
-#include "relief/uv_atlas.h"
 
 class QComboBox;
 class QSlider;
@@ -28,7 +27,7 @@ public:
     TextureInspectorDialog(const MipPyramid *colorMap,
                             const MipPyramid *reliefMap,
                             const MipPyramid *normalMap,
-                            const OffsetMapResult *offsetMap,
+                            const MipPyramid *offsetMap,
                             QWidget *parent = nullptr);
 
 private slots:
@@ -40,19 +39,14 @@ private slots:
     void onMipChanged(int);
 
 private:
-    /// One inspectable map's display metadata plus its mip data (owned or referenced).
+    /// One inspectable map's display metadata plus a view of its mip data,
+    /// owned by the caller (address is stable for the dialog's lifetime).
     struct MapInfo
     {
         QString label;
-        const std::vector<std::vector<float>> *externalMips = nullptr; ///< For color/relief/normal: owned by caller, address is stable.
-        std::vector<std::vector<float>> localMips;                     ///< For offset map: owned copy (single level).
-        bool useLocalMips = false;
+        const std::vector<std::vector<float>> *mips = nullptr;
         int width = 0, height = 0, channels = 0;
         QStringList channelNames; ///< Size == channels + 1; index 0 reserved for "RGB (combined)".
-
-        /// Resolved relative to `this` at call time (not cached), so it stays valid
-        /// even after this MapInfo is moved into a vector that later reallocates.
-        const std::vector<std::vector<float>> &mips() const { return useLocalMips ? localMips : *externalMips; }
     };
 
     /// Rebuilds `maps` from the non-null constructor-provided pyramids and repopulates the map combo.
@@ -65,7 +59,7 @@ private:
     QImage renderChannel(int channelIndex) const;
 
     const MipPyramid *colorMap_, *reliefMap_, *normalMap_;
-    const OffsetMapResult *offsetMap_;
+    const MipPyramid *offsetMap_;
 
     std::vector<MapInfo> maps;
 

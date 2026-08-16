@@ -37,7 +37,7 @@ public:
     /// Uploads the relief-mapping normal map.
     void setNormalMap(const MipPyramid& pyr);
     /// Uploads the cross-seam Offset_Map used to leap relief rays across UV islands.
-    void setOffsetMap(const OffsetMapResult& off);
+    void setOffsetMap(const MipPyramid& off);
     /// @return true once all four textures (color/relief/normal/offset) have been uploaded.
     bool hasTextures() const { return colorTex && reliefTex && normalTex && offsetTex; }
 
@@ -121,14 +121,14 @@ private:
 
     /// Uploads the mesh's vertex/index buffers.
     void buildMeshBuffers();
-    /// Uploads `pyr` as a mip-mapped color texture into `tex`.
-    void uploadColorMap(QOpenGLTexture *&tex, const MipPyramid &pyr);
-    /// Uploads `pyr` as a mip-mapped normal texture into `tex`.
-    void uploadNormalMap(QOpenGLTexture *&tex, const MipPyramid &pyr);
-    /// Uploads `pyr` as a mip-mapped relief (depth/height) texture into `tex`.
-    void uploadReliefMap(QOpenGLTexture *&tex, const MipPyramid &pyr);
-    /// Uploads `off` as an RGBA32F offset-map texture into `tex`.
-    void uploadOffsetMap(QOpenGLTexture *&tex, const OffsetMapResult &off);
+    /// Uploads each of `pyr`'s mip levels into a newly (re)allocated `tex`
+    /// (replacing whatever was there before, or leaving `tex` null if `pyr`
+    /// is empty), with the given GL format and sampling filters.
+    void uploadTexture(QOpenGLTexture *&tex, const MipPyramid &pyr,
+                        QOpenGLTexture::TextureFormat format,
+                        QOpenGLTexture::PixelFormat pixelFormat,
+                        QOpenGLTexture::Filter minFilter,
+                        QOpenGLTexture::Filter magFilter);
     /// Deletes all owned GL texture objects.
     void deleteTextures();
 

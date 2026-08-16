@@ -156,7 +156,8 @@ void ReliefView::setMesh(const QEMSimplifier *mesh)
 void ReliefView::setColorMap(const MipPyramid& pyr)
 {
     makeCurrent();
-    uploadColorMap(this->colorTex, pyr);
+    uploadTexture(this->colorTex, pyr, QOpenGLTexture::RGBA32F, QOpenGLTexture::RGBA,
+                  QOpenGLTexture::LinearMipMapLinear, QOpenGLTexture::Linear);
     doneCurrent();
     update();
 }
@@ -164,7 +165,8 @@ void ReliefView::setColorMap(const MipPyramid& pyr)
 void ReliefView::setReliefMap(const MipPyramid& pyr)
 {
     makeCurrent();
-    uploadReliefMap(this->reliefTex, pyr);
+    uploadTexture(this->reliefTex, pyr, QOpenGLTexture::RGBA32F, QOpenGLTexture::RGBA,
+                  QOpenGLTexture::NearestMipMapNearest, QOpenGLTexture::Nearest);
     doneCurrent();
     update();
 }
@@ -172,15 +174,17 @@ void ReliefView::setReliefMap(const MipPyramid& pyr)
 void ReliefView::setNormalMap(const MipPyramid& pyr)
 {
     makeCurrent();
-    uploadNormalMap(this->normalTex, pyr);
+    uploadTexture(this->normalTex, pyr, QOpenGLTexture::RGB32F, QOpenGLTexture::RGB,
+                  QOpenGLTexture::LinearMipMapLinear, QOpenGLTexture::Linear);
     doneCurrent();
     update();
 }
 
-void ReliefView::setOffsetMap(const OffsetMapResult& off)
+void ReliefView::setOffsetMap(const MipPyramid& off)
 {
     makeCurrent();
-    uploadOffsetMap(this->offsetTex, off);
+    uploadTexture(this->offsetTex, off, QOpenGLTexture::RGBA32F, QOpenGLTexture::RGBA,
+                  QOpenGLTexture::Nearest, QOpenGLTexture::Nearest);
     doneCurrent();
     update();
 }
@@ -516,7 +520,11 @@ void ReliefView::buildMeshBuffers()
     this->vao.release();
 }
 
-void ReliefView::uploadColorMap(QOpenGLTexture *&tex, const MipPyramid &pyr)
+void ReliefView::uploadTexture(QOpenGLTexture *&tex, const MipPyramid &pyr,
+                                QOpenGLTexture::TextureFormat format,
+                                QOpenGLTexture::PixelFormat pixelFormat,
+                                QOpenGLTexture::Filter minFilter,
+                                QOpenGLTexture::Filter magFilter)
 {
     delete tex;
     tex = nullptr;
@@ -524,70 +532,14 @@ void ReliefView::uploadColorMap(QOpenGLTexture *&tex, const MipPyramid &pyr)
         return;
 
     tex = new QOpenGLTexture(QOpenGLTexture::Target2D);
-    tex->setFormat(QOpenGLTexture::RGBA32F);
+    tex->setFormat(format);
     tex->setSize(pyr.width, pyr.height);
     tex->setMipLevels(pyr.levelCount());
     tex->allocateStorage();
     for (int lvl = 0; lvl < pyr.levelCount(); lvl++)
-        tex->setData(lvl, QOpenGLTexture::RGBA, QOpenGLTexture::Float32, pyr.mips[lvl].data());
-    tex->setMinificationFilter(QOpenGLTexture::LinearMipMapLinear);
-    tex->setMagnificationFilter(QOpenGLTexture::Linear);
-    tex->setWrapMode(QOpenGLTexture::Repeat);
-}
-
-void ReliefView::uploadNormalMap(QOpenGLTexture *&tex, const MipPyramid &pyr)
-{
-    delete tex;
-    tex = nullptr;
-    if (pyr.mips.empty())
-        return;
-
-    tex = new QOpenGLTexture(QOpenGLTexture::Target2D);
-    tex->setFormat(QOpenGLTexture::RGB32F);
-    tex->setSize(pyr.width, pyr.height);
-    tex->setMipLevels(pyr.levelCount());
-    tex->allocateStorage();
-    for (int lvl = 0; lvl < pyr.levelCount(); lvl++)
-        tex->setData(lvl, QOpenGLTexture::RGB, QOpenGLTexture::Float32, pyr.mips[lvl].data());
-    tex->setMinificationFilter(QOpenGLTexture::LinearMipMapLinear);
-    tex->setMagnificationFilter(QOpenGLTexture::Linear);
-    tex->setWrapMode(QOpenGLTexture::Repeat);
-}
-
-void ReliefView::uploadReliefMap(QOpenGLTexture *&tex, const MipPyramid &pyr)
-{
-    delete tex;
-    tex = nullptr;
-    if (pyr.mips.empty())
-        return;
-
-    tex = new QOpenGLTexture(QOpenGLTexture::Target2D);
-    tex->setFormat(QOpenGLTexture::RGBA32F);
-    tex->setSize(pyr.width, pyr.height);
-    tex->setMipLevels(pyr.levelCount());
-    tex->allocateStorage();
-    for (int lvl = 0; lvl < pyr.levelCount(); lvl++)
-        tex->setData(lvl, QOpenGLTexture::RGBA, QOpenGLTexture::Float32, pyr.mips[lvl].data());
-    tex->setMinificationFilter(QOpenGLTexture::NearestMipMapNearest);
-    tex->setMagnificationFilter(QOpenGLTexture::Nearest);
-    tex->setWrapMode(QOpenGLTexture::Repeat);
-}
-
-void ReliefView::uploadOffsetMap(QOpenGLTexture *&tex, const OffsetMapResult &off)
-{
-    delete tex;
-    tex = nullptr;
-    if (off.data.empty())
-        return;
-
-    tex = new QOpenGLTexture(QOpenGLTexture::Target2D);
-    tex->setFormat(QOpenGLTexture::RGBA32F);
-    tex->setSize(off.width, off.height);
-    tex->setMipLevels(1);
-    tex->allocateStorage();
-    tex->setData(0, QOpenGLTexture::RGBA, QOpenGLTexture::Float32, off.data.data());
-    tex->setMinificationFilter(QOpenGLTexture::Nearest);
-    tex->setMagnificationFilter(QOpenGLTexture::Nearest);
+        tex->setData(lvl, pixelFormat, QOpenGLTexture::Float32, pyr.mips[lvl].data());
+    tex->setMinificationFilter(minFilter);
+    tex->setMagnificationFilter(magFilter);
     tex->setWrapMode(QOpenGLTexture::Repeat);
 }
 

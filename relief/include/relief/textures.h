@@ -20,7 +20,9 @@ struct RawImage {
 
 /// One channel-set mip pyramid: mips[0] is full res, each subsequent level is
 /// half the resolution. Each level stores `channels` floats per texel, row-major.
-/// Normal-map pyramids store raw unit-vector components in [-1,1].
+/// Normal-map pyramids store raw unit-vector components in [-1,1]. The offset
+/// (UV-atlas leap) map is also represented as a MipPyramid, with exactly one
+/// level (it is never downsampled).
 struct MipPyramid {
     std::vector<std::vector<float>> mips;
     int width    = 0;
@@ -31,56 +33,50 @@ struct MipPyramid {
     int levelCount() const { return (int)mips.size(); }
 };
 
-/// Mip pyramid builders for the different texture kinds used by relief mapping.
+/// Map builders for the different texture kinds used by relief mapping.
 namespace Textures {
 
-/**
- * @brief Builds a full mip pyramid using 2x2 average (bilinear) downsampling.
- * @param mip0 Base-level (full resolution) data, row-major, `channels` floats per texel.
- * @param width Base-level width.
- * @param height Base-level height.
- * @param channels Number of float channels per texel.
- * @param renormalizeAsNormal If true, each downsampled level is renormalized
- *        so every texel remains a unit vector (use for normal maps in [-1,1]).
- * @return The built pyramid, coarsest level having size 1x1.
- */
-MipPyramid buildBilinearPyramid(
-    const std::vector<float>& mip0,
-    int width, int height, int channels,
-    bool renormalizeAsNormal = false);
+/// @return The smallest power of two >= minSize (minimum 1).
+int nextPowerOfTwo(int minSize);
 
 /**
- * @brief Builds a mip pyramid using 2x2 minimum pooling — single channel.
- *        Each coarser level stores the minimum value seen in its 2x2 footprint.
- * @param mip0 Base-level data, row-major, single channel.
- * @param width Base-level width.
- * @param height Base-level height.
- * @return The built pyramid.
+ * @brief Builds the color-map mip pyramid from a raw RGBA image, resampled
+ *        to `width` x `height`.
+ * @param img Source image (any channel count; alpha defaults to 1 if absent).
+ * @param width Target base-level width.
+ * @param height Target base-level height.
+ * @return 4-channel MipPyramid, coarsest level having size 1x1.
  */
-MipPyramid buildMinPyramid(
-    const std::vector<float>& mip0,
-    int width, int height);
+MipPyramid buildColorMap(const RawImage& img, int width, int height);
 
 /**
- * @brief Builds a mip pyramid using 2x2 maximum pooling — single channel.
- *        Each coarser level stores the maximum value seen in its 2x2 footprint.
- * @param mip0 Base-level data, row-major, single channel.
- * @param width Base-level width.
- * @param height Base-level height.
- * @return The built pyramid.
+ * @brief Builds the normal-map mip pyramid from a raw RGB-encoded ([0,1])
+ *        normal image, resampled to `width` x `height`; each level is kept
+ *        renormalized to unit-length vectors in [-1,1].
+ * @param img Source image.
+ * @param width Target base-level width.
+ * @param height Target base-level height.
+ * @return 3-channel MipPyramid, coarsest level having size 1x1.
  */
-MipPyramid buildMaxPyramid(
-    const std::vector<float>& mip0,
-    int width, int height);
+MipPyramid buildNormalMap(const RawImage& img, int width, int height);
 
-/// Resamples `img` to outW x outH RGBA float data via bilinear sampling.
-std::vector<float> resampleColorRGBA(const RawImage& img, int outW, int outH);
-
-/// Resamples `img`'s red channel to outW x outH single-channel float data.
-std::vector<float> resampleDepthR(const RawImage& img, int outW, int outH);
-
-/// Resamples `img` (encoded as [0,1] RGB) to outW x outH unit-vector XYZ float
-/// data in [-1,1], renormalizing each resampled texel.
-std::vector<float> resampleNormalXYZ(const RawImage& img, int outW, int outH);
+/**
+ * @brief Builds the packed relief map mip pyramid consumed by relief
+ *        mapping: per level, min/max depth resampled from `depthImg` plus a
+ *        max-pooled seam mask for island leaping.
+ * @param depthImg Source depth/heightmap image.
+ * @param width Target base-level width.
+ * @param height Target base-level height.
+ * @param offsetMap Previously baked offset map (see UVAtlas::buildOffsetMap);
+ *        its w (validity) channel is used as the seam mask. Pass an empty
+ *        MipPyramid{} if no offset map is available yet — the seam mask then
+ *        defaults to all-zero (no island leaping).
+ * @return 4-channel MipPyramid: channel0=min depth, channel1=max depth,
+ *         channel2=seam mask, channel3=unused (0).
+ */
+MipPyramid buildReliefMap(
+    const RawImage& depthImg,
+    int width, int height,
+    const MipPyramid& offsetMap);
 
 } // namespace Textures
