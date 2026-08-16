@@ -267,8 +267,11 @@ void main() {
         return;
     }
 
-    vec3 albedo = texture(Color_Map, finalUV).rgb;
-    vec3 nTS = texture(Normal_Map, finalUV).rgb;
+    // Need to verify if fixed LOD is the best option here to
+    // avoid bleeding between two discontinuous fragments.
+    // The naive use of the 'texture' function to sample implies in bleeding.
+    vec3 albedo = textureLod(Color_Map, finalUV, 0.0).rgb;
+    vec3 nTS = textureLod(Normal_Map, finalUV, 0.0).rgb;
     vec3 shadingNormal = normalize(TBN * nTS);
 
     vec3 lightDir = normalize(vec3(1.0, 1.0, 1.0));
