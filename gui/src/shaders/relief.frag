@@ -61,7 +61,8 @@ void PerformIslandLeap(
     inout vec2 leaping_point,
     inout vec2 landing_point,
     inout bool jumped,
-    inout int numLeaps
+    inout int numLeaps,
+    inout float rotationAccum
 ) {
     float RotationAngle = OffsetData.z * 6.28319;
     leaping_point = Current_Position.xy;
@@ -71,6 +72,13 @@ void PerformIslandLeap(
     landing_point = Current_Position.xy;
     jumped = true;
     numLeaps += 1;
+    // Landed island's Color_Map/Normal_Map texels are stored in a tangent
+    // frame rotated by RotationAngle relative to the departing island (that's
+    // what just got applied to tangent_direction above). Accumulate so the
+    // caller can rotate the sampled normal back into the mesh's original
+    // tangent space before applying TBN — 2D rotations commute, so summing
+    // angles across multiple leaps equals composing their matrices.
+    rotationAccum = mod(rotationAccum + RotationAngle, 6.28319);
 }
 
 // Skips the ray across a UV-atlas seam/edge: rotates the tangent direction
@@ -86,12 +94,13 @@ void IslandLeap(
     inout vec2 landing_point,
     inout bool jumped,
     inout int OffsetMapTextureSamples,
-    inout int numLeaps
+    inout int numLeaps,
+    inout float rotationAccum
 ) {
     vec4 OffsetData = textureLod(Offset_Map, Current_Position.xy, 0.0);
     OffsetMapTextureSamples += 1;
     if(OffsetData.w > 0.0)
-        PerformIslandLeap(OffsetData, tangent_direction, Current_Position, invDir, leaping_point, landing_point, jumped, numLeaps);
+        PerformIslandLeap(OffsetData, tangent_direction, Current_Position, invDir, leaping_point, landing_point, jumped, numLeaps, rotationAccum);
     else
         jumped = false;
 }
@@ -110,7 +119,8 @@ vec3 Mip_Relief(
     vec2 UV,
     int maxSteps,
     out int leapCounter,
-    out int stepsOut
+    out int stepsOut,
+    out float totalRotation
 ) {
     float pixelSize = pow(2.0, -LastMip);
     float mip = 0.0;
@@ -122,6 +132,7 @@ vec3 Mip_Relief(
 
     int wallCount = 0, numLeaps = 0, offsetSamples = 0;
     int stepsTaken = 0;
+    float rotationAccum = 0.0;
 
     for(int i = 0; i < maxSteps; i++) {
         stepsTaken = i + 1;
@@ -168,7 +179,7 @@ vec3 Mip_Relief(
             if(jumped) {
                 // jumped = false;
             } else if(rm.z > 0.0) {
-                IslandLeap(Tangent_Direction, pos, invDir, leapingPoint, landingPoint, jumped, offsetSamples, numLeaps);
+                IslandLeap(Tangent_Direction, pos, invDir, leapingPoint, landingPoint, jumped, offsetSamples, numLeaps, rotationAccum);
                 // Re-sample: a successful leap just moved pos.xy onto the
                 // landing island, and depth/AABB below must match wherever
                 // the ray currently sits, not the island it left.
@@ -208,15 +219,18 @@ vec3 Mip_Relief(
 
     leapCounter = numLeaps;
     stepsOut = stepsTaken;
+    totalRotation = rotationAccum;
     return pos;
 }
 
-vec2 ReliefMapping(vec3 Tangent_Direction, vec2 UV, out int leapCounter, out int stepsOut) {
+vec2 ReliefMapping(vec3 Tangent_Direction, vec2 UV, out int leapCounter, out int stepsOut, out float totalRotation) {
     int numLeaps = 0, numSteps = 0;
-    vec3 StartingPoint = Mip_Relief(Tangent_Direction, UV, LinearSteps, numLeaps, numSteps);
+    float rotation = 0.0;
+    vec3 StartingPoint = Mip_Relief(Tangent_Direction, UV, LinearSteps, numLeaps, numSteps, rotation);
 
     leapCounter = numLeaps;
     stepsOut = numSteps;
+    totalRotation = rotation;
     return StartingPoint.xy;
 }
 
@@ -228,6 +242,7 @@ void main() {
 
     vec2 finalUV = TexCoord;
     int leapCounter = 0, stepsTaken = 0;
+    float totalRotation = 0.0;
 
     if(ReliefEnabled) {
         // Reconstructed here (rather than interpolated from a per-vertex
@@ -251,7 +266,7 @@ void main() {
         // Mip_Relief), not this ray's slope — matching the UE material, and
         // keeping the mip-marching step dynamics independent of the depth slider.
         vec3 tangentDir = vec3(-viewTS.xy / max(abs(viewTS.z), 1e-4), -1.0);
-        finalUV = ReliefMapping(tangentDir, TexCoord, leapCounter, stepsTaken);
+        finalUV = ReliefMapping(tangentDir, TexCoord, leapCounter, stepsTaken, totalRotation);
     }
 
     if(DebugView == 1) {
@@ -272,6 +287,12 @@ void main() {
     // The naive use of the 'texture' function to sample implies in bleeding.
     vec3 albedo = textureLod(Color_Map, finalUV, 0.0).rgb;
     vec3 nTS = textureLod(Normal_Map, finalUV, 0.0).rgb;
+    // The landing island's normal map is stored in a tangent frame rotated by
+    // totalRotation relative to the mesh's own tangent space (see
+    // PerformIslandLeap). Rotate the sampled normal back before applying TBN,
+    // or leaped regions read the wrong slope and look flat/off compared to
+    // the rest of the surface.
+    nTS.xy = rotateXY(nTS.xy, -totalRotation);
     vec3 shadingNormal = normalize(TBN * nTS);
 
     vec3 lightDir = normalize(vec3(1.0, 1.0, 1.0));
