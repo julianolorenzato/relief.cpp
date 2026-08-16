@@ -127,6 +127,7 @@ ReliefView::ReliefView(QWidget *parent)
     : QOpenGLWidget(parent)
 {
     setFocusPolicy(Qt::StrongFocus);
+    setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
 }
 
 ReliefView::~ReliefView()

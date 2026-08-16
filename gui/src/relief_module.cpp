@@ -35,7 +35,6 @@ void ReliefModule::buildUI()
     viewportsLayout->setContentsMargins(0, 0, 0, 0);
 
     reliefWidget_ = new ReliefView();
-    reliefWidget_->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
     viewportsLayout->addWidget(reliefWidget_);
 
     reliefCompareWidget_ = new Orbital3DView(RenderMode::Textured, "Simplified Mesh (no relief)");
