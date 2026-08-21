@@ -4,6 +4,7 @@
  *        going through the simplification/texture-prep pipeline.
  */
 #pragma once
+#include <QComboBox>
 #include <QImage>
 #include <QLabel>
 #include <QWidget>
@@ -50,10 +51,13 @@ struct TextureControls {
  */
 struct PixelPickControls {
     QLabel *infoLbl = nullptr;
+    QComboBox *textureCombo = nullptr;
     QLabel *previewLbl = nullptr;
+    QLabel *colorSwatch = nullptr;
+    QLabel *colorValueLbl = nullptr;
 
     PixelPickControls() = default;
-    explicit PixelPickControls(QWidget *outerControls);
+    PixelPickControls(QWidget *outerControls, ReliefSandboxModule *self);
 };
 
 /**
@@ -68,6 +72,7 @@ class ReliefSandboxModule : public QWidget {
     // Struct constructors wire buttons directly to our private slots.
     friend struct MeshControls;
     friend struct TextureControls;
+    friend struct PixelPickControls;
 
    public:
     explicit ReliefSandboxModule(QWidget *parent = nullptr);
@@ -120,6 +125,14 @@ class ReliefSandboxModule : public QWidget {
     void recomputeDepthTextures();
 
     /**
+     * Redraws the pixel-pick preview from the last pick result, using
+     * whichever texture is currently selected in `pixelPickControls`'s
+     * combo box. No-op if nothing has been picked yet or the selected
+     * texture isn't loaded.
+     */
+    void updatePixelPickPreview();
+
+    /**
      * Mesh used to render with Relief Mapping technique.
      *
      * It is supposed to already be simplified.
@@ -140,6 +153,11 @@ class ReliefSandboxModule : public QWidget {
 
     /** Images used as input. */
     QImage colorImg, depthImg, normalImg;
+
+    /** Cached result of the last pixel pick, used to redraw the preview
+     *  when the pick texture selection changes without a new click. */
+    QPointF lastPickUv;
+    bool lastPickHit = false;
 
     /**
      * Baked pyramids fed to ReliefView,

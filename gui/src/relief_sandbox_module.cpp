@@ -158,15 +158,26 @@ TextureControls::TextureControls(QWidget* outerControls,
     outerControls->layout()->addWidget(group);
 }
 
-PixelPickControls::PixelPickControls(QWidget* outerControls) {
+PixelPickControls::PixelPickControls(QWidget* outerControls,
+                                      ReliefSandboxModule* self) {
     QGroupBox* group = new QGroupBox("Pixel Pick");
     QVBoxLayout* pickLayout = new QVBoxLayout(group);
 
     this->infoLbl = new QLabel(
-        "Click a pixel in the view to see where it samples the color texture.");
+        "Click a pixel in the view to see where it samples the texture.");
     this->infoLbl->setWordWrap(true);
     this->infoLbl->setStyleSheet("color: #aaa; font-size: 11px;");
     pickLayout->addWidget(this->infoLbl);
+
+    this->textureCombo = new QComboBox();
+    this->textureCombo->addItem("Color");
+    this->textureCombo->addItem("Normal");
+    QObject::connect(this->textureCombo,
+                      QOverload<int>::of(&QComboBox::currentIndexChanged),
+                      self, [self](int) {
+                          if (self->lastPickHit) self->updatePixelPickPreview();
+                      });
+    pickLayout->addWidget(this->textureCombo);
 
     this->previewLbl = new QLabel();
     this->previewLbl->setFixedSize(220, 220);
@@ -174,6 +185,18 @@ PixelPickControls::PixelPickControls(QWidget* outerControls) {
     this->previewLbl->setStyleSheet(
         "background-color:#1e1e1e; border:1px solid #555;");
     pickLayout->addWidget(this->previewLbl);
+
+    QHBoxLayout* colorRow = new QHBoxLayout();
+    this->colorSwatch = new QLabel();
+    this->colorSwatch->setFixedSize(28, 28);
+    this->colorSwatch->setStyleSheet(
+        "background-color:#1e1e1e; border:1px solid #555;");
+    colorRow->addWidget(this->colorSwatch);
+    this->colorValueLbl = new QLabel();
+    this->colorValueLbl->setStyleSheet(
+        "color: #000; font-size: 12px; font-weight: bold;");
+    colorRow->addWidget(this->colorValueLbl, 1);
+    pickLayout->addLayout(colorRow);
 
     outerControls->layout()->addWidget(group);
 }
@@ -295,7 +318,7 @@ QWidget* ReliefSandboxModule::buildControls() {
 
     this->meshControls = MeshControls(controls, this);
     this->textureControls = TextureControls(controls, this);
-    this->pixelPickControls = PixelPickControls(controls);
+    this->pixelPickControls = PixelPickControls(controls, this);
     buildReliefParamsGroup(controls);
     buildLightingGroup(controls);
 
@@ -427,6 +450,9 @@ void ReliefSandboxModule::onToggleInspector(bool show) {
 }
 
 void ReliefSandboxModule::onPixelPicked(QPointF uv, bool hit) {
+    this->lastPickUv = uv;
+    this->lastPickHit = hit;
+
     if (!hit) {
         this->pixelPickControls.infoLbl->setText(
             "Click missed — no surface at that pixel.");
@@ -438,19 +464,45 @@ void ReliefSandboxModule::onPixelPicked(QPointF uv, bool hit) {
                                                  .arg(uv.x(), 0, 'f', 4)
                                                  .arg(uv.y(), 0, 'f', 4));
 
-    if (this->colorImg.isNull()) return;
+    this->updatePixelPickPreview();
+}
 
-    // colorMap's mip0 row y == colorImg's row y (see
-    // textures::buildColorMap's resampling in ReliefSandboxModule::onLoadColor),
-    // so (u, v) maps onto colorImg with no flip.
-    QImage preview = this->colorImg
-                         .scaled(this->pixelPickControls.previewLbl->size(),
+void ReliefSandboxModule::updatePixelPickPreview() {
+    if (!this->lastPickHit) return;
+
+    bool showNormal = this->pixelPickControls.textureCombo->currentIndex() == 1;
+    const QImage& src = showNormal ? this->normalImg : this->colorImg;
+    if (src.isNull()) return;
+
+    int px = std::clamp(int(this->lastPickUv.x() * src.width()), 0,
+                        src.width() - 1);
+    int py = std::clamp(int(this->lastPickUv.y() * src.height()), 0,
+                        src.height() - 1);
+    QColor sample = src.pixelColor(px, py);
+
+    this->pixelPickControls.colorSwatch->setStyleSheet(
+        QString("background-color:%1; border:1px solid #555;")
+            .arg(sample.name()));
+    this->pixelPickControls.colorValueLbl->setText(
+        QString("RGBA: (%1, %2, %3, %4)  #%5")
+            .arg(sample.red())
+            .arg(sample.green())
+            .arg(sample.blue())
+            .arg(sample.alpha())
+            .arg(sample.name().mid(1).toUpper()));
+
+    // colorMap's/normalMap's mip0 row y == colorImg's/normalImg's row y (see
+    // textures::buildColorMap/buildNormalMap's resampling in
+    // ReliefSandboxModule::onLoadColor/onLoadNormal), so (u, v) maps onto
+    // either image with no flip.
+    QImage preview = src.scaled(this->pixelPickControls.previewLbl->size(),
                                  Qt::KeepAspectRatio, Qt::SmoothTransformation)
                          .convertToFormat(QImage::Format_RGB32);
     QPainter p(&preview);
     p.setPen(QPen(Qt::red, 2));
     p.setBrush(Qt::NoBrush);
-    QPointF marker(uv.x() * preview.width(), uv.y() * preview.height());
+    QPointF marker(this->lastPickUv.x() * preview.width(),
+                   this->lastPickUv.y() * preview.height());
     p.drawEllipse(marker, 5, 5);
     p.drawLine(marker - QPointF(8, 0), marker + QPointF(8, 0));
     p.drawLine(marker - QPointF(0, 8), marker + QPointF(0, 8));
