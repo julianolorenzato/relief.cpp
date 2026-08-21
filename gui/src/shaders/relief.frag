@@ -7,6 +7,7 @@ in float Handedness;
 out vec4 FragColor;
 
 uniform vec3 viewPosWorld;
+uniform vec3 LightPosWorld;
 uniform sampler2D Color_Map;
 uniform sampler2D Relief_Map;
 uniform sampler2D Offset_Map;
@@ -295,7 +296,7 @@ void main() {
     nTS.xy = rotateXY(nTS.xy, -totalRotation);
     vec3 shadingNormal = normalize(TBN * nTS);
 
-    vec3 lightDir = normalize(vec3(1.0, 1.0, 1.0));
+    vec3 lightDir = normalize(LightPosWorld - FragPos);
     float diff = max(dot(shadingNormal, lightDir), 0.0);
     vec3 result = albedo * (0.3 + 0.7 * diff);
     FragColor = vec4(result, 1.0);

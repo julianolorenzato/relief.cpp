@@ -119,6 +119,42 @@ namespace
         }
     }
 
+    /// @brief Builds a unit-radius lat/long sphere (positions only, unlit
+    ///        glyph) used to render the light orb.
+    void buildSphereVerts(int lonSegments, int latSegments,
+                          std::vector<float> &verts,
+                          std::vector<unsigned int> &idxs)
+    {
+        for (int lat = 0; lat <= latSegments; lat++)
+        {
+            float theta = float(lat) * float(M_PI) / float(latSegments);
+            float sinTheta = sinf(theta), cosTheta = cosf(theta);
+            for (int lon = 0; lon <= lonSegments; lon++)
+            {
+                float phi = float(lon) * 2.0f * float(M_PI) / float(lonSegments);
+                float sinPhi = sinf(phi), cosPhi = cosf(phi);
+                verts.push_back(sinTheta * cosPhi);
+                verts.push_back(cosTheta);
+                verts.push_back(sinTheta * sinPhi);
+            }
+        }
+        int stride = lonSegments + 1;
+        for (int lat = 0; lat < latSegments; lat++)
+        {
+            for (int lon = 0; lon < lonSegments; lon++)
+            {
+                unsigned int a = lat * stride + lon;
+                unsigned int b = a + stride;
+                idxs.push_back(a);
+                idxs.push_back(b);
+                idxs.push_back(a + 1);
+                idxs.push_back(a + 1);
+                idxs.push_back(b);
+                idxs.push_back(b + 1);
+            }
+        }
+    }
+
 } // namespace
 
 // ─── Constructor / Destructor ─────────────────────────────────────────────────
@@ -139,6 +175,18 @@ ReliefView::~ReliefView()
         this->ebo.destroy();
     if (this->vao.isCreated())
         this->vao.destroy();
+    if (this->orbVbo.isCreated())
+        this->orbVbo.destroy();
+    if (this->orbEbo.isCreated())
+        this->orbEbo.destroy();
+    if (this->orbVao.isCreated())
+        this->orbVao.destroy();
+    if (this->haloVbo.isCreated())
+        this->haloVbo.destroy();
+    if (this->haloEbo.isCreated())
+        this->haloEbo.destroy();
+    if (this->haloVao.isCreated())
+        this->haloVao.destroy();
     deleteTextures();
     deletePickFbo();
     doneCurrent();
@@ -248,6 +296,21 @@ void ReliefView::setCullFace(bool v)
     this->cullFace = v;
     update();
 }
+void ReliefView::setLightX(double v)
+{
+    this->lightPos.setX((float)v);
+    update();
+}
+void ReliefView::setLightY(double v)
+{
+    this->lightPos.setY((float)v);
+    update();
+}
+void ReliefView::setLightZ(double v)
+{
+    this->lightPos.setZ((float)v);
+    update();
+}
 
 // ─── GL lifecycle ─────────────────────────────────────────────────────────────
 
@@ -264,6 +327,22 @@ void ReliefView::initializeGL()
     if (!this->prog.link())
         std::cerr << "ReliefView link error: " << this->prog.log().toStdString() << "\n";
 
+    if (!this->orbProg.addShaderFromSourceFile(QOpenGLShader::Vertex, ":/shaders/orb.vert"))
+        std::cerr << "ReliefView orb vert error: " << this->orbProg.log().toStdString() << "\n";
+    if (!this->orbProg.addShaderFromSourceFile(QOpenGLShader::Fragment, ":/shaders/orb.frag"))
+        std::cerr << "ReliefView orb frag error: " << this->orbProg.log().toStdString() << "\n";
+    if (!this->orbProg.link())
+        std::cerr << "ReliefView orb link error: " << this->orbProg.log().toStdString() << "\n";
+
+    if (!this->haloProg.addShaderFromSourceFile(QOpenGLShader::Vertex, ":/shaders/halo.vert"))
+        std::cerr << "ReliefView halo vert error: " << this->haloProg.log().toStdString() << "\n";
+    if (!this->haloProg.addShaderFromSourceFile(QOpenGLShader::Fragment, ":/shaders/halo.frag"))
+        std::cerr << "ReliefView halo frag error: " << this->haloProg.log().toStdString() << "\n";
+    if (!this->haloProg.link())
+        std::cerr << "ReliefView halo link error: " << this->haloProg.log().toStdString() << "\n";
+
+    buildOrbMesh();
+    buildHaloMesh();
 }
 
 void ReliefView::resizeGL(int w, int h)
@@ -313,6 +392,7 @@ void ReliefView::paintGL()
         this->zoom * sinf(radX),
         this->zoom * cosf(radY) * cosf(radX));
     this->prog.setUniformValue("viewPosWorld", camPos);
+    this->prog.setUniformValue("LightPosWorld", this->lightPos);
 
     this->prog.setUniformValue("ReliefEnabled", this->reliefEnabled);
     this->prog.setUniformValue("UseAtlas", this->useAtlas);
@@ -338,6 +418,70 @@ void ReliefView::paintGL()
 
     this->prog.release();
     glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
+
+    // Light orb glyph: small unlit sphere at the light's world position,
+    // drawn after the shaded mesh so it isn't affected by wireframe/relief
+    // toggles above.
+    if (this->orbVao.isCreated() && this->orbIndexCount > 0)
+    {
+        constexpr float kOrbRadius = 0.06f;
+        QMatrix4x4 orbModel;
+        orbModel.translate(this->lightPos);
+        orbModel.scale(kOrbRadius);
+
+        // Sphere and halo are small, camera-facing-ish shapes drawn from
+        // whichever side the camera happens to be on; cull state is
+        // irrelevant to the rest of the frame since nothing draws after them
+        // but the (separate) pick pass, which sets its own state.
+        glDisable(GL_CULL_FACE);
+
+        this->orbProg.bind();
+        this->orbProg.setUniformValue("projection", projMatrix());
+        this->orbProg.setUniformValue("view", viewMatrix());
+        this->orbProg.setUniformValue("model", orbModel);
+        this->orbProg.setUniformValue("viewPosWorld", camPos);
+        this->orbProg.setUniformValue("Color", QVector3D(1.0f, 1.0f, 1.0f));
+
+        this->orbVao.bind();
+        glDrawElements(GL_TRIANGLES, this->orbIndexCount, GL_UNSIGNED_INT, nullptr);
+        this->orbVao.release();
+        this->orbProg.release();
+
+        // Soft glow halo: an additively-blended, camera-facing billboard
+        // centered on the orb, built directly from the view matrix's
+        // inverse so it always faces the camera regardless of orbit angle.
+        if (this->haloVao.isCreated() && this->haloIndexCount > 0)
+        {
+            QMatrix4x4 viewInv = viewMatrix().inverted();
+            QVector3D camRight(viewInv(0, 0), viewInv(1, 0), viewInv(2, 0));
+            QVector3D camUp(viewInv(0, 1), viewInv(1, 1), viewInv(2, 1));
+            constexpr float kHaloRadius = kOrbRadius * 3.5f;
+
+            QMatrix4x4 haloModel;
+            haloModel.setColumn(0, QVector4D(camRight * kHaloRadius, 0.0f));
+            haloModel.setColumn(1, QVector4D(camUp * kHaloRadius, 0.0f));
+            haloModel.setColumn(2, QVector4D(0.f, 0.f, 1.f, 0.f));
+            haloModel.setColumn(3, QVector4D(this->lightPos, 1.0f));
+
+            glEnable(GL_BLEND);
+            glBlendFunc(GL_SRC_ALPHA, GL_ONE);
+            glDepthMask(GL_FALSE);
+
+            this->haloProg.bind();
+            this->haloProg.setUniformValue("projection", projMatrix());
+            this->haloProg.setUniformValue("view", viewMatrix());
+            this->haloProg.setUniformValue("model", haloModel);
+            this->haloProg.setUniformValue("Color", QVector3D(1.0f, 0.85f, 0.5f));
+
+            this->haloVao.bind();
+            glDrawElements(GL_TRIANGLES, this->haloIndexCount, GL_UNSIGNED_INT, nullptr);
+            this->haloVao.release();
+            this->haloProg.release();
+
+            glDepthMask(GL_TRUE);
+            glDisable(GL_BLEND);
+        }
+    }
 
     if (this->pickPending)
     {
@@ -518,6 +662,62 @@ void ReliefView::buildMeshBuffers()
     glVertexAttribPointer(3, 4, GL_FLOAT, GL_FALSE, stride, (void *)(8 * sizeof(float)));
 
     this->vao.release();
+}
+
+void ReliefView::buildOrbMesh()
+{
+    std::vector<float> verts;
+    std::vector<unsigned int> idxs;
+    buildSphereVerts(12, 8, verts, idxs);
+
+    this->orbIndexCount = (int)idxs.size();
+    if (!this->orbVao.isCreated())
+        this->orbVao.create();
+    if (!this->orbVbo.isCreated())
+        this->orbVbo.create();
+    if (!this->orbEbo.isCreated())
+        this->orbEbo.create();
+
+    this->orbVao.bind();
+    this->orbVbo.bind();
+    this->orbVbo.allocate(verts.data(), (int)(verts.size() * sizeof(float)));
+    this->orbEbo.bind();
+    this->orbEbo.allocate(idxs.data(), (int)(idxs.size() * sizeof(unsigned int)));
+
+    glEnableVertexAttribArray(0);
+    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(float), (void *)0);
+
+    this->orbVao.release();
+}
+
+void ReliefView::buildHaloMesh()
+{
+    float quad[8] = {
+        -1.f, -1.f,
+         1.f, -1.f,
+         1.f,  1.f,
+        -1.f,  1.f,
+    };
+    unsigned int idxs[6] = {0, 1, 2, 2, 3, 0};
+
+    this->haloIndexCount = 6;
+    if (!this->haloVao.isCreated())
+        this->haloVao.create();
+    if (!this->haloVbo.isCreated())
+        this->haloVbo.create();
+    if (!this->haloEbo.isCreated())
+        this->haloEbo.create();
+
+    this->haloVao.bind();
+    this->haloVbo.bind();
+    this->haloVbo.allocate(quad, sizeof(quad));
+    this->haloEbo.bind();
+    this->haloEbo.allocate(idxs, sizeof(idxs));
+
+    glEnableVertexAttribArray(0);
+    glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 2 * sizeof(float), (void *)0);
+
+    this->haloVao.release();
 }
 
 void ReliefView::uploadTexture(QOpenGLTexture *&tex, const MipPyramid &pyr,

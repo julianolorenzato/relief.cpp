@@ -17,6 +17,7 @@
 #include <QPainter>
 #include <QPushButton>
 #include <QScrollArea>
+#include <QSlider>
 #include <QSpinBox>
 #include <QSplitter>
 #include <QStackedWidget>
@@ -58,6 +59,33 @@ void makeTexRow(QVBoxLayout* texLayout, ReliefSandboxModule* self,
 void setThumb(QLabel* label, const QImage& img) {
     label->setPixmap(QPixmap::fromImage(img).scaled(
         label->size(), Qt::KeepAspectRatio, Qt::SmoothTransformation));
+}
+
+/**
+ * Builds one "<label>: <value> [slider]" row and appends it to `layout`.
+ * The slider stores hundredths internally so it can offer 0.01 resolution
+ * over a floating-point range; `slot` is forwarded the descaled value on
+ * every change.
+ */
+void makeLightSliderRow(QVBoxLayout* layout, const char* label, int minHundredths,
+                        int maxHundredths, int defaultHundredths, ReliefView* view,
+                        void (ReliefView::*slot)(double)) {
+    QLabel* valueLbl = new QLabel(
+        QString("%1: %2").arg(label).arg(defaultHundredths / 100.0, 0, 'f', 2));
+    layout->addWidget(valueLbl);
+
+    QSlider* slider = new QSlider(Qt::Horizontal);
+    slider->setMinimum(minHundredths);
+    slider->setMaximum(maxHundredths);
+    slider->setValue(defaultHundredths);
+    layout->addWidget(slider);
+
+    QObject::connect(slider, &QSlider::valueChanged, view,
+                     [valueLbl, label, view, slot](int v) {
+        double value = v / 100.0;
+        valueLbl->setText(QString("%1: %2").arg(label).arg(value, 0, 'f', 2));
+        (view->*slot)(value);
+    });
 }
 
 }  // namespace
@@ -245,6 +273,21 @@ void ReliefSandboxModule::buildReliefParamsGroup(QWidget* outerControls) {
     outerControls->layout()->addWidget(ctrlGroup);
 }
 
+void ReliefSandboxModule::buildLightingGroup(QWidget* outerControls) {
+    QGroupBox* group = new QGroupBox("Lighting");
+    QVBoxLayout* lightLayout = new QVBoxLayout(group);
+
+    // Matches ReliefView's default lightPos{0.f, 2.f, 1.5f}.
+    makeLightSliderRow(lightLayout, "X", -300, 300, 0, this->reliefView,
+                       &ReliefView::setLightX);
+    makeLightSliderRow(lightLayout, "Y", 50, 400, 200, this->reliefView,
+                       &ReliefView::setLightY);
+    makeLightSliderRow(lightLayout, "Z", -300, 300, 150, this->reliefView,
+                       &ReliefView::setLightZ);
+
+    outerControls->layout()->addWidget(group);
+}
+
 QWidget* ReliefSandboxModule::buildControls() {
     QWidget* controls = new QWidget();
     QVBoxLayout* layout = new QVBoxLayout(controls);
@@ -254,6 +297,7 @@ QWidget* ReliefSandboxModule::buildControls() {
     this->textureControls = TextureControls(controls, this);
     this->pixelPickControls = PixelPickControls(controls);
     buildReliefParamsGroup(controls);
+    buildLightingGroup(controls);
 
     layout->addStretch();
 

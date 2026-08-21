@@ -2,5 +2,9 @@
     <qresource prefix="/shaders">
         <file alias="relief.vert">relief.vert</file>
         <file alias="relief.frag">relief.frag</file>
+        <file alias="orb.vert">orb.vert</file>
+        <file alias="orb.frag">orb.frag</file>
+        <file alias="halo.vert">halo.vert</file>
+        <file alias="halo.frag">halo.frag</file>
     </qresource>
 </RCC>

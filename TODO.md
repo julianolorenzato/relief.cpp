@@ -1,0 +1,1 @@
+- Fazer cada modulo ser o que nós temos dentro do relief sandbox hoje, ou seja, mover texture inspector para um dos modulos, e utilizar um estado global (no main window talvez) para armazenar os mapas gerados e a mesh.

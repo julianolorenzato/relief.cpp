@@ -62,6 +62,9 @@ public slots:
     void setDebugView(int v);
     void setWireframe(bool v);
     void setCullFace(bool v);
+    void setLightX(double v);
+    void setLightY(double v);
+    void setLightZ(double v);
 
 protected:
     void initializeGL() override;
@@ -89,6 +92,11 @@ private:
     QPoint pressPos;
     QVector3D meshCenter{0.f, 0.f, 0.f};
     float meshNormScale = 1.f;
+
+    // Lighting orb: a movable point light, visualized as a small unlit
+    // sphere. Lives directly in the same post-model-matrix space as
+    // FragPos/viewPosWorld, so no mesh normalization is applied to it.
+    QVector3D lightPos{0.f, 2.f, 1.5f};
 
     // Pixel picking: a click queues a widget-space position here; paintGL
     // resolves it after the normal (visible) draw so picking never disturbs
@@ -119,8 +127,27 @@ private:
     QOpenGLTexture *normalTex  = nullptr;
     QOpenGLTexture *offsetTex  = nullptr;
 
+    // Lighting orb GL resources (fresnel-shaded sphere glyph, built once).
+    QOpenGLShaderProgram     orbProg;
+    QOpenGLBuffer            orbVbo{QOpenGLBuffer::VertexBuffer};
+    QOpenGLBuffer            orbEbo{QOpenGLBuffer::IndexBuffer};
+    QOpenGLVertexArrayObject orbVao;
+    int orbIndexCount = 0;
+
+    // Soft glow halo drawn as an additively-blended camera-facing billboard
+    // behind the orb sphere.
+    QOpenGLShaderProgram     haloProg;
+    QOpenGLBuffer            haloVbo{QOpenGLBuffer::VertexBuffer};
+    QOpenGLBuffer            haloEbo{QOpenGLBuffer::IndexBuffer};
+    QOpenGLVertexArrayObject haloVao;
+    int haloIndexCount = 0;
+
     /// Uploads the mesh's vertex/index buffers.
     void buildMeshBuffers();
+    /// Builds and uploads the unit-radius sphere used to draw the light orb.
+    void buildOrbMesh();
+    /// Builds and uploads the unit quad used to draw the glow halo billboard.
+    void buildHaloMesh();
     /// Uploads each of `pyr`'s mip levels into a newly (re)allocated `tex`
     /// (replacing whatever was there before, or leaving `tex` null if `pyr`
     /// is empty), with the given GL format and sampling filters.

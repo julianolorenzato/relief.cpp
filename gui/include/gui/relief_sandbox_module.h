@@ -107,6 +107,13 @@ class ReliefSandboxModule : public QWidget {
     void buildReliefParamsGroup(QWidget *outerControls);
 
     /**
+     * Builds the "Lighting" group box (X/Y/Z sliders for the point-light
+     * orb) and appends it to `outerControls`'s layout. Like
+     * buildReliefParamsGroup, its controls push straight into reliefView.
+     */
+    void buildLightingGroup(QWidget *outerControls);
+
+    /**
      * Rebuilds the mip pyramids (color/relief/normal/offset) from the
      * loaded images and pushes them to the view.
      */
