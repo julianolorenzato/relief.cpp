@@ -195,6 +195,74 @@ std::vector<float> resampleNormalXYZ(const RawImage& img, int outW, int outH) {
     return out;
 }
 
+/// Blurs a single-channel field in place with a separable Gaussian of standard
+/// deviation `sigma` texels, clamping at the edges. Used to reconstruct the
+/// smooth height ramp underlying an 8-bit-quantized height map: without it the
+/// terraces left by quantization read as flat, and the whole slope collapses
+/// into one-texel lines at the steps between them.
+void blurSeparable(std::vector<float>& field, int w, int h, float sigma) {
+    if (sigma <= 0.f) return;
+
+    int radius = std::max(1, (int)std::ceil(3.f * sigma));
+    std::vector<float> kernel(radius + 1);
+    float sum = 0.f;
+    for (int i = 0; i <= radius; i++) {
+        kernel[i] = std::exp(-(float)(i * i) / (2.f * sigma * sigma));
+        sum += (i == 0) ? kernel[i] : 2.f * kernel[i];
+    }
+    for (float& k : kernel) k /= sum;
+
+    std::vector<float> tmp((size_t)w * h);
+    // Horizontal pass, then vertical.
+    for (int y = 0; y < h; y++)
+        for (int x = 0; x < w; x++) {
+            float acc = field[(size_t)y * w + x] * kernel[0];
+            for (int i = 1; i <= radius; i++)
+                acc += (field[(size_t)y * w + std::clamp(x - i, 0, w - 1)]
+                      + field[(size_t)y * w + std::clamp(x + i, 0, w - 1)]) * kernel[i];
+            tmp[(size_t)y * w + x] = acc;
+        }
+    for (int y = 0; y < h; y++)
+        for (int x = 0; x < w; x++) {
+            float acc = tmp[(size_t)y * w + x] * kernel[0];
+            for (int i = 1; i <= radius; i++)
+                acc += (tmp[(size_t)std::clamp(y - i, 0, h - 1) * w + x]
+                      + tmp[(size_t)std::clamp(y + i, 0, h - 1) * w + x]) * kernel[i];
+            field[(size_t)y * w + x] = acc;
+        }
+}
+
+/// Converts a single-channel height field into unit-vector XYZ normals in
+/// [-1,1] via a 3x3 Sobel gradient with clamped edges (matching the clamp
+/// policy of bilinearSampleF). `strength` scales the gradient, measured in UV
+/// units so the result is resolution-independent; 1.0 is a 45-degree slope.
+std::vector<float> heightToNormalXYZ(const std::vector<float>& height, int w, int h, float strength) {
+    auto at = [&](int x, int y) {
+        return height[(size_t)std::clamp(y, 0, h - 1) * w + std::clamp(x, 0, w - 1)];
+    };
+
+    std::vector<float> out((size_t)w * h * 3);
+    for (int y = 0; y < h; y++)
+        for (int x = 0; x < w; x++) {
+            float gx = (at(x+1, y-1) + 2.f * at(x+1, y) + at(x+1, y+1)
+                      - at(x-1, y-1) - 2.f * at(x-1, y) - at(x-1, y+1)) * 0.125f;
+            float gy = (at(x-1, y+1) + 2.f * at(x, y+1) + at(x+1, y+1)
+                      - at(x-1, y-1) - 2.f * at(x, y-1) - at(x+1, y-1)) * 0.125f;
+
+            // Scale the per-texel gradient into UV units so the result does
+            // not change when the same height map is baked at a different
+            // resolution; `strength` then reads as "height range spans this
+            // many UV units", making 1.0 a 45-degree slope.
+            float nx = -gx * w * strength, ny = -gy * h * strength, nz = 1.f;
+            float len = std::sqrt(nx*nx + ny*ny + nz*nz);
+            if (len > 1e-8f) { nx /= len; ny /= len; nz /= len; }
+            else { nx = 0.f; ny = 0.f; nz = 1.f; }
+            size_t idx = ((size_t)y * w + x) * 3;
+            out[idx+0] = nx; out[idx+1] = ny; out[idx+2] = nz;
+        }
+    return out;
+}
+
 /// Extracts one channel out of packed interleaved float data (e.g. the w
 /// channel of a baked offset map, used as relief mapping's seam mask).
 std::vector<float> extractChannel(const std::vector<float>& data, size_t texelCount, int channels, int channelIndex) {
@@ -220,6 +288,13 @@ MipPyramid buildColorMap(const RawImage& img, int width, int height) {
 
 MipPyramid buildNormalMap(const RawImage& img, int width, int height) {
     auto mip0 = resampleNormalXYZ(img, width, height);
+    return buildBilinearPyramid(mip0, width, height, 3, /*renormalizeAsNormal=*/true);
+}
+
+MipPyramid buildNormalMapFromHeight(const RawImage& heightImg, int width, int height, float strength, float smoothing) {
+    auto heightMip0 = resampleDepthR(heightImg, width, height);
+    blurSeparable(heightMip0, width, height, smoothing);
+    auto mip0 = heightToNormalXYZ(heightMip0, width, height, strength);
     return buildBilinearPyramid(mip0, width, height, 3, /*renormalizeAsNormal=*/true);
 }
 

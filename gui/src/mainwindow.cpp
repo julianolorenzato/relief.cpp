@@ -31,6 +31,7 @@ void MainWindow::setupUI() {
   this->texturePrep = new TexturePrepModule(this);
   this->relief = new ReliefModule(this);
   this->reliefSandbox = new ReliefSandboxModule(this);
+  this->normalMap = new NormalMapModule(this);
 
   // ── Context toolbar ────────────────────────────────────────────────────
   this->contextToolBar = addToolBar("Contexts");
@@ -45,8 +46,8 @@ void MainWindow::setupUI() {
   auto *group = new QActionGroup(this);
   group->setExclusive(true);
   const char *labels[] = {"Mesh", "Heightmap", "Textures", "Relief",
-                          "Relief Sandbox"};
-  for (int i = 0; i < 5; ++i) {
+                          "Relief Sandbox", "Normal Map"};
+  for (int i = 0; i < 6; ++i) {
     auto *act = new QAction(labels[i], this);
     act->setCheckable(true);
     group->addAction(act);
@@ -63,6 +64,7 @@ void MainWindow::setupUI() {
   this->viewportStack->addWidget(this->texturePrep);
   this->viewportStack->addWidget(this->relief);
   this->viewportStack->addWidget(this->reliefSandbox);
+  this->viewportStack->addWidget(this->normalMap);
   setCentralWidget(this->viewportStack);
 
   // ── Status bar ───────────────────────────────────────────────────────────
@@ -104,6 +106,8 @@ void MainWindow::setupUI() {
           &QLabel::setText);
   connect(this->texturePrep, &TexturePrepModule::statusMessage,
           this->statusLabel, &QLabel::setText);
+  connect(this->normalMap, &NormalMapModule::statusMessage, this->statusLabel,
+          &QLabel::setText);
 }
 
 // ─── Menu

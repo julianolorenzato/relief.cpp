@@ -61,6 +61,33 @@ MipPyramid buildColorMap(const RawImage& img, int width, int height);
 MipPyramid buildNormalMap(const RawImage& img, int width, int height);
 
 /**
+ * @brief Derives a tangent-space normal-map mip pyramid from a height/depth
+ *        image by Sobel gradient, resampled to `width` x `height`; each level
+ *        is kept renormalized to unit-length vectors in [-1,1].
+ * @param heightImg Source height image; only the red channel is read (a
+ *        grayscale image works as-is).
+ * @param width Target base-level width.
+ * @param height Target base-level height.
+ * @param strength Scales the height gradient before the normal is formed.
+ *        The gradient is measured in UV units rather than texels, so the
+ *        result is independent of `width`/`height`: strength 1.0 means the
+ *        image's [0,1] height range spans one UV unit (a 45-degree slope).
+ *        Shallow relief wants values well below 1.
+ * @param smoothing Standard deviation, in output texels, of a Gaussian blur
+ *        applied to the height field before differentiating; 0 disables it.
+ *        An 8-bit height map storing a smooth surface is quantized into flat
+ *        terraces, and differentiating it directly concentrates the whole
+ *        slope into one-texel lines at the steps between them. Around 1.0
+ *        reconstructs the underlying ramp; raise it for coarser quantization.
+ * @return 3-channel MipPyramid, coarsest level having size 1x1.
+ */
+MipPyramid buildNormalMapFromHeight(
+    const RawImage& heightImg,
+    int width, int height,
+    float strength,
+    float smoothing);
+
+/**
  * @brief Builds the packed relief map mip pyramid consumed by relief
  *        mapping: per level, min/max depth resampled from `depthImg` plus a
  *        max-pooled seam mask for island leaping.

@@ -13,6 +13,7 @@
 #include "gui/texture_prep_module.h"
 #include "gui/relief_module.h"
 #include "gui/relief_sandbox_module.h"
+#include "gui/normal_map_module.h"
 
 /// @brief Main application window; wires the pipeline modules (simplifier,
 ///        heightmap baker, texture prep, relief viewer, relief sandbox) together
@@ -45,4 +46,5 @@ private:
     TexturePrepModule*  texturePrep  = nullptr;
     ReliefModule*        relief        = nullptr;
     ReliefSandboxModule* reliefSandbox = nullptr;
+    NormalMapModule*     normalMap     = nullptr;
 };
