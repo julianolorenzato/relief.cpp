@@ -7,7 +7,6 @@
 #pragma once
 #include <QCheckBox>
 #include <QComboBox>
-#include <QDoubleSpinBox>
 #include <QImage>
 #include <QLabel>
 #include <QPushButton>
@@ -42,6 +41,15 @@ class NormalMapModule : public QWidget {
     void onSave();
 
    private:
+    /// Gradient scale handed to textures::buildNormalMapFromHeight, in UV
+    /// units: 1.0 treats the height map's [0,1] range as a 45-degree slope.
+    static constexpr float kStrength = 1.0f;
+
+    /// Gaussian sigma (in texels) used to smooth the height field before
+    /// differentiating, so 8-bit quantization terraces don't collapse the
+    /// slope into one-texel lines.
+    static constexpr float kSmoothing = 2.0f;
+
     void buildUI();
 
     /** Redraws the generated-normal-map panel from `normalMap`. */
@@ -64,7 +72,5 @@ class NormalMapModule : public QWidget {
     // ── Controls ─────────────────────────────────────────────────────────
     QLabel *heightThumb = nullptr;
     QComboBox *resCombo = nullptr;
-    QDoubleSpinBox *strengthSpin = nullptr;
-    QDoubleSpinBox *smoothingSpin = nullptr;
     QPushButton *generateBtn = nullptr;
 };

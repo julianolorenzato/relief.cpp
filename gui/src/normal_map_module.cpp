@@ -156,35 +156,6 @@ void NormalMapModule::buildUI() {
     resRow->addWidget(this->resCombo, 1);
     ctrlOuter->addLayout(resRow);
 
-    QHBoxLayout *strengthRow = new QHBoxLayout();
-    strengthRow->addWidget(new QLabel("Strength:"));
-    this->strengthSpin = new QDoubleSpinBox();
-    this->strengthSpin->setDecimals(3);
-    this->strengthSpin->setRange(0.001, 10.0);
-    this->strengthSpin->setSingleStep(0.01);
-    this->strengthSpin->setValue(0.1);
-    this->strengthSpin->setToolTip(
-        "How many UV units the height map's [0,1] range spans.\n"
-        "1.0 is a 45-degree slope; shallow relief wants much less.\n"
-        "Resolution-independent — changing Resolution won't alter the result.");
-    strengthRow->addWidget(this->strengthSpin, 1);
-    ctrlOuter->addLayout(strengthRow);
-
-    QHBoxLayout *smoothRow = new QHBoxLayout();
-    smoothRow->addWidget(new QLabel("Smoothing:"));
-    this->smoothingSpin = new QDoubleSpinBox();
-    this->smoothingSpin->setDecimals(2);
-    this->smoothingSpin->setRange(0.0, 8.0);
-    this->smoothingSpin->setSingleStep(0.25);
-    this->smoothingSpin->setValue(1.0);
-    this->smoothingSpin->setToolTip(
-        "Gaussian blur (sigma, in texels) applied to the height map before\n"
-        "differentiating. An 8-bit height map quantizes a smooth surface into\n"
-        "flat terraces; without smoothing the slope collapses into thin lines\n"
-        "at the steps between them. 0 disables it.");
-    smoothRow->addWidget(this->smoothingSpin, 1);
-    ctrlOuter->addLayout(smoothRow);
-
     this->generateBtn = new QPushButton("Generate");
     this->generateBtn->setEnabled(false);
     connect(this->generateBtn, &QPushButton::clicked, this,
@@ -247,13 +218,11 @@ void NormalMapModule::onGenerate() {
     if (this->heightImg.isNull()) return;
 
     int res = this->resCombo->currentData().toInt();
-    float strength = (float)this->strengthSpin->value();
-    float smoothing = (float)this->smoothingSpin->value();
 
     QImage d = this->heightImg.convertToFormat(QImage::Format_Grayscale8);
     RawImage raw{d.constBits(), d.width(), d.height(), 1};
     this->normalMap = textures::buildNormalMapFromHeight(raw, res, res,
-                                                         strength, smoothing);
+                                                         kStrength, kSmoothing);
 
     int levels = this->normalMap.levelCount();
     this->mipSpin->setEnabled(levels > 0);
