@@ -1,14 +1,14 @@
 /**
- * @file qem_gltf.cpp
- * @brief glTF/GLB import and export for QEMSimplifier, via tinygltf. Also
- *        hosts the tinygltf/stb_image single-header implementations.
+ * @file mesh_gltf.cpp
+ * @brief glTF/GLB import and export for Mesh, via tinygltf. Also hosts the
+ *        tinygltf/stb_image single-header implementations.
  */
 #define TINYGLTF_IMPLEMENTATION
 #define STB_IMAGE_IMPLEMENTATION
 #define STB_IMAGE_WRITE_IMPLEMENTATION
 #include "tiny_gltf.h"
 
-#include "relief/qem.h"
+#include "relief/mesh.h"
 #include <iostream>
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -69,7 +69,7 @@ static bool extractTexture(const tinygltf::Model &model, int texIdx,
 
 // ─── loadGLTF ────────────────────────────────────────────────────────────────
 
-bool QEMSimplifier::loadGLTF(const std::string &path)
+bool Mesh::loadGLTF(const std::string &path)
 {
     tinygltf::Model model;
     tinygltf::TinyGLTF loader;
@@ -236,7 +236,7 @@ bool QEMSimplifier::loadGLTF(const std::string &path)
 
 // ─── saveGLTF ────────────────────────────────────────────────────────────────
 
-bool QEMSimplifier::saveGLTF(const std::string &path) const
+bool Mesh::saveGLTF(const std::string &path) const
 {
     // Compactar vértices (remover os marcados como removed)
     std::vector<int> remap(vertices.size(), -1);

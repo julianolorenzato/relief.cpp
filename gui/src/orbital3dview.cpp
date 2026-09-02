@@ -21,14 +21,14 @@ namespace {
 
 /// @brief Builds the 12-float interleaved vertex array
 ///        [pos|normal|uv|tangent(vec4, w = handedness)] and an index array
-///        for a QEMSimplifier mesh. Tangents are Gram-Schmidt-orthogonalized
+///        for a Mesh mesh. Tangents are Gram-Schmidt-orthogonalized
 ///        against the normal using per-face UV deltas; the accumulated
 ///        bitangent is used only to derive each vertex's handedness sign
 ///        (Lengyel), since cross(N,T) alone can't tell which way the mesh's
 ///        actual V axis points.
 /// @param[out] verts Interleaved vertex data, 12 floats per vertex.
 /// @param[out] idxs Triangle indices into `verts`.
-void buildMeshVerts(const QEMSimplifier* mesh,
+void buildMeshVerts(const Mesh* mesh,
                     std::vector<float>& verts,
                     std::vector<unsigned int>& idxs)
 {
@@ -174,14 +174,14 @@ void Orbital3DView::setMode(RenderMode mode) {
     update();
 }
 
-void Orbital3DView::setMesh(const QEMSimplifier* mesh) {
+void Orbital3DView::setMesh(const Mesh* mesh) {
     primaryMesh_       = mesh;
     primaryMeshDirty_  = true;
     update();
     resetCamera();
 }
 
-void Orbital3DView::setMeshes(const QEMSimplifier* primary, const QEMSimplifier* secondary) {
+void Orbital3DView::setMeshes(const Mesh* primary, const Mesh* secondary) {
     primaryMesh_         = primary;
     secondaryMesh_       = secondary;
     primaryMeshDirty_    = true;

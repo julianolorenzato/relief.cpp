@@ -11,7 +11,7 @@
 #include <memory>
 
 #include "gui/relief_view.h"
-#include "relief/qem.h"
+#include "relief/mesh.h"
 #include "relief/textures.h"
 #include "relief/uv_atlas.h"
 
@@ -137,7 +137,7 @@ class ReliefSandboxModule : public QWidget {
      *
      * It is supposed to already be simplified.
      */
-    std::unique_ptr<QEMSimplifier> mesh;
+    std::unique_ptr<Mesh> mesh;
 
     /**
      * The widget that renders the mesh

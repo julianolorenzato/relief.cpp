@@ -1,7 +1,7 @@
 /**
  * @file simplifier_module.cpp
  * @brief SimplifierModule implementation: mesh loading, driving
- *        QEMSimplifier, and the inflate/deflate preview.
+ *        Mesh, and the inflate/deflate preview.
  */
 #include "gui/simplifier_module.h"
 #include <QVBoxLayout>
@@ -23,8 +23,8 @@
 SimplifierModule::SimplifierModule(QWidget *parent)
     : QWidget(parent)
 {
-    originalMesh_ = std::make_unique<QEMSimplifier>();
-    simplifiedMesh_ = std::make_unique<QEMSimplifier>();
+    originalMesh_ = std::make_unique<Mesh>();
+    simplifiedMesh_ = std::make_unique<Mesh>();
     buildUI();
 }
 
@@ -236,8 +236,8 @@ void SimplifierModule::buildUI()
 
 bool SimplifierModule::loadModel(const QString &path)
 {
-    originalMesh_ = std::make_unique<QEMSimplifier>();
-    simplifiedMesh_ = std::make_unique<QEMSimplifier>();
+    originalMesh_ = std::make_unique<Mesh>();
+    simplifiedMesh_ = std::make_unique<Mesh>();
 
     bool success = false;
     if (path.endsWith(".obj", Qt::CaseInsensitive))
@@ -326,13 +326,15 @@ void SimplifierModule::onSimplify()
 
     int targetFaces = targetFacesSpinBox_->value();
     *simplifiedMesh_ = *originalMesh_;
-    simplifiedMesh_->boundaryMode = (BoundaryMode)boundaryModeCombo_->currentData().toInt();
-    simplifiedMesh_->envelopeConstraint = envelopeConstraintCheck_->isChecked();
-    simplifiedMesh_->useOptimalCandidate = useOptimalCandidateCheck_->isChecked();
+
+    Simplifier simplifier(*simplifiedMesh_);
+    simplifier.boundaryMode = (BoundaryMode)boundaryModeCombo_->currentData().toInt();
+    simplifier.envelopeConstraint = envelopeConstraintCheck_->isChecked();
+    simplifier.useOptimalCandidate = useOptimalCandidateCheck_->isChecked();
 
     emit statusMessage("Simplifying...");
 
-    simplifiedMesh_->simplify(targetFaces);
+    simplifier.run(targetFaces);
 
     // Capture base positions and compute vertex normals for inflate/deflate
     baseSimplifiedPositions_.resize(simplifiedMesh_->vertices.size());

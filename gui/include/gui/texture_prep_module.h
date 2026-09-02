@@ -13,7 +13,7 @@
 #include <QCheckBox>
 #include <QImage>
 #include "relief/heightmap.h"
-#include "relief/qem.h"
+#include "relief/mesh.h"
 #include "relief/textures.h"
 #include "relief/uv_atlas.h"
 
@@ -29,9 +29,9 @@ public:
 
 public slots:
     /// Called when a new model is loaded: sets the mesh pointer and does a full reset.
-    void onModelLoaded(QEMSimplifier* simplified);
+    void onModelLoaded(Mesh* simplified);
     /// Called when the mesh is updated after simplification: sets mesh + refreshes thumbnails/button.
-    void onMeshUpdated(QEMSimplifier* simplified);
+    void onMeshUpdated(Mesh* simplified);
     /// Called when a heightmap bake finishes: stores the result and refreshes.
     void onHeightmapReady(const HeightmapResult& result);
 
@@ -108,5 +108,5 @@ private:
     HeightmapResult hmResult_;
 
     // Non-owned mesh pointer
-    QEMSimplifier* simplifiedMesh_ = nullptr;
+    Mesh* simplifiedMesh_ = nullptr;
 };

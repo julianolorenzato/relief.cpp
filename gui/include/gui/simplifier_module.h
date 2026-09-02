@@ -1,6 +1,6 @@
 /**
  * @file simplifier_module.h
- * @brief Pipeline entry stage: loads a mesh, drives QEMSimplifier, and
+ * @brief Pipeline entry stage: loads a mesh, drives Simplifier, and
  *        previews original/simplified/overlay side by side.
  */
 #pragma once
@@ -12,10 +12,11 @@
 #include <QComboBox>
 #include <memory>
 #include <vector>
-#include "relief/qem.h"
+#include "relief/mesh.h"
+#include "relief/simplification.h"
 #include "gui/orbital3dview.h"
 
-/// @brief Widget that loads a mesh, runs QEMSimplifier with the configured
+/// @brief Widget that loads a mesh, runs Simplifier with the configured
 ///        boundary/envelope options, and shows the original, simplified, and
 ///        overlay views alongside an inflate/deflate preview control.
 class SimplifierModule : public QWidget {
@@ -35,13 +36,13 @@ public:
 
 signals:
     /// Emitted after loadModel() succeeds, with pointers to the (yet unsimplified) meshes.
-    void modelLoaded(QEMSimplifier* original, QEMSimplifier* simplified);
+    void modelLoaded(Mesh* original, Mesh* simplified);
     /// Emitted after a simplification run completes.
-    void simplificationDone(QEMSimplifier* original, QEMSimplifier* simplified);
+    void simplificationDone(Mesh* original, Mesh* simplified);
     void statusMessage(const QString& msg);
 
 private slots:
-    /// Runs QEMSimplifier on the original mesh with the current UI settings and refreshes the views.
+    /// Runs Simplifier on the original mesh with the current UI settings and refreshes the views.
     void onSimplify();
     /// Keeps the target-faces slider and spin box in sync.
     void onTargetFacesChanged(int value);
@@ -56,8 +57,8 @@ private:
     void updateStats();
 
     // ── Mesh data ─────────────────────────────────────────────────────────────
-    std::unique_ptr<QEMSimplifier> originalMesh_;
-    std::unique_ptr<QEMSimplifier> simplifiedMesh_;
+    std::unique_ptr<Mesh> originalMesh_;
+    std::unique_ptr<Mesh> simplifiedMesh_;
 
     // ── Viewports ─────────────────────────────────────────────────────────────
     Orbital3DView* glWidgetOriginal_   = nullptr;

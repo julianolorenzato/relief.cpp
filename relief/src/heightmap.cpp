@@ -40,7 +40,7 @@ static bool bary2D(double px, double py,
 // Rastereização
 
 std::vector<HeightmapBaker::TexelSample>
-HeightmapBaker::rasterizeUV(const QEMSimplifier &mesh, int W, int H)
+HeightmapBaker::rasterizeUV(const Mesh &mesh, int W, int H)
 {
     std::vector<TexelSample> samples(W * H);
 
@@ -147,8 +147,8 @@ void HeightmapBaker::normalize(HeightmapResult &r)
 }
 
 HeightmapResult HeightmapBaker::bakeUVDistance(
-    const QEMSimplifier &simplified,
-    const QEMSimplifier &original,
+    const Mesh &simplified,
+    const Mesh &original,
     int W, int H,
     ProgressCb cb)
 {

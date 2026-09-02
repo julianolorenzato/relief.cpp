@@ -6,7 +6,7 @@
 #include <QProgressBar>
 #include <QThread>
 #include "relief/heightmap.h"
-#include "relief/qem.h"
+#include "relief/mesh.h"
 
 class HeightmapModule : public QWidget {
     Q_OBJECT
@@ -16,9 +16,9 @@ public:
 
 public slots:
     // Called when a new model is loaded: stores pointers and resets state.
-    void onModelLoaded(QEMSimplifier* original, QEMSimplifier* simplified);
+    void onModelLoaded(Mesh* original, Mesh* simplified);
     // Called when the mesh is updated after simplification: just stores ptrs.
-    void onMeshUpdated(QEMSimplifier* original, QEMSimplifier* simplified);
+    void onMeshUpdated(Mesh* original, Mesh* simplified);
 
 signals:
     void bakeReady(const HeightmapResult& result);
@@ -54,6 +54,6 @@ private:
     QThread*         hmThread_ = nullptr;
 
     // Non-owned mesh pointers (set by onModelLoaded / onMeshUpdated)
-    QEMSimplifier* originalMesh_   = nullptr;
-    QEMSimplifier* simplifiedMesh_ = nullptr;
+    Mesh* originalMesh_   = nullptr;
+    Mesh* simplifiedMesh_ = nullptr;
 };

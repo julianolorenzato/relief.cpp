@@ -29,7 +29,7 @@ using EdgeMap = std::map<std::pair<int, int>, std::vector<EdgeRef>>;
 /// Welds vertices that share (approximately) the same 3D position, so faces split
 /// across a UV seam can still be recognized as 3D-adjacent.
 /// @return Per-vertex canonical id (same id for welded vertices); -1 for removed vertices.
-std::vector<int> computeCanonicalPositions(const QEMSimplifier& mesh) {
+std::vector<int> computeCanonicalPositions(const Mesh& mesh) {
     Eigen::Vector3d bmin(1e18, 1e18, 1e18), bmax(-1e18, -1e18, -1e18);
     bool any = false;
     for (const auto& v : mesh.vertices) {
@@ -66,7 +66,7 @@ std::vector<int> computeCanonicalPositions(const QEMSimplifier& mesh) {
 }
 
 /// Builds the shared-edge map for `mesh`, keyed by canonical (welded) vertex ids.
-EdgeMap buildEdgeMap(const QEMSimplifier& mesh, const std::vector<int>& canon) {
+EdgeMap buildEdgeMap(const Mesh& mesh, const std::vector<int>& canon) {
     EdgeMap edgeMap;
     for (int f = 0; f < (int)mesh.faces.size(); f++) {
         const auto& face = mesh.faces[f];
@@ -132,7 +132,7 @@ bool bary2D(double px, double py,
  *         texel's center), or -1 if no face covers it.
  */
 std::vector<int> buildIslandTexelMap(
-    const QEMSimplifier& mesh, const std::vector<int>& faceIsland,
+    const Mesh& mesh, const std::vector<int>& faceIsland,
     int width, int height) {
     std::vector<int> islandAt((size_t)width * height, -1);
 
@@ -233,7 +233,7 @@ void rasterizeBand(
  * @param mesh Mesh to partition into UV islands.
  * @return One island id per face, in face order; removed faces get id -1.
  */
-std::vector<int> detectIslands(const QEMSimplifier& mesh) {
+std::vector<int> detectIslands(const Mesh& mesh) {
     int nf = (int)mesh.faces.size();
     std::vector<int> island(nf, -1);
     if (nf == 0) return island;
@@ -287,7 +287,7 @@ std::vector<int> detectIslands(const QEMSimplifier& mesh) {
 namespace uv_atlas {
 
 MipPyramid buildOffsetMap(
-    const QEMSimplifier& mesh,
+    const Mesh& mesh,
     int width, int height,
     int seamBandTexels) {
     std::vector<int> faceIsland = detectIslands(mesh);

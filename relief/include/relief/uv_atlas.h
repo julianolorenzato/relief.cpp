@@ -4,7 +4,7 @@
  *        rays "leap" across UV seams between islands.
  */
 #pragma once
-#include "relief/qem.h"
+#include "relief/mesh.h"
 #include "relief/textures.h"
 #include <vector>
 
@@ -37,7 +37,7 @@ namespace uv_atlas {
  *         the baked offset map.
  */
 MipPyramid buildOffsetMap(
-    const QEMSimplifier& mesh,
+    const Mesh& mesh,
     int width, int height,
     int seamBandTexels);
 

@@ -154,7 +154,7 @@ void ReliefModule::buildUI()
 
 // ─── Public slots ─────────────────────────────────────────────────────────────
 
-void ReliefModule::setMeshes(QEMSimplifier* original, QEMSimplifier* simplified)
+void ReliefModule::setMeshes(Mesh* original, Mesh* simplified)
 {
     originalMesh_   = original;
     simplifiedMesh_ = simplified;

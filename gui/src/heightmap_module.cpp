@@ -11,8 +11,8 @@ namespace {
 class HeightmapWorker : public QObject {
     Q_OBJECT
 public:
-    const QEMSimplifier* simplified = nullptr;
-    const QEMSimplifier* original   = nullptr;
+    const Mesh* simplified = nullptr;
+    const Mesh* original   = nullptr;
     int width  = 512;
     int height = 512;
     HeightmapResult results[1];
@@ -138,14 +138,14 @@ void HeightmapModule::buildUI()
 
 // ─── Public slots ─────────────────────────────────────────────────────────────
 
-void HeightmapModule::onModelLoaded(QEMSimplifier* original, QEMSimplifier* simplified)
+void HeightmapModule::onModelLoaded(Mesh* original, Mesh* simplified)
 {
     originalMesh_   = original;
     simplifiedMesh_ = simplified;
     reset();
 }
 
-void HeightmapModule::onMeshUpdated(QEMSimplifier* original, QEMSimplifier* simplified)
+void HeightmapModule::onMeshUpdated(Mesh* original, Mesh* simplified)
 {
     originalMesh_   = original;
     simplifiedMesh_ = simplified;

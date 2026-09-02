@@ -343,7 +343,7 @@ void ReliefSandboxModule::onLoadMesh() {
                                      "*.glb);;All Files (*)");
     if (path.isEmpty()) return;
 
-    auto m = std::make_unique<QEMSimplifier>();
+    auto m = std::make_unique<Mesh>();
     bool ok = path.endsWith(".obj", Qt::CaseInsensitive)
                   ? m->loadOBJ(path.toStdString())
                   : m->loadGLTF(path.toStdString());

@@ -15,7 +15,7 @@
 #include <QPushButton>
 #include <QPoint>
 #include <glm/glm.hpp>
-#include "relief/qem.h"
+#include "relief/mesh.h"
 
 /// Selects what Orbital3DView renders and which shader/buffers it uses.
 enum class RenderMode
@@ -49,10 +49,10 @@ public:
     void setStats(int faces, int vertices);
 
     /// Sets the mesh for single-mesh modes (Solid, Textured).
-    void setMesh(const QEMSimplifier *mesh);
+    void setMesh(const Mesh *mesh);
 
     /// Sets both meshes for Overlay mode (primary = blue, secondary = orange).
-    void setMeshes(const QEMSimplifier *primary, const QEMSimplifier *secondary);
+    void setMeshes(const Mesh *primary, const Mesh *secondary);
 
     /// Re-uploads the primary mesh's vertex data (e.g. after inflate/deflate) without resetting the camera.
     void updateMeshData();
@@ -118,8 +118,8 @@ private:
     float meshNormScale_ = 1.f;
 
     // Mesh pointers (not owned)
-    const QEMSimplifier *primaryMesh_ = nullptr;
-    const QEMSimplifier *secondaryMesh_ = nullptr;
+    const Mesh *primaryMesh_ = nullptr;
+    const Mesh *secondaryMesh_ = nullptr;
 
     // Deferred upload flags — all GL work happens at the start of paintGL()
     bool primaryMeshDirty_ = false;

@@ -13,7 +13,7 @@
 #include <QPoint>
 #include <QVector3D>
 #include <QMatrix4x4>
-#include "relief/qem.h"
+#include "relief/mesh.h"
 #include "relief/textures.h"
 #include "relief/uv_atlas.h"
 
@@ -29,7 +29,7 @@ public:
     ~ReliefView() override;
 
     /// Sets the mesh to render (not owned).
-    void setMesh(const QEMSimplifier *mesh);
+    void setMesh(const Mesh *mesh);
     /// Uploads the relief-mapping color map.
     void setColorMap(const MipPyramid& pyr);
     /// Uploads the relief-mapping depth/height map.
@@ -113,7 +113,7 @@ private:
     void performPick(const QPoint &widgetPos);
 
     // Mesh (not owned)
-    const QEMSimplifier *mesh = nullptr;
+    const Mesh *mesh = nullptr;
 
     // OpenGL resources
     QOpenGLShaderProgram     prog;

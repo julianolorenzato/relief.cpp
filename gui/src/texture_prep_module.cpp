@@ -211,7 +211,7 @@ void TexturePrepModule::buildUI()
 
 // ─── Public slots ─────────────────────────────────────────────────────────────
 
-void TexturePrepModule::onModelLoaded(QEMSimplifier* simplified)
+void TexturePrepModule::onModelLoaded(Mesh* simplified)
 {
     simplifiedMesh_ = simplified;
     hmResult_ = HeightmapResult{};
@@ -234,7 +234,7 @@ void TexturePrepModule::onModelLoaded(QEMSimplifier* simplified)
     updateGenerateEnabled();
 }
 
-void TexturePrepModule::onMeshUpdated(QEMSimplifier* simplified)
+void TexturePrepModule::onMeshUpdated(Mesh* simplified)
 {
     simplifiedMesh_ = simplified;
     updateThumbnails();

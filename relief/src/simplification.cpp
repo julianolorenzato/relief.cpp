@@ -1,203 +1,43 @@
 /**
- * @file qem.cpp
- * @brief QEMSimplifier implementation: OBJ I/O, quadric/envelope computation,
+ * @file simplification.cpp
+ * @brief Simplifier implementation: quadric/envelope computation,
  *        boundary/seam handling, and the greedy edge-collapse main loop.
  */
-#include "relief/qem.h"
+#include "relief/simplification.h"
 #include <limits>
+#include <cmath>
+#include <algorithm>
+#include <iostream>
 
-int QEMSimplifier::canonicalize(int &a, int &b) const
+int Simplifier::canonicalize(int &a, int &b) const
 {
     if (a > b)
         std::swap(a, b);
     return 0;
 }
 
-int QEMSimplifier::faceCount() const
-{
-    int n = 0;
-    for (auto &f : faces)
-        if (!f.removed)
-            n++;
-    return n;
-}
-
-int QEMSimplifier::vertexCount() const
-{
-    int n = 0;
-    for (auto &v : vertices)
-        if (!v.removed)
-            n++;
-    return n;
-}
-
-bool QEMSimplifier::loadOBJ(const std::string &path)
-{
-    std::ifstream f(path);
-    if (!f)
-    {
-        std::cerr << "Erro ao abrir: " << path << "\n";
-        return false;
-    }
-
-    vertices.clear();
-    faces.clear();
-
-    std::vector<Eigen::Vector3d> positions;
-    std::vector<Eigen::Vector2d> uvCoords;
-    std::map<std::pair<int, int>, int> vertexMap; // (pos_idx, uv_idx) → vertex
-
-    std::string line;
-    while (std::getline(f, line))
-    {
-        std::istringstream ss(line);
-        std::string tok;
-        ss >> tok;
-        if (tok == "v")
-        {
-            double px, py, pz;
-            ss >> px >> py >> pz;
-            positions.emplace_back(px, py, pz);
-        }
-        else if (tok == "vt")
-        {
-            double u, v;
-            ss >> u >> v;
-            // OBJ's vt has v=0 at the bottom of the image, but texture data
-            // is uploaded with row 0 = top (no flip elsewhere in the
-            // pipeline) — flip here so mesh UV matches texel rows.
-            uvCoords.emplace_back(u, 1.0 - v);
-        }
-        else if (tok == "f")
-        {
-            // Uma face "f" pode ter 3+ vértices (quads, n-gons); lê todos e
-            // faz fan-triangulation em vez de descartar os além do 3º.
-            std::vector<int> faceVerts;
-            std::string token;
-            while (ss >> token)
-            {
-                int pos_idx = -1, uv_idx = -1;
-                size_t s1 = token.find('/');
-                pos_idx = std::stoi(token.substr(0, s1)) - 1;
-                if (s1 != std::string::npos)
-                {
-                    size_t s2 = token.find('/', s1 + 1);
-                    std::string uv_str = token.substr(s1 + 1,
-                                                      s2 == std::string::npos ? s2 : s2 - s1 - 1);
-                    if (!uv_str.empty())
-                        uv_idx = std::stoi(uv_str) - 1;
-                }
-                if (pos_idx < 0)
-                    pos_idx += (int)positions.size() + 1; // índice relativo negativo
-                auto key = std::make_pair(pos_idx, uv_idx);
-                auto [it, inserted] = vertexMap.emplace(key, (int)vertices.size());
-                if (inserted)
-                {
-                    Vertex vx;
-                    vx.pos = positions[pos_idx];
-                    if (uv_idx >= 0 && uv_idx < (int)uvCoords.size())
-                        vx.uv = uvCoords[uv_idx];
-                    vertices.push_back(vx);
-                }
-                faceVerts.push_back(it->second);
-            }
-            for (size_t i = 1; i + 1 < faceVerts.size(); i++)
-            {
-                Face fc;
-                fc.v[0] = faceVerts[0];
-                fc.v[1] = faceVerts[i];
-                fc.v[2] = faceVerts[i + 1];
-                faces.push_back(fc);
-            }
-        }
-    }
-    std::cout << "OBJ carregado: " << vertices.size()
-              << " vértices, " << faces.size() << " faces\n";
-    return true;
-}
-
-bool QEMSimplifier::saveOBJ(const std::string &path) const
-{
-    std::ofstream f(path);
-    if (!f)
-    {
-        std::cerr << "Erro ao salvar: " << path << "\n";
-        return false;
-    }
-
-    bool hasUV = false;
-    for (auto &v : vertices)
-        if (!v.removed && v.uv.squaredNorm() > 1e-12)
-        {
-            hasUV = true;
-            break;
-        }
-
-    std::vector<int> remap(vertices.size(), -1);
-    int idx = 1;
-    for (int i = 0; i < (int)vertices.size(); i++)
-    {
-        if (!vertices[i].removed)
-        {
-            remap[i] = idx++;
-            const auto &p = vertices[i].pos;
-            f << "v " << p.x() << " " << p.y() << " " << p.z() << "\n";
-        }
-    }
-    if (hasUV)
-    {
-        for (int i = 0; i < (int)vertices.size(); i++)
-        {
-            if (!vertices[i].removed)
-            {
-                const auto &uv = vertices[i].uv;
-                f << "vt " << uv.x() << " " << 1.0 - uv.y() << "\n";
-            }
-        }
-    }
-    for (auto &fc : faces)
-    {
-        if (fc.removed)
-            continue;
-        if (hasUV)
-        {
-            f << "f " << remap[fc.v[0]] << "/" << remap[fc.v[0]] << " "
-              << remap[fc.v[1]] << "/" << remap[fc.v[1]] << " "
-              << remap[fc.v[2]] << "/" << remap[fc.v[2]] << "\n";
-        }
-        else
-        {
-            f << "f " << remap[fc.v[0]] << " "
-              << remap[fc.v[1]] << " "
-              << remap[fc.v[2]] << "\n";
-        }
-    }
-    std::cout << "OBJ salvo: " << path << "\n";
-    return true;
-}
-
 // step 1
-void QEMSimplifier::computeQ()
+void Simplifier::computeQ()
 {
-    for (auto &vx : vertices)
+    for (auto &vx : mesh_.vertices)
         vx.Q.setZero();
 
-    for (auto &fc : faces)
+    for (auto &fc : mesh_.faces)
     {
         if (fc.removed)
             continue;
-        const Eigen::Vector3d &p0 = vertices[fc.v[0]].pos;
-        const Eigen::Vector3d &p1 = vertices[fc.v[1]].pos;
-        const Eigen::Vector3d &p2 = vertices[fc.v[2]].pos;
+        const Eigen::Vector3d &p0 = mesh_.vertices[fc.v[0]].pos;
+        const Eigen::Vector3d &p1 = mesh_.vertices[fc.v[1]].pos;
+        const Eigen::Vector3d &p2 = mesh_.vertices[fc.v[2]].pos;
 
         Eigen::Vector3d n = (p1 - p0).cross(p2 - p0).normalized();
         double d = -n.dot(p0);
 
         Eigen::Matrix4d Kp = quadricFromPlane(n.x(), n.y(), n.z(), d);
 
-        vertices[fc.v[0]].Q += Kp;
-        vertices[fc.v[1]].Q += Kp;
-        vertices[fc.v[2]].Q += Kp;
+        mesh_.vertices[fc.v[0]].Q += Kp;
+        mesh_.vertices[fc.v[1]].Q += Kp;
+        mesh_.vertices[fc.v[2]].Q += Kp;
     }
 }
 
@@ -244,26 +84,26 @@ static Eigen::Vector2d interpolateUVAlongSegment(
     return uvA + t * (uvB - uvA);
 }
 
-void QEMSimplifier::computeEnvelope()
+void Simplifier::computeEnvelope()
 {
-    for (auto &vx : vertices)
+    for (auto &vx : mesh_.vertices)
         vx.envelope.clear();
 
-    for (auto &fc : faces)
+    for (auto &fc : mesh_.faces)
     {
         if (fc.removed)
             continue;
-        const Eigen::Vector3d &p0 = vertices[fc.v[0]].pos;
-        const Eigen::Vector3d &p1 = vertices[fc.v[1]].pos;
-        const Eigen::Vector3d &p2 = vertices[fc.v[2]].pos;
+        const Eigen::Vector3d &p0 = mesh_.vertices[fc.v[0]].pos;
+        const Eigen::Vector3d &p1 = mesh_.vertices[fc.v[1]].pos;
+        const Eigen::Vector3d &p2 = mesh_.vertices[fc.v[2]].pos;
 
         Eigen::Vector3d n = (p1 - p0).cross(p2 - p0).normalized();
         double d = -n.dot(p0);
         Eigen::Vector4d plane(n.x(), n.y(), n.z(), d);
 
-        vertices[fc.v[0]].envelope.push_back(plane);
-        vertices[fc.v[1]].envelope.push_back(plane);
-        vertices[fc.v[2]].envelope.push_back(plane);
+        mesh_.vertices[fc.v[0]].envelope.push_back(plane);
+        mesh_.vertices[fc.v[1]].envelope.push_back(plane);
+        mesh_.vertices[fc.v[2]].envelope.push_back(plane);
     }
 }
 
@@ -272,17 +112,17 @@ void QEMSimplifier::computeEnvelope()
 // nenhum dos 3 candidatos de sempre satisfaz os planos acumulados de v1/v2:
 // a aresta não pode colapsar nesse passo.
 
-bool QEMSimplifier::computeCollapse(int v1, int v2, EdgeCollapse &ec) const
+bool Simplifier::computeCollapse(int v1, int v2, EdgeCollapse &ec) const
 {
     ec.v1 = v1;
     ec.v2 = v2;
 
-    Eigen::Matrix4d Qbar = vertices[v1].Q + vertices[v2].Q;
+    Eigen::Matrix4d Qbar = mesh_.vertices[v1].Q + mesh_.vertices[v2].Q;
 
-    Eigen::Vector3d mid = (vertices[v1].pos + vertices[v2].pos) * 0.5;
-    Eigen::Vector2d midUV = (vertices[v1].uv + vertices[v2].uv) * 0.5;
-    double c1 = evalQuadric(Qbar, vertices[v1].pos.x(), vertices[v1].pos.y(), vertices[v1].pos.z());
-    double c2 = evalQuadric(Qbar, vertices[v2].pos.x(), vertices[v2].pos.y(), vertices[v2].pos.z());
+    Eigen::Vector3d mid = (mesh_.vertices[v1].pos + mesh_.vertices[v2].pos) * 0.5;
+    Eigen::Vector2d midUV = (mesh_.vertices[v1].uv + mesh_.vertices[v2].uv) * 0.5;
+    double c1 = evalQuadric(Qbar, mesh_.vertices[v1].pos.x(), mesh_.vertices[v1].pos.y(), mesh_.vertices[v1].pos.z());
+    double c2 = evalQuadric(Qbar, mesh_.vertices[v2].pos.x(), mesh_.vertices[v2].pos.y(), mesh_.vertices[v2].pos.z());
     double cm = evalQuadric(Qbar, mid.x(), mid.y(), mid.z());
 
     bool hasOpt = false;
@@ -295,7 +135,7 @@ bool QEMSimplifier::computeCollapse(int v1, int v2, EdgeCollapse &ec) const
         if (solveQuadric(Qbar, ox, oy, oz))
         {
             opt = Eigen::Vector3d(ox, oy, oz);
-            optUV = interpolateUVAlongSegment(opt, vertices[v1].pos, vertices[v1].uv, vertices[v2].pos, vertices[v2].uv);
+            optUV = interpolateUVAlongSegment(opt, mesh_.vertices[v1].pos, mesh_.vertices[v1].uv, mesh_.vertices[v2].pos, mesh_.vertices[v2].uv);
             cOpt = evalQuadric(Qbar, ox, oy, oz);
             hasOpt = true;
         }
@@ -304,14 +144,14 @@ bool QEMSimplifier::computeCollapse(int v1, int v2, EdgeCollapse &ec) const
     if (!envelopeConstraint)
     {
         double bestCost = c1;
-        ec.target = vertices[v1].pos;
-        ec.targetUV = vertices[v1].uv;
+        ec.target = mesh_.vertices[v1].pos;
+        ec.targetUV = mesh_.vertices[v1].uv;
         ec.cost = c1;
         if (c2 < bestCost)
         {
             bestCost = c2;
-            ec.target = vertices[v2].pos;
-            ec.targetUV = vertices[v2].uv;
+            ec.target = mesh_.vertices[v2].pos;
+            ec.targetUV = mesh_.vertices[v2].uv;
             ec.cost = c2;
         }
         if (cm < bestCost)
@@ -330,30 +170,30 @@ bool QEMSimplifier::computeCollapse(int v1, int v2, EdgeCollapse &ec) const
         return true;
     }
 
-    bool feas1 = pointSatisfiesPlanes(vertices[v1].pos, vertices[v1].envelope) &&
-                 pointSatisfiesPlanes(vertices[v1].pos, vertices[v2].envelope);
-    bool feas2 = pointSatisfiesPlanes(vertices[v2].pos, vertices[v1].envelope) &&
-                 pointSatisfiesPlanes(vertices[v2].pos, vertices[v2].envelope);
-    bool feasM = pointSatisfiesPlanes(mid, vertices[v1].envelope) &&
-                 pointSatisfiesPlanes(mid, vertices[v2].envelope);
+    bool feas1 = pointSatisfiesPlanes(mesh_.vertices[v1].pos, mesh_.vertices[v1].envelope) &&
+                 pointSatisfiesPlanes(mesh_.vertices[v1].pos, mesh_.vertices[v2].envelope);
+    bool feas2 = pointSatisfiesPlanes(mesh_.vertices[v2].pos, mesh_.vertices[v1].envelope) &&
+                 pointSatisfiesPlanes(mesh_.vertices[v2].pos, mesh_.vertices[v2].envelope);
+    bool feasM = pointSatisfiesPlanes(mid, mesh_.vertices[v1].envelope) &&
+                 pointSatisfiesPlanes(mid, mesh_.vertices[v2].envelope);
     bool feasOpt = hasOpt &&
-                   pointSatisfiesPlanes(opt, vertices[v1].envelope) &&
-                   pointSatisfiesPlanes(opt, vertices[v2].envelope);
+                   pointSatisfiesPlanes(opt, mesh_.vertices[v1].envelope) &&
+                   pointSatisfiesPlanes(opt, mesh_.vertices[v2].envelope);
 
     double bestCost = std::numeric_limits<double>::infinity();
     bool found = false;
     if (feas1 && c1 < bestCost)
     {
-        ec.target = vertices[v1].pos;
-        ec.targetUV = vertices[v1].uv;
+        ec.target = mesh_.vertices[v1].pos;
+        ec.targetUV = mesh_.vertices[v1].uv;
         ec.cost = c1;
         bestCost = c1;
         found = true;
     }
     if (feas2 && c2 < bestCost)
     {
-        ec.target = vertices[v2].pos;
-        ec.targetUV = vertices[v2].uv;
+        ec.target = mesh_.vertices[v2].pos;
+        ec.targetUV = mesh_.vertices[v2].uv;
         ec.cost = c2;
         bestCost = c2;
         found = true;
@@ -384,21 +224,21 @@ bool QEMSimplifier::computeCollapse(int v1, int v2, EdgeCollapse &ec) const
 // (pos v1, pos v2, ponto médio) já são idênticos nos dois lados. A UV de cada
 // lado é interpolada independentemente.
 
-bool QEMSimplifier::computeCollapse(int v1, int v2, int tv1, int tv2, EdgeCollapse &ec) const
+bool Simplifier::computeCollapse(int v1, int v2, int tv1, int tv2, EdgeCollapse &ec) const
 {
     ec.v1 = v1;
     ec.v2 = v2;
     ec.tv1 = tv1;
     ec.tv2 = tv2;
 
-    Eigen::Matrix4d Qbar = vertices[v1].Q + vertices[v2].Q + vertices[tv1].Q + vertices[tv2].Q;
+    Eigen::Matrix4d Qbar = mesh_.vertices[v1].Q + mesh_.vertices[v2].Q + mesh_.vertices[tv1].Q + mesh_.vertices[tv2].Q;
 
-    Eigen::Vector3d mid = (vertices[v1].pos + vertices[v2].pos) * 0.5;
-    Eigen::Vector2d midUV1 = (vertices[v1].uv + vertices[v2].uv) * 0.5;
-    Eigen::Vector2d midUV2 = (vertices[tv1].uv + vertices[tv2].uv) * 0.5;
+    Eigen::Vector3d mid = (mesh_.vertices[v1].pos + mesh_.vertices[v2].pos) * 0.5;
+    Eigen::Vector2d midUV1 = (mesh_.vertices[v1].uv + mesh_.vertices[v2].uv) * 0.5;
+    Eigen::Vector2d midUV2 = (mesh_.vertices[tv1].uv + mesh_.vertices[tv2].uv) * 0.5;
 
-    double c1 = evalQuadric(Qbar, vertices[v1].pos.x(), vertices[v1].pos.y(), vertices[v1].pos.z());
-    double c2 = evalQuadric(Qbar, vertices[v2].pos.x(), vertices[v2].pos.y(), vertices[v2].pos.z());
+    double c1 = evalQuadric(Qbar, mesh_.vertices[v1].pos.x(), mesh_.vertices[v1].pos.y(), mesh_.vertices[v1].pos.z());
+    double c2 = evalQuadric(Qbar, mesh_.vertices[v2].pos.x(), mesh_.vertices[v2].pos.y(), mesh_.vertices[v2].pos.z());
     double cm = evalQuadric(Qbar, mid.x(), mid.y(), mid.z());
 
     bool hasOpt = false;
@@ -411,8 +251,8 @@ bool QEMSimplifier::computeCollapse(int v1, int v2, int tv1, int tv2, EdgeCollap
         if (solveQuadric(Qbar, ox, oy, oz))
         {
             opt = Eigen::Vector3d(ox, oy, oz);
-            optUV1 = interpolateUVAlongSegment(opt, vertices[v1].pos, vertices[v1].uv, vertices[v2].pos, vertices[v2].uv);
-            optUV2 = interpolateUVAlongSegment(opt, vertices[tv1].pos, vertices[tv1].uv, vertices[tv2].pos, vertices[tv2].uv);
+            optUV1 = interpolateUVAlongSegment(opt, mesh_.vertices[v1].pos, mesh_.vertices[v1].uv, mesh_.vertices[v2].pos, mesh_.vertices[v2].uv);
+            optUV2 = interpolateUVAlongSegment(opt, mesh_.vertices[tv1].pos, mesh_.vertices[tv1].uv, mesh_.vertices[tv2].pos, mesh_.vertices[tv2].uv);
             cOpt = evalQuadric(Qbar, ox, oy, oz);
             hasOpt = true;
         }
@@ -421,16 +261,16 @@ bool QEMSimplifier::computeCollapse(int v1, int v2, int tv1, int tv2, EdgeCollap
     if (!envelopeConstraint)
     {
         double bestCost = c1;
-        ec.target = vertices[v1].pos;
-        ec.targetUV = vertices[v1].uv;
-        ec.targetUV2 = vertices[tv1].uv;
+        ec.target = mesh_.vertices[v1].pos;
+        ec.targetUV = mesh_.vertices[v1].uv;
+        ec.targetUV2 = mesh_.vertices[tv1].uv;
         ec.cost = c1;
         if (c2 < bestCost)
         {
             bestCost = c2;
-            ec.target = vertices[v2].pos;
-            ec.targetUV = vertices[v2].uv;
-            ec.targetUV2 = vertices[tv2].uv;
+            ec.target = mesh_.vertices[v2].pos;
+            ec.targetUV = mesh_.vertices[v2].uv;
+            ec.targetUV2 = mesh_.vertices[tv2].uv;
             ec.cost = c2;
         }
         if (cm < bestCost)
@@ -455,13 +295,13 @@ bool QEMSimplifier::computeCollapse(int v1, int v2, int tv1, int tv2, EdgeCollap
     // precisa respeitar os planos acumulados pelos 4, não só pelo par (v1,v2).
     auto feasible = [&](const Eigen::Vector3d &p)
     {
-        return pointSatisfiesPlanes(p, vertices[v1].envelope) &&
-               pointSatisfiesPlanes(p, vertices[v2].envelope) &&
-               pointSatisfiesPlanes(p, vertices[tv1].envelope) &&
-               pointSatisfiesPlanes(p, vertices[tv2].envelope);
+        return pointSatisfiesPlanes(p, mesh_.vertices[v1].envelope) &&
+               pointSatisfiesPlanes(p, mesh_.vertices[v2].envelope) &&
+               pointSatisfiesPlanes(p, mesh_.vertices[tv1].envelope) &&
+               pointSatisfiesPlanes(p, mesh_.vertices[tv2].envelope);
     };
-    bool feas1 = feasible(vertices[v1].pos);
-    bool feas2 = feasible(vertices[v2].pos);
+    bool feas1 = feasible(mesh_.vertices[v1].pos);
+    bool feas2 = feasible(mesh_.vertices[v2].pos);
     bool feasM = feasible(mid);
     bool feasOpt = hasOpt && feasible(opt);
 
@@ -469,18 +309,18 @@ bool QEMSimplifier::computeCollapse(int v1, int v2, int tv1, int tv2, EdgeCollap
     bool found = false;
     if (feas1 && c1 < bestCost)
     {
-        ec.target = vertices[v1].pos;
-        ec.targetUV = vertices[v1].uv;
-        ec.targetUV2 = vertices[tv1].uv;
+        ec.target = mesh_.vertices[v1].pos;
+        ec.targetUV = mesh_.vertices[v1].uv;
+        ec.targetUV2 = mesh_.vertices[tv1].uv;
         ec.cost = c1;
         bestCost = c1;
         found = true;
     }
     if (feas2 && c2 < bestCost)
     {
-        ec.target = vertices[v2].pos;
-        ec.targetUV = vertices[v2].uv;
-        ec.targetUV2 = vertices[tv2].uv;
+        ec.target = mesh_.vertices[v2].pos;
+        ec.targetUV = mesh_.vertices[v2].uv;
+        ec.targetUV2 = mesh_.vertices[tv2].uv;
         ec.cost = c2;
         bestCost = c2;
         found = true;
@@ -508,10 +348,10 @@ bool QEMSimplifier::computeCollapse(int v1, int v2, int tv1, int tv2, EdgeCollap
 }
 
 // Marcação de vértices de boundary (para BoundaryMode::LockSeamVertices)
-void QEMSimplifier::markBoundaryVertices()
+void Simplifier::markBoundaryVertices()
 {
-    boundaryVertex.assign(vertices.size(), false);
-    for (const auto &e : classifyEdges())
+    boundaryVertex.assign(mesh_.vertices.size(), false);
+    for (const auto &e : mesh_.classifyEdges())
     {
         if (!e.boundary)
             continue;
@@ -526,17 +366,17 @@ void QEMSimplifier::markBoundaryVertices()
 // aberta, sem seam) ou >2 (junção de 3+ seams) ficam sem par e permanecem
 // travados, como no modo LockSeamVertices.
 
-void QEMSimplifier::buildSeamTwins()
+void Simplifier::buildSeamTwins()
 {
-    seamTwin.assign(vertices.size(), -1);
+    seamTwin.assign(mesh_.vertices.size(), -1);
 
     using PosKey = std::tuple<double, double, double>;
     std::map<PosKey, std::vector<int>> groups;
-    for (int i = 0; i < (int)vertices.size(); i++)
+    for (int i = 0; i < (int)mesh_.vertices.size(); i++)
     {
-        if (vertices[i].removed || !boundaryVertex[i])
+        if (mesh_.vertices[i].removed || !boundaryVertex[i])
             continue;
-        const auto &p = vertices[i].pos;
+        const auto &p = mesh_.vertices[i].pos;
         groups[{p.x(), p.y(), p.z()}].push_back(i);
     }
 
@@ -555,7 +395,7 @@ void QEMSimplifier::buildSeamTwins()
 
 // Decide o tipo de candidato para a aresta (p,q)
 
-bool QEMSimplifier::buildCandidate(int p, int q, EdgeCollapse &out) const
+bool Simplifier::buildCandidate(int p, int q, EdgeCollapse &out) const
 {
     canonicalize(p, q);
 
@@ -584,10 +424,10 @@ bool QEMSimplifier::buildCandidate(int p, int q, EdgeCollapse &out) const
 
 // Adjacência
 
-void QEMSimplifier::buildAdjacency()
+void Simplifier::buildAdjacency()
 {
-    adjacency.assign(vertices.size(), {});
-    for (auto &fc : faces)
+    adjacency.assign(mesh_.vertices.size(), {});
+    for (auto &fc : mesh_.faces)
     {
         if (fc.removed)
             continue;
@@ -602,7 +442,7 @@ void QEMSimplifier::buildAdjacency()
 
 // Construir a fila de prioridade
 
-void QEMSimplifier::rebuildQueue(
+void Simplifier::rebuildQueue(
     std::priority_queue<EdgeCollapse,
                         std::vector<EdgeCollapse>,
                         std::greater<EdgeCollapse>> &pq)
@@ -611,7 +451,7 @@ void QEMSimplifier::rebuildQueue(
         pq.pop();
     edgeMap.clear();
 
-    for (auto &fc : faces)
+    for (auto &fc : mesh_.faces)
     {
         if (fc.removed)
             continue;
@@ -633,17 +473,17 @@ void QEMSimplifier::rebuildQueue(
 
 //  Aplicar colapso
 
-void QEMSimplifier::mergeVertexPair(int keep, int remove, const Eigen::Vector3d &pos, const Eigen::Vector2d &uv)
+void Simplifier::mergeVertexPair(int keep, int remove, const Eigen::Vector3d &pos, const Eigen::Vector2d &uv)
 {
-    vertices[keep].pos = pos;
-    vertices[keep].uv = uv;
-    vertices[keep].Q += vertices[remove].Q;
-    vertices[keep].envelope.insert(vertices[keep].envelope.end(),
-                                   vertices[remove].envelope.begin(),
-                                   vertices[remove].envelope.end());
-    vertices[remove].removed = true;
+    mesh_.vertices[keep].pos = pos;
+    mesh_.vertices[keep].uv = uv;
+    mesh_.vertices[keep].Q += mesh_.vertices[remove].Q;
+    mesh_.vertices[keep].envelope.insert(mesh_.vertices[keep].envelope.end(),
+                                         mesh_.vertices[remove].envelope.begin(),
+                                         mesh_.vertices[remove].envelope.end());
+    mesh_.vertices[remove].removed = true;
 
-    for (auto &fc : faces)
+    for (auto &fc : mesh_.faces)
     {
         if (fc.removed)
             continue;
@@ -677,45 +517,18 @@ void QEMSimplifier::mergeVertexPair(int keep, int remove, const Eigen::Vector3d 
     adjacency[remove].clear();
 }
 
-void QEMSimplifier::applyCollapse(const EdgeCollapse &ec)
+void Simplifier::applyCollapse(const EdgeCollapse &ec)
 {
     mergeVertexPair(ec.v1, ec.v2, ec.target, ec.targetUV);
     if (ec.tv1 >= 0)
         mergeVertexPair(ec.tv1, ec.tv2, ec.target, ec.targetUV2);
 }
 
-// Classificação de arestas (boundary = referenciada por exatamente 1 face)
-
-std::vector<QEMSimplifier::EdgeInfo> QEMSimplifier::classifyEdges() const
-{
-    std::map<std::pair<int, int>, std::vector<int>> edgeFaces;
-    for (int fi = 0; fi < (int)faces.size(); fi++)
-    {
-        if (faces[fi].removed)
-            continue;
-        for (int i = 0; i < 3; i++)
-        {
-            int a = faces[fi].v[i], b = faces[fi].v[(i + 1) % 3];
-            if (a > b)
-                std::swap(a, b);
-            edgeFaces[{a, b}].push_back(fi);
-        }
-    }
-
-    std::vector<EdgeInfo> result;
-    result.reserve(edgeFaces.size());
-    for (auto &[edge, faceList] : edgeFaces)
-    {
-        result.push_back({edge.first, edge.second, faceList.size() == 1, faceList[0]});
-    }
-    return result;
-}
-
 // Passo 3/4: Penalidade para arestas de fronteira (seams e bordas)
 
-void QEMSimplifier::addBoundaryConstraints(double weight)
+void Simplifier::addBoundaryConstraints(double weight)
 {
-    auto edges = classifyEdges();
+    auto edges = mesh_.classifyEdges();
 
     int count = 0;
     for (auto &e : edges)
@@ -725,23 +538,23 @@ void QEMSimplifier::addBoundaryConstraints(double weight)
         int a = e.v1, b = e.v2;
         int fi = e.faceId;
 
-        const Eigen::Vector3d &p0 = vertices[faces[fi].v[0]].pos;
-        const Eigen::Vector3d &p1 = vertices[faces[fi].v[1]].pos;
-        const Eigen::Vector3d &p2 = vertices[faces[fi].v[2]].pos;
+        const Eigen::Vector3d &p0 = mesh_.vertices[mesh_.faces[fi].v[0]].pos;
+        const Eigen::Vector3d &p1 = mesh_.vertices[mesh_.faces[fi].v[1]].pos;
+        const Eigen::Vector3d &p2 = mesh_.vertices[mesh_.faces[fi].v[2]].pos;
 
         Eigen::Vector3d faceNormal = (p1 - p0).cross(p2 - p0).normalized();
-        Eigen::Vector3d edgeDir = (vertices[b].pos - vertices[a].pos).normalized();
+        Eigen::Vector3d edgeDir = (mesh_.vertices[b].pos - mesh_.vertices[a].pos).normalized();
 
         // Plano perpendicular à face passando pela aresta (Seção 4 do paper)
         Eigen::Vector3d cn = faceNormal.cross(edgeDir);
         if (cn.norm() < 1e-10)
             continue;
         cn.normalize();
-        double d = -cn.dot(vertices[a].pos);
+        double d = -cn.dot(mesh_.vertices[a].pos);
 
         Eigen::Matrix4d Kc = quadricFromPlane(cn.x(), cn.y(), cn.z(), d) * weight;
-        vertices[a].Q += Kc;
-        vertices[b].Q += Kc;
+        mesh_.vertices[a].Q += Kc;
+        mesh_.vertices[b].Q += Kc;
         ++count;
     }
     std::cout << "Boundary constraints: " << count << " arestas de fronteira\n";
@@ -749,7 +562,7 @@ void QEMSimplifier::addBoundaryConstraints(double weight)
 
 // Loop principal
 
-void QEMSimplifier::simplify(int targetFaces, double threshold)
+void Simplifier::run(int targetFaces, double threshold)
 {
 
 // Fundir vértices coincidentes (mesma posição E mesmo UV)
@@ -759,19 +572,19 @@ void QEMSimplifier::simplify(int targetFaces, double threshold)
         using PosUVKey = std::tuple<double, double, double, double, double>;
         std::map<PosUVKey, int> posToIdx;
         int mergedCount = 0;
-        for (int i = 0; i < (int)vertices.size(); i++)
+        for (int i = 0; i < (int)mesh_.vertices.size(); i++)
         {
-            if (vertices[i].removed)
+            if (mesh_.vertices[i].removed)
                 continue;
-            PosUVKey key{vertices[i].pos.x(), vertices[i].pos.y(), vertices[i].pos.z(),
-                         vertices[i].uv.x(), vertices[i].uv.y()};
+            PosUVKey key{mesh_.vertices[i].pos.x(), mesh_.vertices[i].pos.y(), mesh_.vertices[i].pos.z(),
+                         mesh_.vertices[i].uv.x(), mesh_.vertices[i].uv.y()};
             auto res = posToIdx.emplace(key, i);
             if (!res.second)
             {
                 int keep = res.first->second;
-                vertices[i].removed = true;
+                mesh_.vertices[i].removed = true;
                 ++mergedCount;
-                for (auto &fc : faces)
+                for (auto &fc : mesh_.faces)
                 {
                     if (fc.removed)
                         continue;
@@ -814,26 +627,26 @@ void QEMSimplifier::simplify(int targetFaces, double threshold)
     {
         const double t2 = threshold * threshold;
 
-        std::vector<int> byX(vertices.size());
+        std::vector<int> byX(mesh_.vertices.size());
         for (int i = 0; i < (int)byX.size(); i++)
             byX[i] = i;
         std::sort(byX.begin(), byX.end(), [&](int a, int b)
-                  { return vertices[a].pos.x() < vertices[b].pos.x(); });
+                  { return mesh_.vertices[a].pos.x() < mesh_.vertices[b].pos.x(); });
 
         for (int ii = 0; ii < (int)byX.size(); ii++)
         {
             int i = byX[ii];
-            if (vertices[i].removed)
+            if (mesh_.vertices[i].removed)
                 continue;
             for (int jj = ii + 1; jj < (int)byX.size(); jj++)
             {
                 int j = byX[jj];
-                if (vertices[j].removed)
+                if (mesh_.vertices[j].removed)
                     continue;
-                double dx = vertices[j].pos.x() - vertices[i].pos.x();
+                double dx = mesh_.vertices[j].pos.x() - mesh_.vertices[i].pos.x();
                 if (dx > threshold)
                     break;
-                if ((vertices[i].pos - vertices[j].pos).squaredNorm() > t2)
+                if ((mesh_.vertices[i].pos - mesh_.vertices[j].pos).squaredNorm() > t2)
                     continue;
                 int a = i, b = j;
                 canonicalize(a, b);
@@ -853,14 +666,14 @@ void QEMSimplifier::simplify(int targetFaces, double threshold)
         }
     }
 
-    int current = faceCount();
+    int current = mesh_.faceCount();
     std::cout << "Iniciando QEM: " << current << " → " << targetFaces << " faces\n";
 
     std::set<std::pair<int, int>> invalidEdges;
 
     auto refreshAround = [&](int keep)
     {
-        for (auto &fc : faces)
+        for (auto &fc : mesh_.faces)
         {
             if (fc.removed)
                 continue;
@@ -903,9 +716,9 @@ void QEMSimplifier::simplify(int targetFaces, double threshold)
 
         if (invalidEdges.count(key))
             continue;
-        if (vertices[ec.v1].removed || vertices[ec.v2].removed)
+        if (mesh_.vertices[ec.v1].removed || mesh_.vertices[ec.v2].removed)
             continue;
-        if (ec.tv1 >= 0 && (vertices[ec.tv1].removed || vertices[ec.tv2].removed))
+        if (ec.tv1 >= 0 && (mesh_.vertices[ec.tv1].removed || mesh_.vertices[ec.tv2].removed))
             continue;
 
         if (edgeMap.count(key) && std::abs(edgeMap[key].cost - ec.cost) > 1e-6)
@@ -920,7 +733,7 @@ void QEMSimplifier::simplify(int targetFaces, double threshold)
         }
 
         applyCollapse(ec);
-        current = faceCount();
+        current = mesh_.faceCount();
 
         refreshAround(ec.v1);
         if (ec.tv1 >= 0)
@@ -930,6 +743,6 @@ void QEMSimplifier::simplify(int targetFaces, double threshold)
             std::cout << "  faces restantes: " << current << "\n";
     }
 
-    std::cout << "QEM concluído: " << faceCount() << " faces, "
-              << vertexCount() << " vértices\n";
+    std::cout << "QEM concluído: " << mesh_.faceCount() << " faces, "
+              << mesh_.vertexCount() << " vértices\n";
 }

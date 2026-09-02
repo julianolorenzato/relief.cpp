@@ -79,11 +79,11 @@ void MainWindow::setupUI() {
   connect(this->simplifier, &SimplifierModule::simplificationDone,
           this->heightmap, &HeightmapModule::onMeshUpdated);
   connect(this->simplifier, &SimplifierModule::modelLoaded, this,
-          [this](QEMSimplifier *, QEMSimplifier *s) {
+          [this](Mesh *, Mesh *s) {
             this->texturePrep->onModelLoaded(s);
           });
   connect(this->simplifier, &SimplifierModule::simplificationDone, this,
-          [this](QEMSimplifier *, QEMSimplifier *s) {
+          [this](Mesh *, Mesh *s) {
             this->texturePrep->onMeshUpdated(s);
           });
   connect(this->simplifier, &SimplifierModule::modelLoaded, this->relief,

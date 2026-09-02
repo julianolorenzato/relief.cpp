@@ -10,7 +10,7 @@
 #include <QDoubleSpinBox>
 #include <QComboBox>
 #include <QPushButton>
-#include "relief/qem.h"
+#include "relief/mesh.h"
 #include "gui/orbital3dview.h"
 #include "gui/relief_view.h"
 #include "gui/texture_prep_module.h"
@@ -27,7 +27,7 @@ public:
 
 public slots:
     /// Stores the mesh pointers and marks them pending for sync.
-    void setMeshes(QEMSimplifier* original, QEMSimplifier* simplified);
+    void setMeshes(Mesh* original, Mesh* simplified);
     /// Stores the texture-prep source and marks its maps pending for sync.
     void onTexturesReady(TexturePrepModule* source);
     /// Called when this tab is activated — flushes any pending data.
@@ -62,8 +62,8 @@ private:
     bool texturesPending_ = false;
 
     // Non-owned mesh pointers
-    QEMSimplifier* originalMesh_   = nullptr;
-    QEMSimplifier* simplifiedMesh_ = nullptr;
+    Mesh* originalMesh_   = nullptr;
+    Mesh* simplifiedMesh_ = nullptr;
 
     // Non-owned texture-prep source
     TexturePrepModule* texturePrepSource_ = nullptr;

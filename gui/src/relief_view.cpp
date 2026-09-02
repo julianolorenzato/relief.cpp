@@ -23,7 +23,7 @@ namespace
     ///        (with handedness resolved against the accumulated bitangent).
     /// @param[out] verts Interleaved vertex data, 12 floats per vertex.
     /// @param[out] idxs Triangle indices into `verts`.
-    void buildMeshVerts(const QEMSimplifier *mesh,
+    void buildMeshVerts(const Mesh *mesh,
                         std::vector<float> &verts,
                         std::vector<unsigned int> &idxs)
     {
@@ -194,7 +194,7 @@ ReliefView::~ReliefView()
 
 // ─── Public API ───────────────────────────────────────────────────────────────
 
-void ReliefView::setMesh(const QEMSimplifier *mesh)
+void ReliefView::setMesh(const Mesh *mesh)
 {
     this->mesh = mesh;
     update();
