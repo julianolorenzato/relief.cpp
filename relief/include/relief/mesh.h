@@ -1,12 +1,10 @@
 /**
  * @file mesh.h
- * @brief Triangle mesh data type: vertices, faces, OBJ/glTF I/O, and basic
- *        topology queries.
+ * @brief Triangle mesh data type: vertices, faces, textures, and basic
+ *        topology queries. See mesh_io.h for OBJ/glTF I/O.
  */
 #pragma once
 #include <vector>
-#include <map>
-#include <string>
 #include <cstdint>
 #include <Eigen/Dense>
 
@@ -31,29 +29,12 @@ struct Face {
 };
 
 /**
- * @brief Triangle mesh with position/UV/texture data and OBJ/glTF I/O.
+ * @brief Triangle mesh with position/UV/texture data.
  */
 class Mesh {
 public:
     std::vector<Vertex> vertices;
     std::vector<Face>   faces;
-
-    /// @brief Loads a mesh from a Wavefront OBJ file.
-    /// @param path Path to the .obj file.
-    /// @return true on success.
-    bool loadOBJ(const std::string& path);
-    /// @brief Saves the mesh to a Wavefront OBJ file.
-    /// @param path Destination path.
-    /// @return true on success.
-    bool saveOBJ(const std::string& path) const;
-    /// @brief Loads a mesh (and its embedded textures) from a glTF/GLB file.
-    /// @param path Path to the .gltf/.glb file.
-    /// @return true on success.
-    bool loadGLTF(const std::string& path);
-    /// @brief Saves the mesh to a glTF/GLB file.
-    /// @param path Destination path.
-    /// @return true on success.
-    bool saveGLTF(const std::string& path) const;
 
     /// Textures extracted from the source GLTF (RGBA, row-major).
     std::vector<uint8_t> textureData;

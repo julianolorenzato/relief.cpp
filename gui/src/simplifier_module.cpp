@@ -241,9 +241,9 @@ bool SimplifierModule::loadModel(const QString &path)
 
     bool success = false;
     if (path.endsWith(".obj", Qt::CaseInsensitive))
-        success = originalMesh_->loadOBJ(path.toStdString());
+        success = loadOBJ(*originalMesh_, path.toStdString());
     else
-        success = originalMesh_->loadGLTF(path.toStdString());
+        success = loadGLTF(*originalMesh_, path.toStdString());
 
     if (!success)
         return false;
@@ -307,9 +307,9 @@ bool SimplifierModule::saveSimplified(const QString &path)
 
     bool success = false;
     if (path.endsWith(".obj", Qt::CaseInsensitive))
-        success = simplifiedMesh_->saveOBJ(path.toStdString());
+        success = saveOBJ(*simplifiedMesh_, path.toStdString());
     else
-        success = simplifiedMesh_->saveGLTF(path.toStdString());
+        success = saveGLTF(*simplifiedMesh_, path.toStdString());
 
     return success;
 }

@@ -17,11 +17,11 @@ set(TINYGLTF_INSTALL              OFF CACHE BOOL "" FORCE)
 set(TINYGLTF_HEADER_ONLY          ON  CACHE BOOL "" FORCE)
 FetchContent_MakeAvailable(tinygltf)
 
-set_source_files_properties(src/mesh_gltf.cpp PROPERTIES COMPILE_FLAGS "-w")
+set_source_files_properties(src/mesh_io.cpp PROPERTIES COMPILE_FLAGS "-w")
 
 add_library(relief STATIC
     src/mesh.cpp
-    src/mesh_gltf.cpp
+    src/mesh_io.cpp
     src/simplification.cpp
     src/heightmap.cpp
     src/uv_atlas.cpp

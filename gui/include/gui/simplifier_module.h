@@ -13,6 +13,7 @@
 #include <memory>
 #include <vector>
 #include "relief/mesh.h"
+#include "relief/mesh_io.h"
 #include "relief/simplification.h"
 #include "gui/orbital3dview.h"
 
