@@ -547,13 +547,13 @@ void Orbital3DView::buildEdgeBuffers() {
     };
 
     for (const auto& e : edges) {
-        if (!e.boundary) continue;
+        if (!e.isBoundary()) continue;
         append(primaryMesh_->vertices[e.v1].pos, primaryMesh_->vertices[e.v2].pos, kBound);
     }
     boundaryEdgeEnd_ = (int)(lineVerts.size() / 6);
 
     for (const auto& e : edges) {
-        if (e.boundary) continue;
+        if (e.isBoundary()) continue;
         append(primaryMesh_->vertices[e.v1].pos, primaryMesh_->vertices[e.v2].pos, kInternal);
     }
     edgeVertexCount_ = (int)(lineVerts.size() / 6);

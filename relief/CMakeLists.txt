@@ -45,3 +45,8 @@ target_include_directories(relief PRIVATE
     $<TARGET_PROPERTY:tinygltf,INTERFACE_INCLUDE_DIRECTORIES>
 )
 
+# Ferramenta de diagnóstico (temporária): checa se arestas de borda são
+# artefatos de vértices duplicados em costuras de UV/material.
+add_executable(edge_diag tools/edge_diag.cpp)
+target_link_libraries(edge_diag PRIVATE relief)
+

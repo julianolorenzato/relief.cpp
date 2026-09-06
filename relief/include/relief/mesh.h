@@ -6,6 +6,7 @@
 #pragma once
 #include <vector>
 #include <cstdint>
+#include <optional>
 #include <Eigen/Dense>
 
 /// A single mesh vertex: position, accumulated quadric, UV, and (optionally) envelope planes.
@@ -26,6 +27,18 @@ struct Vertex {
 struct Face {
     int  v[3];             ///< Vertex indices.
     bool removed = false;
+};
+
+/// An edge produced by Mesh::classifyEdges: boundary = referenced by exactly
+/// 1 face (same criterion used by Simplifier::addBoundaryConstraints). Used
+/// both internally by the simplifier and by the viewport so both see the
+/// same thing.
+struct Edge {
+    int  v1, v2;
+    std::optional<int> faceId; ///< The (unique) incident face, present iff boundary.
+
+    /// @return true if this edge is referenced by exactly one face.
+    bool isBoundary() const { return faceId.has_value(); }
 };
 
 /**
@@ -50,16 +63,7 @@ public:
     /// @return Number of non-removed vertices.
     int vertexCount() const;
 
-    /// Edge classification: boundary = referenced by exactly 1 face (same
-    /// criterion used by Simplifier::addBoundaryConstraints). Used both
-    /// internally by the simplifier and by the viewport so both see the same
-    /// thing.
-    struct EdgeInfo {
-        int  v1, v2;
-        bool boundary;
-        int  faceId; ///< Reference face (always valid; unique when boundary == true).
-    };
     /// @brief Classifies every edge of the current mesh as boundary or interior.
-    /// @return One EdgeInfo per unique edge.
-    std::vector<EdgeInfo> classifyEdges() const;
+    /// @return One Edge per unique edge.
+    std::vector<Edge> classifyEdges() const;
 };

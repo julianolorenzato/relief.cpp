@@ -111,7 +111,7 @@ public:
     ///        count is reached or no further collapse is cheap enough.
     /// @param targetFaces Desired number of faces to stop at.
     /// @param threshold Maximum acceptable collapse cost; collapses above it are skipped.
-    void run(int targetFaces, double threshold = 0.0);
+    void run(int targetFaces);
 
 private:
     Mesh& mesh_;
@@ -132,9 +132,6 @@ private:
     /// Synchronized version: combines the quadrics of (v1,v2) and of the
     /// mirrored pair (tv1,tv2) to pick a single shared target position.
     bool computeCollapse(int v1, int v2, int tv1, int tv2, EdgeCollapse& out) const;
-    /// Applies a chosen collapse: merges vertices, removes the collapsed
-    /// face(s), and updates adjacency/queue bookkeeping.
-    void applyCollapse(const EdgeCollapse& ec);
     /// Merges `remove` into `keep` at the given position/UV, updating faces and adjacency.
     void mergeVertexPair(int keep, int remove, const Eigen::Vector3d& pos, const Eigen::Vector2d& uv);
     /// Rebuilds the priority queue of candidate collapses from current adjacency.
