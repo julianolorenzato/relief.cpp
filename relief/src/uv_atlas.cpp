@@ -17,66 +17,33 @@ constexpr double kPi = 3.14159265358979323846;
 
 // ─── 3D-edge adjacency (shared by island detection and seam baking) ──────────
 
-/// One face's reference to a shared 3D edge, keyed by the edge's canonical vertex ids.
+/// One face's reference to a shared 3D edge, keyed by the edge's vertex ids.
 struct EdgeRef {
     int face;
-    int vAtFirst;  ///< Mesh vertex index whose canonical position == the edge key's smaller id.
-    int vAtSecond; ///< Mesh vertex index whose canonical position == the edge key's larger id.
+    int cornerAtFirst;  ///< Face corner (0..2) whose vertex == the edge key's smaller id.
+    int cornerAtSecond; ///< Face corner (0..2) whose vertex == the edge key's larger id.
 };
-/// Maps a canonical (small id, large id) edge key to every face referencing it.
+/// Maps a (small id, large id) edge key to every face referencing it.
 using EdgeMap = std::map<std::pair<int, int>, std::vector<EdgeRef>>;
 
-/// Welds vertices that share (approximately) the same 3D position, so faces split
-/// across a UV seam can still be recognized as 3D-adjacent.
-/// @return Per-vertex canonical id (same id for welded vertices); -1 for removed vertices.
-std::vector<int> computeCanonicalPositions(const Mesh& mesh) {
-    Eigen::Vector3d bmin(1e18, 1e18, 1e18), bmax(-1e18, -1e18, -1e18);
-    bool any = false;
-    for (const auto& v : mesh.vertices) {
-        if (v.removed) continue;
-        bmin = bmin.cwiseMin(v.pos);
-        bmax = bmax.cwiseMax(v.pos);
-        any = true;
-    }
-    double diag = any ? (bmax - bmin).norm() : 1.0;
-    if (diag < 1e-12) diag = 1.0;
-    double eps = diag * 1e-6;
-
-    struct Key {
-        int64_t x, y, z;
-        bool operator<(const Key& o) const { return std::tie(x, y, z) < std::tie(o.x, o.y, o.z); }
-    };
-    auto quant = [&](double v) { return (int64_t)std::llround(v / eps); };
-
-    std::map<Key, int> posToId;
-    std::vector<int> canon(mesh.vertices.size(), -1);
-    for (size_t i = 0; i < mesh.vertices.size(); i++) {
-        if (mesh.vertices[i].removed) continue;
-        Key k{quant(mesh.vertices[i].pos.x()), quant(mesh.vertices[i].pos.y()), quant(mesh.vertices[i].pos.z())};
-        auto it = posToId.find(k);
-        if (it == posToId.end()) {
-            int id = (int)posToId.size();
-            posToId[k] = id;
-            canon[i] = id;
-        } else {
-            canon[i] = it->second;
-        }
-    }
-    return canon;
+/// @return The UV used at `ref`'s given corner, in `mesh`.
+Eigen::Vector2d edgeRefUV(const Mesh& mesh, const EdgeRef& ref, bool atFirst) {
+    return mesh.cornerUV(ref.face, atFirst ? ref.cornerAtFirst : ref.cornerAtSecond);
 }
 
-/// Builds the shared-edge map for `mesh`, keyed by canonical (welded) vertex ids.
-EdgeMap buildEdgeMap(const Mesh& mesh, const std::vector<int>& canon) {
+/// Builds the shared-edge map for `mesh`, keyed by (position-)vertex ids.
+/// Vertices are already unique by position, so no welding is needed here.
+EdgeMap buildEdgeMap(const Mesh& mesh) {
     EdgeMap edgeMap;
     for (int f = 0; f < (int)mesh.faces.size(); f++) {
         const auto& face = mesh.faces[f];
         if (face.removed) continue;
         for (int k = 0; k < 3; k++) {
-            int va = face.v[k], vb = face.v[(k + 1) % 3];
-            int ca = canon[va], cb = canon[vb];
-            if (ca < 0 || cb < 0 || ca == cb) continue;
-            if (ca < cb) edgeMap[{ca, cb}].push_back({f, va, vb});
-            else         edgeMap[{cb, ca}].push_back({f, vb, va});
+            int ka = k, kb = (k + 1) % 3;
+            int va = face.v[ka], vb = face.v[kb];
+            if (va == vb) continue;
+            if (va < vb) edgeMap[{va, vb}].push_back({f, ka, kb});
+            else         edgeMap[{vb, va}].push_back({f, kb, ka});
         }
     }
     return edgeMap;
@@ -140,9 +107,9 @@ std::vector<int> buildIslandTexelMap(
         const Face& f = mesh.faces[fi];
         if (f.removed || faceIsland[fi] < 0) continue;
 
-        Eigen::Vector2d uv0 = mesh.vertices[f.v[0]].uv;
-        Eigen::Vector2d uv1 = mesh.vertices[f.v[1]].uv;
-        Eigen::Vector2d uv2 = mesh.vertices[f.v[2]].uv;
+        Eigen::Vector2d uv0 = mesh.cornerUV(fi, 0);
+        Eigen::Vector2d uv1 = mesh.cornerUV(fi, 1);
+        Eigen::Vector2d uv2 = mesh.cornerUV(fi, 2);
         double u0 = uv0.x() * width, v0 = uv0.y() * height;
         double u1 = uv1.x() * width, v1 = uv1.y() * height;
         double u2 = uv2.x() * width, v2 = uv2.y() * height;
@@ -238,8 +205,7 @@ std::vector<int> detectIslands(const Mesh& mesh) {
     std::vector<int> island(nf, -1);
     if (nf == 0) return island;
 
-    std::vector<int> canon = computeCanonicalPositions(mesh);
-    EdgeMap edgeMap = buildEdgeMap(mesh, canon);
+    EdgeMap edgeMap = buildEdgeMap(mesh);
 
     std::vector<int> parent(nf);
     for (int i = 0; i < nf; i++) parent[i] = i;
@@ -260,8 +226,8 @@ std::vector<int> detectIslands(const Mesh& mesh) {
         if (mesh.faces[e0.face].removed || mesh.faces[e1.face].removed) continue;
 
         bool uvMatch =
-            (mesh.vertices[e0.vAtFirst].uv  - mesh.vertices[e1.vAtFirst].uv ).squaredNorm() < kUVEps2 &&
-            (mesh.vertices[e0.vAtSecond].uv - mesh.vertices[e1.vAtSecond].uv).squaredNorm() < kUVEps2;
+            (edgeRefUV(mesh, e0, true)  - edgeRefUV(mesh, e1, true) ).squaredNorm() < kUVEps2 &&
+            (edgeRefUV(mesh, e0, false) - edgeRefUV(mesh, e1, false)).squaredNorm() < kUVEps2;
 
         if (uvMatch) unite(e0.face, e1.face);
     }
@@ -305,8 +271,7 @@ MipPyramid buildOffsetMap(
     double bandWidthUV = (double)std::max(1, seamBandTexels) / (double)std::min(width, height);
     std::vector<int> islandAt = buildIslandTexelMap(mesh, faceIsland, width, height);
 
-    std::vector<int> canon = computeCanonicalPositions(mesh);
-    EdgeMap edgeMap = buildEdgeMap(mesh, canon);
+    EdgeMap edgeMap = buildEdgeMap(mesh);
 
     for (const auto& [key, refs] : edgeMap) {
         if (refs.size() != 2) continue;
@@ -318,8 +283,8 @@ MipPyramid buildOffsetMap(
         int islandB = faceIsland[e1.face];
         if (islandA < 0 || islandB < 0 || islandA == islandB) continue; // not a cross-island seam
 
-        Eigen::Vector2d uvA0 = mesh.vertices[e0.vAtFirst].uv,  uvA1 = mesh.vertices[e0.vAtSecond].uv;
-        Eigen::Vector2d uvB0 = mesh.vertices[e1.vAtFirst].uv,  uvB1 = mesh.vertices[e1.vAtSecond].uv;
+        Eigen::Vector2d uvA0 = edgeRefUV(mesh, e0, true),  uvA1 = edgeRefUV(mesh, e0, false);
+        Eigen::Vector2d uvB0 = edgeRefUV(mesh, e1, true),  uvB1 = edgeRefUV(mesh, e1, false);
 
         Eigen::Vector2d dirA = uvA1 - uvA0;
         Eigen::Vector2d dirB = uvB1 - uvB0;
@@ -366,6 +331,26 @@ MipPyramid buildOffsetMap(
     pyr.width = width; pyr.height = height; pyr.channels = 4;
     pyr.mips.push_back(std::move(data));
     return pyr;
+}
+
+std::vector<std::pair<int, int>> findSeamEdges(const Mesh& mesh) {
+    std::vector<int> faceIsland = detectIslands(mesh);
+    EdgeMap edgeMap = buildEdgeMap(mesh);
+
+    std::vector<std::pair<int, int>> seams;
+    for (const auto& [key, refs] : edgeMap) {
+        if (refs.size() != 2) continue; // boundary or non-manifold: not a seam between islands.
+        const EdgeRef& e0 = refs[0];
+        const EdgeRef& e1 = refs[1];
+        if (mesh.faces[e0.face].removed || mesh.faces[e1.face].removed) continue;
+
+        int islandA = faceIsland[e0.face];
+        int islandB = faceIsland[e1.face];
+        if (islandA < 0 || islandB < 0 || islandA == islandB) continue;
+
+        seams.push_back(key);
+    }
+    return seams;
 }
 
 } // namespace uv_atlas

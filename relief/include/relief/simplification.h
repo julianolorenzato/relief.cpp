@@ -62,25 +62,22 @@ inline bool solveQuadric(const Eigen::Matrix4d& Q, double& ox, double& oy, doubl
 struct EdgeCollapse {
     int             v1, v2;
     Eigen::Vector3d target   = Eigen::Vector3d::Zero();
-    Eigen::Vector2d targetUV = Eigen::Vector2d::Zero();
     double          cost     = 0.0;
 
-    /// When v1/v2 is a seam edge with a synchronized twin (SyncSeamTwins),
-    /// tv1/tv2 is the mirrored edge on the other side of the seam, collapsed
-    /// together to the same 'target' position (but with its own UV, in targetUV2).
-    int             tv1 = -1, tv2 = -1;
-    Eigen::Vector2d targetUV2 = Eigen::Vector2d::Zero();
+    /// Per-incident-face UV pairing for this edge: (uv slot of v1, uv slot of
+    /// v2, interpolated UV at `target`). Usually one entry; two if the edge
+    /// is a UV seam (v1/v2 each carry a different UV per side).
+    std::vector<std::tuple<int, int, Eigen::Vector2d>> uvTargets;
 
     /// Orders collapses cheapest-first when used with std::greater in a priority_queue.
     bool operator>(const EdgeCollapse& o) const { return cost > o.cost; }
 };
 
-/// Controls how mesh boundaries and UV seams are treated during simplification.
+/// Controls how mesh boundaries are treated during simplification.
 enum class BoundaryMode {
-    None,              ///< No boundary/seam constraint at all.
+    None,              ///< No boundary constraint at all.
     Constraint,        ///< Soft penalty (perpendicular-plane quadric).
-    LockSeamVertices,  ///< Hard lock: never collapses an edge touching a boundary vertex.
-    SyncSeamTwins      ///< Collapses seam edges in sync with their mirrored pair on the other side.
+    LockSeamVertices,  ///< Hard lock: never collapses an edge touching a boundary or UV-seam vertex.
 };
 
 /**
@@ -129,11 +126,13 @@ private:
     /// accumulated planes of v1/v2, returning false if none remain viable
     /// (the edge can't collapse at this step).
     bool computeCollapse(int v1, int v2, EdgeCollapse& out) const;
-    /// Synchronized version: combines the quadrics of (v1,v2) and of the
-    /// mirrored pair (tv1,tv2) to pick a single shared target position.
-    bool computeCollapse(int v1, int v2, int tv1, int tv2, EdgeCollapse& out) const;
-    /// Merges `remove` into `keep` at the given position/UV, updating faces and adjacency.
-    void mergeVertexPair(int keep, int remove, const Eigen::Vector3d& pos, const Eigen::Vector2d& uv);
+    /// @return The distinct (uv slot of v1, uv slot of v2) pairs actually
+    ///         used together by some face incident to edge (v1,v2).
+    std::vector<std::pair<int,int>> edgeUVPairs(int v1, int v2) const;
+    /// Merges `remove` into `keep` at the given position, updating faces
+    /// (remapping their per-corner UV slot into `keep`'s UV list) and adjacency.
+    void mergeVertexPair(int keep, int remove, const Eigen::Vector3d& pos,
+                          const std::vector<std::tuple<int,int,Eigen::Vector2d>>& uvTargets);
     /// Rebuilds the priority queue of candidate collapses from current adjacency.
     void rebuildQueue(std::priority_queue<EdgeCollapse,
                                          std::vector<EdgeCollapse>,
@@ -148,27 +147,19 @@ private:
     /// @param weight Relative strength of the boundary quadric.
     void addBoundaryConstraints(double weight = 1000.0);
 
-    /// Used when boundaryMode == LockSeamVertices or SyncSeamTwins: no
-    /// boundary-touching edge may be a collapse candidate.
+    /// Used when boundaryMode == LockSeamVertices: no boundary- or
+    /// UV-seam-touching edge may be a collapse candidate.
     bool lockSeamEdges = false;
     std::vector<bool> boundaryVertex;
-    /// Marks boundaryVertex[i] for every vertex touching a boundary edge.
+    /// Marks boundaryVertex[i] for every vertex touching a boundary edge or a UV seam.
     void markBoundaryVertices();
     /// @return true if the edge (a,b) is locked from collapsing under lockSeamEdges.
     bool edgeLocked(int a, int b) const {
         return lockSeamEdges && (boundaryVertex[a] || boundaryVertex[b]);
     }
 
-    /// Used when boundaryMode == SyncSeamTwins.
-    /// seamTwin[i] = vertex on the other side of the seam, same 3D position,
-    /// different UV; -1 if there's no unique pair (open boundary or a
-    /// junction of 3+ seams), in which case the vertex stays locked as before.
-    bool syncSeamTwins = false;
-    std::vector<int> seamTwin;
-    /// Builds the seamTwin[] mapping by matching boundary vertices that share a 3D position.
-    void buildSeamTwins();
     /// Builds the collapse candidate for edge (p,q), deciding whether it
-    /// should be locked, synchronized with its twin, or handled normally.
+    /// should be locked or handled normally.
     /// @return false if the edge can't be collapsed (locked).
     bool buildCandidate(int p, int q, EdgeCollapse& out) const;
 };

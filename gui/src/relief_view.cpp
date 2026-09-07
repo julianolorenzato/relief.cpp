@@ -30,25 +30,31 @@ namespace
         if (!mesh || mesh->vertices.empty())
             return;
 
-        std::vector<Eigen::Vector3d> normals(mesh->vertices.size(), Eigen::Vector3d::Zero());
-        std::vector<Eigen::Vector3d> tangents(mesh->vertices.size(), Eigen::Vector3d::Zero());
-        std::vector<Eigen::Vector3d> bitangents(mesh->vertices.size(), Eigen::Vector3d::Zero());
+        // A Mesh::Vertex may carry multiple UVs (one per seam shell), so the
+        // GPU buffer needs one entry per distinct (vertex, uv) pair actually
+        // used by a face corner, not one per Mesh::Vertex.
+        Mesh::GPUMesh gpu = mesh->explodeForGPU();
+        if (gpu.positions.empty())
+            return;
 
-        for (const auto &f : mesh->faces)
+        std::vector<Eigen::Vector3d> normals(gpu.positions.size(), Eigen::Vector3d::Zero());
+        std::vector<Eigen::Vector3d> tangents(gpu.positions.size(), Eigen::Vector3d::Zero());
+        std::vector<Eigen::Vector3d> bitangents(gpu.positions.size(), Eigen::Vector3d::Zero());
+
+        for (size_t i = 0; i + 2 < gpu.indices.size(); i += 3)
         {
-            if (f.removed)
-                continue;
-            const Eigen::Vector3d &p0 = mesh->vertices[f.v[0]].pos;
-            const Eigen::Vector3d &p1 = mesh->vertices[f.v[1]].pos;
-            const Eigen::Vector3d &p2 = mesh->vertices[f.v[2]].pos;
-            const Eigen::Vector2d &u0 = mesh->vertices[f.v[0]].uv;
-            const Eigen::Vector2d &u1 = mesh->vertices[f.v[1]].uv;
-            const Eigen::Vector2d &u2 = mesh->vertices[f.v[2]].uv;
+            unsigned int i0 = gpu.indices[i], i1 = gpu.indices[i + 1], i2 = gpu.indices[i + 2];
+            const Eigen::Vector3d &p0 = gpu.positions[i0];
+            const Eigen::Vector3d &p1 = gpu.positions[i1];
+            const Eigen::Vector3d &p2 = gpu.positions[i2];
+            const Eigen::Vector2d &u0 = gpu.uvs[i0];
+            const Eigen::Vector2d &u1 = gpu.uvs[i1];
+            const Eigen::Vector2d &u2 = gpu.uvs[i2];
 
             Eigen::Vector3d n = (p1 - p0).cross(p2 - p0);
-            normals[f.v[0]] += n;
-            normals[f.v[1]] += n;
-            normals[f.v[2]] += n;
+            normals[i0] += n;
+            normals[i1] += n;
+            normals[i2] += n;
 
             Eigen::Vector3d e1 = p1 - p0, e2 = p2 - p0;
             Eigen::Vector2d d1 = u1 - u0, d2 = u2 - u0;
@@ -58,12 +64,12 @@ namespace
                 double r = 1.0 / det;
                 Eigen::Vector3d T = r * (d2.y() * e1 - d1.y() * e2);
                 Eigen::Vector3d B = r * (d1.x() * e2 - d2.x() * e1);
-                tangents[f.v[0]] += T;
-                tangents[f.v[1]] += T;
-                tangents[f.v[2]] += T;
-                bitangents[f.v[0]] += B;
-                bitangents[f.v[1]] += B;
-                bitangents[f.v[2]] += B;
+                tangents[i0] += T;
+                tangents[i1] += T;
+                tangents[i2] += T;
+                bitangents[i0] += B;
+                bitangents[i1] += B;
+                bitangents[i2] += B;
             }
         }
 
@@ -75,7 +81,7 @@ namespace
         // or points the opposite way, otherwise the "V" axis of the tangent
         // frame silently flips for meshes whose UV winding differs (e.g. an
         // OBJ mesh, whose V axis is flipped on load vs. glTF's).
-        std::vector<double> handedness(mesh->vertices.size(), 1.0);
+        std::vector<double> handedness(gpu.positions.size(), 1.0);
         for (size_t i = 0; i < tangents.size(); i++)
         {
             const Eigen::Vector3d &n = normals[i];
@@ -86,37 +92,26 @@ namespace
             handedness[i] = (n.cross(t).dot(bitangents[i]) < 0.0) ? -1.0 : 1.0;
         }
 
-        std::vector<int> remap(mesh->vertices.size(), -1);
-        int cnt = 0;
-        for (size_t i = 0; i < mesh->vertices.size(); i++)
+        for (size_t i = 0; i < gpu.positions.size(); i++)
         {
-            if (mesh->vertices[i].removed)
-                continue;
-            remap[i] = cnt++;
-            const auto &v = mesh->vertices[i];
+            const auto &p = gpu.positions[i];
+            const auto &uv = gpu.uvs[i];
             const auto &n = normals[i];
             const auto &t = tangents[i];
-            verts.push_back((float)v.pos.x());
-            verts.push_back((float)v.pos.y());
-            verts.push_back((float)v.pos.z());
+            verts.push_back((float)p.x());
+            verts.push_back((float)p.y());
+            verts.push_back((float)p.z());
             verts.push_back((float)n.x());
             verts.push_back((float)n.y());
             verts.push_back((float)n.z());
-            verts.push_back((float)v.uv.x());
-            verts.push_back((float)v.uv.y());
+            verts.push_back((float)uv.x());
+            verts.push_back((float)uv.y());
             verts.push_back((float)t.x());
             verts.push_back((float)t.y());
             verts.push_back((float)t.z());
             verts.push_back((float)handedness[i]);
         }
-        for (const auto &f : mesh->faces)
-        {
-            if (f.removed)
-                continue;
-            idxs.push_back(remap[f.v[0]]);
-            idxs.push_back(remap[f.v[1]]);
-            idxs.push_back(remap[f.v[2]]);
-        }
+        idxs.assign(gpu.indices.begin(), gpu.indices.end());
     }
 
     /// @brief Builds a unit-radius lat/long sphere (positions only, unlit

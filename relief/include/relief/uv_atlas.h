@@ -41,4 +41,17 @@ MipPyramid buildOffsetMap(
     int width, int height,
     int seamBandTexels);
 
+/**
+ * @brief Finds edges that lie on a UV seam: shared by exactly two faces
+ *        whose UV islands differ (the same edges buildOffsetMap bakes leap
+ *        data for). An edge whose vertices both carry multiple UVs isn't
+ *        necessarily a seam itself (e.g. the diagonal of a quad split into
+ *        two triangles of the same island) — this checks the actual UV
+ *        agreement between the two incident faces, not just vertex UV count.
+ * @param mesh Mesh whose UV layout defines the seams.
+ * @return One (v1, v2) position-vertex-index pair per seam edge, each
+ *         sorted (v1 <= v2).
+ */
+std::vector<std::pair<int, int>> findSeamEdges(const Mesh& mesh);
+
 } // namespace uv_atlas

@@ -139,7 +139,6 @@ void SimplifierModule::buildUI()
     boundaryModeCombo_->addItem("No constraint", (int)BoundaryMode::None);
     boundaryModeCombo_->addItem("Constraint", (int)BoundaryMode::Constraint);
     boundaryModeCombo_->addItem("Lock seam edges", (int)BoundaryMode::LockSeamVertices);
-    boundaryModeCombo_->addItem("Sync seam twins", (int)BoundaryMode::SyncSeamTwins);
     boundaryModeCombo_->setCurrentIndex(1);
     boundaryRow->addWidget(boundaryModeCombo_, 1);
     controlsRows->addLayout(boundaryRow);
@@ -166,6 +165,11 @@ void SimplifierModule::buildUI()
     connect(showInternalEdgesCheck_, &QCheckBox::toggled, glWidgetOriginal_, &Orbital3DView::setShowInternalEdges);
     connect(showInternalEdgesCheck_, &QCheckBox::toggled, glWidgetSimplified_, &Orbital3DView::setShowInternalEdges);
     controlsRows->addWidget(showInternalEdgesCheck_);
+
+    showSeamEdgesCheck_ = new QCheckBox("Show Seam Edges");
+    connect(showSeamEdgesCheck_, &QCheckBox::toggled, glWidgetOriginal_, &Orbital3DView::setShowSeamEdges);
+    connect(showSeamEdgesCheck_, &QCheckBox::toggled, glWidgetSimplified_, &Orbital3DView::setShowSeamEdges);
+    controlsRows->addWidget(showSeamEdgesCheck_);
 
     layout->addWidget(controlsGroup);
 
@@ -272,11 +276,12 @@ bool SimplifierModule::loadModel(const QString &path)
 
     bool hasUVs = false;
     for (const auto &v : originalMesh_->vertices)
-        if (v.uv.squaredNorm() > 1e-12)
-        {
-            hasUVs = true;
-            break;
-        }
+        for (const auto &uv : v.uvs)
+            if (uv.squaredNorm() > 1e-12)
+            {
+                hasUVs = true;
+                break;
+            }
     uvViewCheck_->setEnabled(hasUVs);
     if (!hasUVs)
         uvViewCheck_->setChecked(false);

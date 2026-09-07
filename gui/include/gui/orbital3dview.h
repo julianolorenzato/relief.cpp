@@ -77,6 +77,7 @@ public slots:
     void setUVMode(bool);
     void setShowBoundaryEdges(bool);
     void setShowInternalEdges(bool);
+    void setShowSeamEdges(bool);
     void setPrimaryColor(const QColor &c);
     void setSecondaryColor(const QColor &c);
 
@@ -110,6 +111,7 @@ private:
     bool uvMode_ = false;
     bool showBoundary_ = false;
     bool showInternal_ = false;
+    bool showSeam_ = false;
 
     // Camera (spherical coordinates)
     float rotX_ = 0.f, rotY_ = 0.f, zoom_ = 3.f;
@@ -149,6 +151,7 @@ private:
     QOpenGLVertexArrayObject edgeVao_;
     int edgeVertexCount_ = 0;
     int boundaryEdgeEnd_ = 0;
+    int seamEdgeEnd_ = 0;
 
     // UV wireframe (UV mode): 2D UV positions sharing primaryEbo_
     QOpenGLBuffer uvVbo_{QOpenGLBuffer::VertexBuffer};

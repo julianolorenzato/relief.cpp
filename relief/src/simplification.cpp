@@ -4,6 +4,7 @@
  *        boundary/seam handling, and the greedy edge-collapse main loop.
  */
 #include "relief/simplification.h"
+#include "relief/uv_atlas.h"
 #include <limits>
 #include <cmath>
 #include <algorithm>
@@ -119,14 +120,12 @@ bool Simplifier::computeCollapse(int v1, int v2, EdgeCollapse &ec) const
     Eigen::Matrix4d Qbar = mesh_.vertices[v1].Q + mesh_.vertices[v2].Q;
 
     Eigen::Vector3d mid = (mesh_.vertices[v1].pos + mesh_.vertices[v2].pos) * 0.5;
-    Eigen::Vector2d midUV = (mesh_.vertices[v1].uv + mesh_.vertices[v2].uv) * 0.5;
     double c1 = evalQuadric(Qbar, mesh_.vertices[v1].pos.x(), mesh_.vertices[v1].pos.y(), mesh_.vertices[v1].pos.z());
     double c2 = evalQuadric(Qbar, mesh_.vertices[v2].pos.x(), mesh_.vertices[v2].pos.y(), mesh_.vertices[v2].pos.z());
     double cm = evalQuadric(Qbar, mid.x(), mid.y(), mid.z());
 
     bool hasOpt = false;
     Eigen::Vector3d opt = Eigen::Vector3d::Zero();
-    Eigen::Vector2d optUV = Eigen::Vector2d::Zero();
     double cOpt = 0.0;
     if (useOptimalCandidate)
     {
@@ -134,218 +133,129 @@ bool Simplifier::computeCollapse(int v1, int v2, EdgeCollapse &ec) const
         if (solveQuadric(Qbar, ox, oy, oz))
         {
             opt = Eigen::Vector3d(ox, oy, oz);
-            optUV = interpolateUVAlongSegment(opt, mesh_.vertices[v1].pos, mesh_.vertices[v1].uv, mesh_.vertices[v2].pos, mesh_.vertices[v2].uv);
             cOpt = evalQuadric(Qbar, ox, oy, oz);
             hasOpt = true;
         }
     }
 
+    bool found = false;
     if (!envelopeConstraint)
     {
         double bestCost = c1;
         ec.target = mesh_.vertices[v1].pos;
-        ec.targetUV = mesh_.vertices[v1].uv;
         ec.cost = c1;
+        found = true;
         if (c2 < bestCost)
         {
             bestCost = c2;
             ec.target = mesh_.vertices[v2].pos;
-            ec.targetUV = mesh_.vertices[v2].uv;
             ec.cost = c2;
         }
         if (cm < bestCost)
         {
             bestCost = cm;
             ec.target = mid;
-            ec.targetUV = midUV;
             ec.cost = cm;
         }
         if (hasOpt && cOpt < bestCost)
         {
             ec.target = opt;
-            ec.targetUV = optUV;
             ec.cost = cOpt;
         }
-        return true;
+    }
+    else
+    {
+        bool feas1 = pointSatisfiesPlanes(mesh_.vertices[v1].pos, mesh_.vertices[v1].envelope) &&
+                     pointSatisfiesPlanes(mesh_.vertices[v1].pos, mesh_.vertices[v2].envelope);
+        bool feas2 = pointSatisfiesPlanes(mesh_.vertices[v2].pos, mesh_.vertices[v1].envelope) &&
+                     pointSatisfiesPlanes(mesh_.vertices[v2].pos, mesh_.vertices[v2].envelope);
+        bool feasM = pointSatisfiesPlanes(mid, mesh_.vertices[v1].envelope) &&
+                     pointSatisfiesPlanes(mid, mesh_.vertices[v2].envelope);
+        bool feasOpt = hasOpt &&
+                       pointSatisfiesPlanes(opt, mesh_.vertices[v1].envelope) &&
+                       pointSatisfiesPlanes(opt, mesh_.vertices[v2].envelope);
+
+        double bestCost = std::numeric_limits<double>::infinity();
+        if (feas1 && c1 < bestCost)
+        {
+            ec.target = mesh_.vertices[v1].pos;
+            ec.cost = c1;
+            bestCost = c1;
+            found = true;
+        }
+        if (feas2 && c2 < bestCost)
+        {
+            ec.target = mesh_.vertices[v2].pos;
+            ec.cost = c2;
+            bestCost = c2;
+            found = true;
+        }
+        if (feasM && cm < bestCost)
+        {
+            ec.target = mid;
+            ec.cost = cm;
+            bestCost = cm;
+            found = true;
+        }
+        if (feasOpt && cOpt < bestCost)
+        {
+            ec.target = opt;
+            ec.cost = cOpt;
+            bestCost = cOpt;
+            found = true;
+        }
     }
 
-    bool feas1 = pointSatisfiesPlanes(mesh_.vertices[v1].pos, mesh_.vertices[v1].envelope) &&
-                 pointSatisfiesPlanes(mesh_.vertices[v1].pos, mesh_.vertices[v2].envelope);
-    bool feas2 = pointSatisfiesPlanes(mesh_.vertices[v2].pos, mesh_.vertices[v1].envelope) &&
-                 pointSatisfiesPlanes(mesh_.vertices[v2].pos, mesh_.vertices[v2].envelope);
-    bool feasM = pointSatisfiesPlanes(mid, mesh_.vertices[v1].envelope) &&
-                 pointSatisfiesPlanes(mid, mesh_.vertices[v2].envelope);
-    bool feasOpt = hasOpt &&
-                   pointSatisfiesPlanes(opt, mesh_.vertices[v1].envelope) &&
-                   pointSatisfiesPlanes(opt, mesh_.vertices[v2].envelope);
+    if (!found)
+        return false;
 
-    double bestCost = std::numeric_limits<double>::infinity();
-    bool found = false;
-    if (feas1 && c1 < bestCost)
+    // UV is purely a function of the chosen 3D target: interpolate each
+    // (v1,v2) UV pairing used by the faces incident to this edge along the
+    // segment, evaluated at ec.target. Usually one pairing; two if this edge
+    // is a UV seam.
+    ec.uvTargets.clear();
+    for (auto &[i1, i2] : edgeUVPairs(v1, v2))
     {
-        ec.target = mesh_.vertices[v1].pos;
-        ec.targetUV = mesh_.vertices[v1].uv;
-        ec.cost = c1;
-        bestCost = c1;
-        found = true;
-    }
-    if (feas2 && c2 < bestCost)
-    {
-        ec.target = mesh_.vertices[v2].pos;
-        ec.targetUV = mesh_.vertices[v2].uv;
-        ec.cost = c2;
-        bestCost = c2;
-        found = true;
-    }
-    if (feasM && cm < bestCost)
-    {
-        ec.target = mid;
-        ec.targetUV = midUV;
-        ec.cost = cm;
-        bestCost = cm;
-        found = true;
-    }
-    if (feasOpt && cOpt < bestCost)
-    {
-        ec.target = opt;
-        ec.targetUV = optUV;
-        ec.cost = cOpt;
-        bestCost = cOpt;
-        found = true;
+        const auto &uvs1 = mesh_.vertices[v1].uvs;
+        const auto &uvs2 = mesh_.vertices[v2].uvs;
+        Eigen::Vector2d uvA = (i1 >= 0 && i1 < (int)uvs1.size()) ? uvs1[i1] : Eigen::Vector2d::Zero();
+        Eigen::Vector2d uvB = (i2 >= 0 && i2 < (int)uvs2.size()) ? uvs2[i2] : Eigen::Vector2d::Zero();
+        Eigen::Vector2d merged = interpolateUVAlongSegment(ec.target, mesh_.vertices[v1].pos, uvA, mesh_.vertices[v2].pos, uvB);
+        ec.uvTargets.push_back({i1, i2, merged});
     }
 
-    return found;
+    return true;
 }
 
-// collapso sincronizado em uma seam
-// Combina as quádricas de ambos os lados para escolher uma única posição-alvo;
-// como twins compartilham a mesma posição 3D, os candidatos de posição
-// (pos v1, pos v2, ponto médio) já são idênticos nos dois lados. A UV de cada
-// lado é interpolada independentemente.
-bool Simplifier::computeCollapse(int v1, int v2, int tv1, int tv2, EdgeCollapse &ec) const
+std::vector<std::pair<int,int>> Simplifier::edgeUVPairs(int v1, int v2) const
 {
-    ec.v1 = v1;
-    ec.v2 = v2;
-    ec.tv1 = tv1;
-    ec.tv2 = tv2;
-
-    Eigen::Matrix4d Qbar = mesh_.vertices[v1].Q + mesh_.vertices[v2].Q + mesh_.vertices[tv1].Q + mesh_.vertices[tv2].Q;
-
-    Eigen::Vector3d mid = (mesh_.vertices[v1].pos + mesh_.vertices[v2].pos) * 0.5;
-    Eigen::Vector2d midUV1 = (mesh_.vertices[v1].uv + mesh_.vertices[v2].uv) * 0.5;
-    Eigen::Vector2d midUV2 = (mesh_.vertices[tv1].uv + mesh_.vertices[tv2].uv) * 0.5;
-
-    double c1 = evalQuadric(Qbar, mesh_.vertices[v1].pos.x(), mesh_.vertices[v1].pos.y(), mesh_.vertices[v1].pos.z());
-    double c2 = evalQuadric(Qbar, mesh_.vertices[v2].pos.x(), mesh_.vertices[v2].pos.y(), mesh_.vertices[v2].pos.z());
-    double cm = evalQuadric(Qbar, mid.x(), mid.y(), mid.z());
-
-    bool hasOpt = false;
-    Eigen::Vector3d opt = Eigen::Vector3d::Zero();
-    Eigen::Vector2d optUV1 = Eigen::Vector2d::Zero(), optUV2 = Eigen::Vector2d::Zero();
-    double cOpt = 0.0;
-    if (useOptimalCandidate)
+    std::vector<std::pair<int,int>> pairs;
+    for (auto &fc : mesh_.faces)
     {
-        double ox, oy, oz;
-        if (solveQuadric(Qbar, ox, oy, oz))
+        if (fc.removed)
+            continue;
+        int i1 = -1, i2 = -1;
+        for (int k = 0; k < 3; k++)
         {
-            opt = Eigen::Vector3d(ox, oy, oz);
-            optUV1 = interpolateUVAlongSegment(opt, mesh_.vertices[v1].pos, mesh_.vertices[v1].uv, mesh_.vertices[v2].pos, mesh_.vertices[v2].uv);
-            optUV2 = interpolateUVAlongSegment(opt, mesh_.vertices[tv1].pos, mesh_.vertices[tv1].uv, mesh_.vertices[tv2].pos, mesh_.vertices[tv2].uv);
-            cOpt = evalQuadric(Qbar, ox, oy, oz);
-            hasOpt = true;
+            if (fc.v[k] == v1) i1 = k;
+            if (fc.v[k] == v2) i2 = k;
         }
+        if (i1 < 0 || i2 < 0)
+            continue;
+        auto p = std::make_pair(fc.uv[i1], fc.uv[i2]);
+        if (std::find(pairs.begin(), pairs.end(), p) == pairs.end())
+            pairs.push_back(p);
     }
-
-    if (!envelopeConstraint)
-    {
-        double bestCost = c1;
-        ec.target = mesh_.vertices[v1].pos;
-        ec.targetUV = mesh_.vertices[v1].uv;
-        ec.targetUV2 = mesh_.vertices[tv1].uv;
-        ec.cost = c1;
-        if (c2 < bestCost)
-        {
-            bestCost = c2;
-            ec.target = mesh_.vertices[v2].pos;
-            ec.targetUV = mesh_.vertices[v2].uv;
-            ec.targetUV2 = mesh_.vertices[tv2].uv;
-            ec.cost = c2;
-        }
-        if (cm < bestCost)
-        {
-            bestCost = cm;
-            ec.target = mid;
-            ec.targetUV = midUV1;
-            ec.targetUV2 = midUV2;
-            ec.cost = cm;
-        }
-        if (hasOpt && cOpt < bestCost)
-        {
-            ec.target = opt;
-            ec.targetUV = optUV1;
-            ec.targetUV2 = optUV2;
-            ec.cost = cOpt;
-        }
-        return true;
-    }
-
-    // As 4 quádricas combinadas vêm de v1, v2, tv1 e tv2 — então o ponto-alvo
-    // precisa respeitar os planos acumulados pelos 4, não só pelo par (v1,v2).
-    auto feasible = [&](const Eigen::Vector3d &p)
-    {
-        return pointSatisfiesPlanes(p, mesh_.vertices[v1].envelope) &&
-               pointSatisfiesPlanes(p, mesh_.vertices[v2].envelope) &&
-               pointSatisfiesPlanes(p, mesh_.vertices[tv1].envelope) &&
-               pointSatisfiesPlanes(p, mesh_.vertices[tv2].envelope);
-    };
-    bool feas1 = feasible(mesh_.vertices[v1].pos);
-    bool feas2 = feasible(mesh_.vertices[v2].pos);
-    bool feasM = feasible(mid);
-    bool feasOpt = hasOpt && feasible(opt);
-
-    double bestCost = std::numeric_limits<double>::infinity();
-    bool found = false;
-    if (feas1 && c1 < bestCost)
-    {
-        ec.target = mesh_.vertices[v1].pos;
-        ec.targetUV = mesh_.vertices[v1].uv;
-        ec.targetUV2 = mesh_.vertices[tv1].uv;
-        ec.cost = c1;
-        bestCost = c1;
-        found = true;
-    }
-    if (feas2 && c2 < bestCost)
-    {
-        ec.target = mesh_.vertices[v2].pos;
-        ec.targetUV = mesh_.vertices[v2].uv;
-        ec.targetUV2 = mesh_.vertices[tv2].uv;
-        ec.cost = c2;
-        bestCost = c2;
-        found = true;
-    }
-    if (feasM && cm < bestCost)
-    {
-        ec.target = mid;
-        ec.targetUV = midUV1;
-        ec.targetUV2 = midUV2;
-        ec.cost = cm;
-        bestCost = cm;
-        found = true;
-    }
-    if (feasOpt && cOpt < bestCost)
-    {
-        ec.target = opt;
-        ec.targetUV = optUV1;
-        ec.targetUV2 = optUV2;
-        ec.cost = cOpt;
-        bestCost = cOpt;
-        found = true;
-    }
-
-    return found;
+    if (pairs.empty())
+        pairs.push_back({0, 0});
+    return pairs;
 }
 
-// Marcação de vértices de boundary (para BoundaryMode::LockSeamVertices)
+// Marcação de vértices de boundary e de seam UV (para BoundaryMode::LockSeamVertices)
+// Desde que vértices passaram a ser únicos por posição, uma aresta de seam
+// não é mais topológica (é referenciada por 2 faces, uma de cada lado, que
+// hoje compartilham vértice de posição) — então precisa ser detectada à
+// parte via uv_atlas::findSeamEdges, não aparece em mesh_.classifyEdges().
 void Simplifier::markBoundaryVertices()
 {
     boundaryVertex.assign(mesh_.vertices.size(), false);
@@ -356,62 +266,17 @@ void Simplifier::markBoundaryVertices()
         boundaryVertex[e.v1] = true;
         boundaryVertex[e.v2] = true;
     }
-}
-
-// Pareamento de vértices-twin de seam (para BoundaryMode::SyncSeamTwins)
-// Agrupa vértices de boundary por posição 3D. Um grupo de tamanho 2 é um par
-// twin (mesma posição, lados opostos da seam). Grupos de tamanho 1 (boundary
-// aberta, sem seam) ou >2 (junção de 3+ seams) ficam sem par e permanecem
-// travados, como no modo LockSeamVertices.
-void Simplifier::buildSeamTwins()
-{
-    seamTwin.assign(mesh_.vertices.size(), -1);
-
-    using PosKey = std::tuple<double, double, double>;
-    std::map<PosKey, std::vector<int>> groups;
-    for (int i = 0; i < (int)mesh_.vertices.size(); i++)
+    for (const auto &[v1, v2] : uv_atlas::findSeamEdges(mesh_))
     {
-        if (mesh_.vertices[i].removed || !boundaryVertex[i])
-            continue;
-        const auto &p = mesh_.vertices[i].pos;
-        groups[{p.x(), p.y(), p.z()}].push_back(i);
+        boundaryVertex[v1] = true;
+        boundaryVertex[v2] = true;
     }
-
-    int pairCount = 0;
-    for (auto &[key, idxs] : groups)
-    {
-        if (idxs.size() == 2)
-        {
-            seamTwin[idxs[0]] = idxs[1];
-            seamTwin[idxs[1]] = idxs[0];
-            ++pairCount;
-        }
-    }
-    std::cout << "Seam twins: " << pairCount << " pares encontrados\n";
 }
 
 // Decide o tipo de candidato para a aresta (p,q)
 bool Simplifier::buildCandidate(int p, int q, EdgeCollapse &out) const
 {
     canonicalize(p, q);
-
-    if (syncSeamTwins && boundaryVertex[p] && boundaryVertex[q])
-    {
-        if (seamTwin[p] < 0 || seamTwin[q] < 0)
-            return false; // sem par: travada
-        int tp = seamTwin[p], tq = seamTwin[q];
-        if (!adjacency[tp].count(tq))
-            return false; // par não forma aresta real: travada
-
-        // Evita construir o candidato duas vezes (uma por lado da seam): só o
-        // lado "menor" lexicograficamente monta o par; o outro é coberto por ele.
-        auto keyPQ = std::minmax(p, q);
-        auto keyTT = std::minmax(tp, tq);
-        if (keyTT < keyPQ)
-            return false;
-
-        return computeCollapse(p, q, tp, tq, out);
-    }
 
     if (edgeLocked(p, q))
         return false;
@@ -463,15 +328,33 @@ void Simplifier::rebuildQueue(
     }
 }
 
-void Simplifier::mergeVertexPair(int keep, int remove, const Eigen::Vector3d &pos, const Eigen::Vector2d &uv)
+void Simplifier::mergeVertexPair(int keep, int remove, const Eigen::Vector3d &pos,
+                                  const std::vector<std::tuple<int,int,Eigen::Vector2d>> &uvTargets)
 {
-    mesh_.vertices[keep].pos = pos;
-    mesh_.vertices[keep].uv = uv;
-    mesh_.vertices[keep].Q += mesh_.vertices[remove].Q;
-    mesh_.vertices[keep].envelope.insert(mesh_.vertices[keep].envelope.end(),
-                                         mesh_.vertices[remove].envelope.begin(),
-                                         mesh_.vertices[remove].envelope.end());
-    mesh_.vertices[remove].removed = true;
+    Vertex &kv = mesh_.vertices[keep];
+    Vertex &rv = mesh_.vertices[remove];
+
+    kv.pos = pos;
+    kv.Q += rv.Q;
+    kv.envelope.insert(kv.envelope.end(), rv.envelope.begin(), rv.envelope.end());
+
+    // Old (remove) UV slot -> new (keep) UV slot. Slots touched by this edge
+    // move to the interpolated target; any other slot `remove` carries (from
+    // an unrelated shell not touching this edge) is appended as-is.
+    std::vector<int> removeUVRemap(std::max<size_t>(rv.uvs.size(), 1), -1);
+    for (auto &[keepUVi, removeUVi, mergedUV] : uvTargets)
+    {
+        if (keepUVi >= (int)kv.uvs.size())
+            kv.uvs.resize(keepUVi + 1, Eigen::Vector2d::Zero());
+        kv.uvs[keepUVi] = mergedUV;
+        if (removeUVi >= 0 && removeUVi < (int)removeUVRemap.size())
+            removeUVRemap[removeUVi] = keepUVi;
+    }
+    for (size_t i = 0; i < rv.uvs.size(); i++)
+        if (removeUVRemap[i] < 0)
+            removeUVRemap[i] = kv.uvIndex(rv.uvs[i]);
+
+    rv.removed = true;
 
     for (auto &fc : mesh_.faces)
     {
@@ -482,7 +365,9 @@ void Simplifier::mergeVertexPair(int keep, int remove, const Eigen::Vector3d &po
         {
             if (fc.v[i] == remove)
             {
+                int oldUV = fc.uv[i];
                 fc.v[i] = keep;
+                fc.uv[i] = (oldUV >= 0 && oldUV < (int)removeUVRemap.size()) ? removeUVRemap[oldUV] : 0;
                 ref = true;
             }
         }
@@ -554,63 +439,19 @@ void Simplifier::addBoundaryConstraints(double weight)
  */
 void Simplifier::run(int targetFaces)
 {
-
-// Fundir vértices coincidentes (mesma posição E mesmo UV): remove duplicatas
-// de índice que não carregam nenhuma informação extra.
-// Vértices na mesma posição com UV diferente são seam pairs: não fundir.
-#if 1
-    {
-        using PosUVKey = std::tuple<double, double, double, double, double>;
-        std::map<PosUVKey, int> posToIdx;
-        int mergedCount = 0;
-        for (int i = 0; i < (int)mesh_.vertices.size(); i++)
-        {
-            if (mesh_.vertices[i].removed)
-                continue;
-            PosUVKey key{mesh_.vertices[i].pos.x(), mesh_.vertices[i].pos.y(), mesh_.vertices[i].pos.z(),
-                         mesh_.vertices[i].uv.x(), mesh_.vertices[i].uv.y()};
-            auto res = posToIdx.emplace(key, i);
-            if (!res.second)
-            {
-                int keep = res.first->second;
-                mesh_.vertices[i].removed = true;
-                ++mergedCount;
-                for (auto &fc : mesh_.faces)
-                {
-                    if (fc.removed)
-                        continue;
-                    bool ref = false;
-                    for (int k = 0; k < 3; k++)
-                        if (fc.v[k] == i)
-                        {
-                            fc.v[k] = keep;
-                            ref = true;
-                        }
-                    if (ref && (fc.v[0] == fc.v[1] || fc.v[1] == fc.v[2] || fc.v[0] == fc.v[2]))
-                        fc.removed = true;
-                }
-            }
-        }
-        std::cout << "Fusao de vertices coincidentes (pos+UV): " << mergedCount << " vertices fundidos\n";
-    }
-#endif
-
     computeQ(); // Q por vértice = soma das quádricas de plano das faces incidentes.
     if (envelopeConstraint)
         computeEnvelope(); // planos por vértice usados para restringir o alvo do colapso ao footprint original.
 
-    // Deriva os dois flags de comportamento a partir do modo de boundary escolhido.
-    syncSeamTwins = (boundaryMode == BoundaryMode::SyncSeamTwins);
-    lockSeamEdges = (boundaryMode == BoundaryMode::LockSeamVertices || syncSeamTwins);
+    // Deriva o flag de comportamento a partir do modo de boundary escolhido.
+    lockSeamEdges = (boundaryMode == BoundaryMode::LockSeamVertices);
 
-    if (boundaryMode == BoundaryMode::Constraint || syncSeamTwins)
-        addBoundaryConstraints(); // penaliza mover arestas de borda/seam para fora do plano original.
+    if (boundaryMode == BoundaryMode::Constraint)
+        addBoundaryConstraints(); // penaliza mover arestas de borda para fora do plano original.
     if (lockSeamEdges)
-        markBoundaryVertices(); // marca vértices de borda/seam para travar suas arestas em buildCandidate/edgeLocked.
+        markBoundaryVertices(); // marca vértices de borda para travar suas arestas em buildCandidate/edgeLocked.
 
-    buildAdjacency(); // vizinhança vértice->vértice, usada por buildCandidate (checar aresta real do twin) e mergeVertexPair.
-    if (syncSeamTwins)
-        buildSeamTwins(); // pareia vértices de borda por posição 3D (dois lados da mesma seam).
+    buildAdjacency(); // vizinhança vértice->vértice, usada por mergeVertexPair.
 
     // Min-heap de candidatos de colapso, ordenada por custo (EdgeCollapse::operator> em simplification.h).
     using PQ = std::priority_queue<EdgeCollapse,
@@ -682,37 +523,25 @@ void Simplifier::run(int targetFaces)
         canonicalize(a, b);
         auto key = std::make_pair(a, b);
 
-        // As 4 checagens abaixo filtram entradas obsoletas da pq (lazy deletion):
+        // As 3 checagens abaixo filtram entradas obsoletas da pq (lazy deletion):
         if (invalidEdges.count(key))
             continue; // aresta já foi colapsada (ou substituída) antes; esta cópia é lixo.
         if (mesh_.vertices[ec.v1].removed || mesh_.vertices[ec.v2].removed)
             continue; // um dos vértices já sumiu em outro colapso.
-        if (ec.tv1 >= 0 && (mesh_.vertices[ec.tv1].removed || mesh_.vertices[ec.tv2].removed))
-            continue; // idem para o par twin, no caso de seam sincronizada.
         if (edgeMap.count(key) && std::abs(edgeMap[key].cost - ec.cost) > 1e-6)
             continue; // existe um EdgeCollapse mais recente pra essa aresta (refreshAround já rodou); esta cópia tem custo desatualizado.
 
-        // Candidato válido e mais barato disponível: consome a aresta (e a do twin, se houver) antes de aplicar,
-        // pra que nenhuma outra cópia dela na pq seja processada de novo depois.
+        // Candidato válido e mais barato disponível: consome a aresta antes de
+        // aplicar, pra que nenhuma outra cópia dela na pq seja processada de novo depois.
         invalidEdges.insert(key);
-        if (ec.tv1 >= 0)
-        {
-            int ta = ec.tv1, tb = ec.tv2;
-            canonicalize(ta, tb);
-            invalidEdges.insert(std::make_pair(ta, tb));
-        }
 
-        // Apply collapse: move v1/tv1 para o ponto-alvo, remove v2/tv2 e as faces degeneradas resultantes.
-        mergeVertexPair(ec.v1, ec.v2, ec.target, ec.targetUV);
-        if (ec.tv1 >= 0)
-            mergeVertexPair(ec.tv1, ec.tv2, ec.target, ec.targetUV2);
-        
+        // Apply collapse: move v1 para o ponto-alvo, remove v2 e as faces degeneradas resultantes.
+        mergeVertexPair(ec.v1, ec.v2, ec.target, ec.uvTargets);
+
         current = mesh_.faceCount();
 
-        // A vizinhança de v1 (e tv1, se seam) mudou: recalcula custos ao redor.
+        // A vizinhança de v1 mudou: recalcula custos ao redor.
         refreshAround(ec.v1);
-        if (ec.tv1 >= 0)
-            refreshAround(ec.tv1);
 
         if (current % 1000 == 0)
             std::cout << "  faces restantes: " << current << "\n";

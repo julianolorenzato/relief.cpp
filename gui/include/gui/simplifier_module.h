@@ -79,6 +79,7 @@ private:
     QCheckBox* useOptimalCandidateCheck_  = nullptr;
     QCheckBox* showBoundaryEdgesCheck_    = nullptr;
     QCheckBox* showInternalEdgesCheck_    = nullptr;
+    QCheckBox* showSeamEdgesCheck_        = nullptr;
 
     QSlider*        inflateSlider_ = nullptr;
     QDoubleSpinBox* inflateSpin_   = nullptr;

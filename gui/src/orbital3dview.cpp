@@ -4,6 +4,7 @@
  *        and the per-mode paint routines (Solid, Overlay, UV).
  */
 #include "gui/orbital3dview.h"
+#include "relief/uv_atlas.h"
 #include <QColorDialog>
 #include <QHBoxLayout>
 #include <QMouseEvent>
@@ -14,6 +15,7 @@
 #include <cmath>
 #include <algorithm>
 #include <iostream>
+#include <set>
 
 // ─── Anonymous helpers ────────────────────────────────────────────────────────
 
@@ -34,21 +36,27 @@ void buildMeshVerts(const Mesh* mesh,
 {
     if (!mesh || mesh->vertices.empty()) return;
 
-    std::vector<Eigen::Vector3d> normals(mesh->vertices.size(), Eigen::Vector3d::Zero());
-    std::vector<Eigen::Vector3d> tangents(mesh->vertices.size(), Eigen::Vector3d::Zero());
-    std::vector<Eigen::Vector3d> bitangents(mesh->vertices.size(), Eigen::Vector3d::Zero());
+    // A Mesh::Vertex may carry multiple UVs (one per seam shell), so the GPU
+    // buffer needs one entry per distinct (vertex, uv) pair actually used by
+    // a face corner, not one per Mesh::Vertex.
+    Mesh::GPUMesh gpu = mesh->explodeForGPU();
+    if (gpu.positions.empty()) return;
 
-    for (const auto& f : mesh->faces) {
-        if (f.removed) continue;
-        const Eigen::Vector3d& p0 = mesh->vertices[f.v[0]].pos;
-        const Eigen::Vector3d& p1 = mesh->vertices[f.v[1]].pos;
-        const Eigen::Vector3d& p2 = mesh->vertices[f.v[2]].pos;
-        const Eigen::Vector2d& u0 = mesh->vertices[f.v[0]].uv;
-        const Eigen::Vector2d& u1 = mesh->vertices[f.v[1]].uv;
-        const Eigen::Vector2d& u2 = mesh->vertices[f.v[2]].uv;
+    std::vector<Eigen::Vector3d> normals(gpu.positions.size(), Eigen::Vector3d::Zero());
+    std::vector<Eigen::Vector3d> tangents(gpu.positions.size(), Eigen::Vector3d::Zero());
+    std::vector<Eigen::Vector3d> bitangents(gpu.positions.size(), Eigen::Vector3d::Zero());
+
+    for (size_t i = 0; i + 2 < gpu.indices.size(); i += 3) {
+        unsigned int i0 = gpu.indices[i], i1 = gpu.indices[i + 1], i2 = gpu.indices[i + 2];
+        const Eigen::Vector3d& p0 = gpu.positions[i0];
+        const Eigen::Vector3d& p1 = gpu.positions[i1];
+        const Eigen::Vector3d& p2 = gpu.positions[i2];
+        const Eigen::Vector2d& u0 = gpu.uvs[i0];
+        const Eigen::Vector2d& u1 = gpu.uvs[i1];
+        const Eigen::Vector2d& u2 = gpu.uvs[i2];
 
         Eigen::Vector3d n = (p1 - p0).cross(p2 - p0);
-        normals[f.v[0]] += n; normals[f.v[1]] += n; normals[f.v[2]] += n;
+        normals[i0] += n; normals[i1] += n; normals[i2] += n;
 
         Eigen::Vector3d e1 = p1 - p0, e2 = p2 - p0;
         Eigen::Vector2d d1 = u1 - u0, d2 = u2 - u0;
@@ -57,13 +65,13 @@ void buildMeshVerts(const Mesh* mesh,
             double r = 1.0 / det;
             Eigen::Vector3d T = r * (d2.y() * e1 - d1.y() * e2);
             Eigen::Vector3d B = r * (d1.x() * e2 - d2.x() * e1);
-            tangents[f.v[0]] += T; tangents[f.v[1]] += T; tangents[f.v[2]] += T;
-            bitangents[f.v[0]] += B; bitangents[f.v[1]] += B; bitangents[f.v[2]] += B;
+            tangents[i0] += T; tangents[i1] += T; tangents[i2] += T;
+            bitangents[i0] += B; bitangents[i1] += B; bitangents[i2] += B;
         }
     }
 
     for (auto& n : normals) n = n.normalized();
-    std::vector<double> handedness(mesh->vertices.size(), 1.0);
+    std::vector<double> handedness(gpu.positions.size(), 1.0);
     for (size_t i = 0; i < tangents.size(); i++) {
         const Eigen::Vector3d& n = normals[i];
         Eigen::Vector3d t = tangents[i] - n * n.dot(tangents[i]);
@@ -73,26 +81,18 @@ void buildMeshVerts(const Mesh* mesh,
         handedness[i] = (n.cross(t).dot(bitangents[i]) < 0.0) ? -1.0 : 1.0;
     }
 
-    std::vector<int> remap(mesh->vertices.size(), -1);
-    int cnt = 0;
-    for (size_t i = 0; i < mesh->vertices.size(); i++) {
-        if (mesh->vertices[i].removed) continue;
-        remap[i] = cnt++;
-        const auto& v = mesh->vertices[i];
+    for (size_t i = 0; i < gpu.positions.size(); i++) {
+        const auto& p = gpu.positions[i];
+        const auto& uv = gpu.uvs[i];
         const auto& n = normals[i];
         const auto& t = tangents[i];
-        verts.push_back((float)v.pos.x()); verts.push_back((float)v.pos.y()); verts.push_back((float)v.pos.z());
-        verts.push_back((float)n.x());     verts.push_back((float)n.y());     verts.push_back((float)n.z());
-        verts.push_back((float)v.uv.x());  verts.push_back((float)v.uv.y());
-        verts.push_back((float)t.x());     verts.push_back((float)t.y());     verts.push_back((float)t.z());
+        verts.push_back((float)p.x());  verts.push_back((float)p.y());  verts.push_back((float)p.z());
+        verts.push_back((float)n.x());  verts.push_back((float)n.y());  verts.push_back((float)n.z());
+        verts.push_back((float)uv.x()); verts.push_back((float)uv.y());
+        verts.push_back((float)t.x());  verts.push_back((float)t.y());  verts.push_back((float)t.z());
         verts.push_back((float)handedness[i]);
     }
-    for (const auto& f : mesh->faces) {
-        if (f.removed) continue;
-        idxs.push_back(remap[f.v[0]]);
-        idxs.push_back(remap[f.v[1]]);
-        idxs.push_back(remap[f.v[2]]);
-    }
+    idxs.assign(gpu.indices.begin(), gpu.indices.end());
 }
 
 /// Uploads interleaved vertex data to a VAO with the standard 12-float
@@ -231,6 +231,7 @@ void Orbital3DView::setTextured(bool v)           { textured_     = v; update();
 void Orbital3DView::setUVMode(bool v)             { uvMode_       = v; update(); }
 void Orbital3DView::setShowBoundaryEdges(bool v)  { showBoundary_ = v; update(); }
 void Orbital3DView::setShowInternalEdges(bool v)  { showInternal_ = v; update(); }
+void Orbital3DView::setShowSeamEdges(bool v)      { showSeam_ = v; update(); }
 
 // ─── GL lifecycle ─────────────────────────────────────────────────────────────
 
@@ -532,9 +533,12 @@ void Orbital3DView::buildEdgeBuffers() {
     if (!primaryMesh_) return;
 
     static const float kBound[3]    = {1.0f, 0.15f, 0.1f};
+    static const float kSeam[3]     = {1.0f, 0.1f,  0.85f};
     static const float kInternal[3] = {0.8f, 0.8f,  0.8f};
 
     auto edges = primaryMesh_->classifyEdges();
+    auto seamPairs = uv_atlas::findSeamEdges(*primaryMesh_);
+    std::set<std::pair<int, int>> seamSet(seamPairs.begin(), seamPairs.end());
 
     std::vector<float> lineVerts;
     lineVerts.reserve(edges.size() * 2 * 6);
@@ -553,7 +557,13 @@ void Orbital3DView::buildEdgeBuffers() {
     boundaryEdgeEnd_ = (int)(lineVerts.size() / 6);
 
     for (const auto& e : edges) {
-        if (e.isBoundary()) continue;
+        if (e.isBoundary() || !seamSet.count({e.v1, e.v2})) continue;
+        append(primaryMesh_->vertices[e.v1].pos, primaryMesh_->vertices[e.v2].pos, kSeam);
+    }
+    seamEdgeEnd_ = (int)(lineVerts.size() / 6);
+
+    for (const auto& e : edges) {
+        if (e.isBoundary() || seamSet.count({e.v1, e.v2})) continue;
         append(primaryMesh_->vertices[e.v1].pos, primaryMesh_->vertices[e.v2].pos, kInternal);
     }
     edgeVertexCount_ = (int)(lineVerts.size() / 6);
@@ -574,11 +584,14 @@ void Orbital3DView::buildEdgeBuffers() {
 void Orbital3DView::buildUVBuffers() {
     if (!primaryMesh_) return;
 
+    // Must match buildMeshVerts' vertex ordering exactly (same exploded
+    // (vertex, uv) pairs, since this buffer shares primaryEbo_ with it).
+    Mesh::GPUMesh gpu = primaryMesh_->explodeForGPU();
     std::vector<float> uvPos;
-    for (const auto& v : primaryMesh_->vertices) {
-        if (v.removed) continue;
-        uvPos.push_back((float)v.uv.x());
-        uvPos.push_back((float)v.uv.y());
+    uvPos.reserve(gpu.uvs.size() * 2);
+    for (const auto& uv : gpu.uvs) {
+        uvPos.push_back((float)uv.x());
+        uvPos.push_back((float)uv.y());
     }
 
     if (!uvVao_.isCreated()) uvVao_.create();
@@ -709,7 +722,7 @@ void Orbital3DView::paintSolid() {
 
     glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
 
-    if ((showBoundary_ || showInternal_) && edgeVao_.isCreated() && edgeVertexCount_ > 0) {
+    if ((showBoundary_ || showInternal_ || showSeam_) && edgeVao_.isCreated() && edgeVertexCount_ > 0) {
         auto proj = projMatrix();
         auto view = viewMatrix();
         auto mdl  = modelMatrix();
@@ -722,8 +735,10 @@ void Orbital3DView::paintSolid() {
         edgeVao_.bind();
         if (showBoundary_ && boundaryEdgeEnd_ > 0)
             glDrawArrays(GL_LINES, 0, boundaryEdgeEnd_);
-        if (showInternal_ && edgeVertexCount_ > boundaryEdgeEnd_)
-            glDrawArrays(GL_LINES, boundaryEdgeEnd_, edgeVertexCount_ - boundaryEdgeEnd_);
+        if (showSeam_ && seamEdgeEnd_ > boundaryEdgeEnd_)
+            glDrawArrays(GL_LINES, boundaryEdgeEnd_, seamEdgeEnd_ - boundaryEdgeEnd_);
+        if (showInternal_ && edgeVertexCount_ > seamEdgeEnd_)
+            glDrawArrays(GL_LINES, seamEdgeEnd_, edgeVertexCount_ - seamEdgeEnd_);
         edgeVao_.release();
         edgeProg_.release();
         glDepthFunc(GL_LESS);

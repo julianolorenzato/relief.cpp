@@ -13,6 +13,8 @@
 #include <fstream>
 #include <sstream>
 #include <map>
+#include <tuple>
+#include <cmath>
 
 // ─── OBJ ──────────────────────────────────────────────────────────────────────
 
@@ -30,7 +32,7 @@ bool loadOBJ(Mesh &mesh, const std::string &path)
 
     std::vector<Eigen::Vector3d> positions;
     std::vector<Eigen::Vector2d> uvCoords;
-    std::map<std::pair<int, int>, int> vertexMap; // (pos_idx, uv_idx) → vertex
+    std::map<int, int> vertexMap; // pos_idx → vertex (vertices are unique by position)
 
     std::string line;
     while (std::getline(f, line))
@@ -58,6 +60,7 @@ bool loadOBJ(Mesh &mesh, const std::string &path)
             // Uma face "f" pode ter 3+ vértices (quads, n-gons); lê todos e
             // faz fan-triangulation em vez de descartar os além do 3º.
             std::vector<int> faceVerts;
+            std::vector<int> faceUVs;
             std::string token;
             while (ss >> token)
             {
@@ -74,17 +77,19 @@ bool loadOBJ(Mesh &mesh, const std::string &path)
                 }
                 if (pos_idx < 0)
                     pos_idx += (int)positions.size() + 1; // índice relativo negativo
-                auto key = std::make_pair(pos_idx, uv_idx);
-                auto [it, inserted] = vertexMap.emplace(key, (int)mesh.vertices.size());
+                auto [it, inserted] = vertexMap.emplace(pos_idx, (int)mesh.vertices.size());
                 if (inserted)
                 {
                     Vertex vx;
                     vx.pos = positions[pos_idx];
-                    if (uv_idx >= 0 && uv_idx < (int)uvCoords.size())
-                        vx.uv = uvCoords[uv_idx];
                     mesh.vertices.push_back(vx);
                 }
-                faceVerts.push_back(it->second);
+                int vIdx = it->second;
+                int localUV = 0;
+                if (uv_idx >= 0 && uv_idx < (int)uvCoords.size())
+                    localUV = mesh.vertices[vIdx].uvIndex(uvCoords[uv_idx]);
+                faceVerts.push_back(vIdx);
+                faceUVs.push_back(localUV);
             }
             for (size_t i = 1; i + 1 < faceVerts.size(); i++)
             {
@@ -92,6 +97,9 @@ bool loadOBJ(Mesh &mesh, const std::string &path)
                 fc.v[0] = faceVerts[0];
                 fc.v[1] = faceVerts[i];
                 fc.v[2] = faceVerts[i + 1];
+                fc.uv[0] = faceUVs[0];
+                fc.uv[1] = faceUVs[i];
+                fc.uv[2] = faceUVs[i + 1];
                 mesh.faces.push_back(fc);
             }
         }
@@ -112,14 +120,18 @@ bool saveOBJ(const Mesh &mesh, const std::string &path)
 
     bool hasUV = false;
     for (auto &v : mesh.vertices)
-        if (!v.removed && v.uv.squaredNorm() > 1e-12)
-        {
-            hasUV = true;
-            break;
-        }
+        if (!v.removed)
+            for (auto &uv : v.uvs)
+                if (uv.squaredNorm() > 1e-12)
+                {
+                    hasUV = true;
+                    break;
+                }
 
     std::vector<int> remap(mesh.vertices.size(), -1);
+    std::vector<int> vtOffset(mesh.vertices.size(), -1);
     int idx = 1;
+    int vtIdx = 1;
     for (int i = 0; i < (int)mesh.vertices.size(); i++)
     {
         if (!mesh.vertices[i].removed)
@@ -135,8 +147,21 @@ bool saveOBJ(const Mesh &mesh, const std::string &path)
         {
             if (!mesh.vertices[i].removed)
             {
-                const auto &uv = mesh.vertices[i].uv;
-                f << "vt " << uv.x() << " " << 1.0 - uv.y() << "\n";
+                vtOffset[i] = vtIdx;
+                const auto &uvs = mesh.vertices[i].uvs;
+                if (uvs.empty())
+                {
+                    f << "vt " << 0.0 << " " << 1.0 << "\n";
+                    vtIdx++;
+                }
+                else
+                {
+                    for (auto &uv : uvs)
+                    {
+                        f << "vt " << uv.x() << " " << 1.0 - uv.y() << "\n";
+                        vtIdx++;
+                    }
+                }
             }
         }
     }
@@ -146,9 +171,9 @@ bool saveOBJ(const Mesh &mesh, const std::string &path)
             continue;
         if (hasUV)
         {
-            f << "f " << remap[fc.v[0]] << "/" << remap[fc.v[0]] << " "
-              << remap[fc.v[1]] << "/" << remap[fc.v[1]] << " "
-              << remap[fc.v[2]] << "/" << remap[fc.v[2]] << "\n";
+            f << "f " << remap[fc.v[0]] << "/" << (vtOffset[fc.v[0]] + fc.uv[0]) << " "
+              << remap[fc.v[1]] << "/" << (vtOffset[fc.v[1]] + fc.uv[1]) << " "
+              << remap[fc.v[2]] << "/" << (vtOffset[fc.v[2]] + fc.uv[2]) << "\n";
         }
         else
         {
@@ -245,6 +270,47 @@ bool loadGLTF(Mesh &mesh, const std::string &path)
     mesh.normalTextureData.clear();
     mesh.normalTextureWidth = mesh.normalTextureHeight = 0;
 
+    // ── Weld vertices by position (glTF buffers are already GPU-exploded: a
+    //    UV seam duplicates the position). Epsilon is relative to the
+    //    combined bounding box of every POSITION accessor we'll read.
+    Eigen::Vector3d bmin(1e18, 1e18, 1e18), bmax(-1e18, -1e18, -1e18);
+    for (const auto &gltfMesh : model.meshes)
+        for (const auto &prim : gltfMesh.primitives)
+        {
+            auto posIt = prim.attributes.find("POSITION");
+            if (posIt == prim.attributes.end()) continue;
+            const auto &acc = model.accessors[posIt->second];
+            if (acc.minValues.size() == 3 && acc.maxValues.size() == 3)
+            {
+                bmin = bmin.cwiseMin(Eigen::Vector3d(acc.minValues[0], acc.minValues[1], acc.minValues[2]));
+                bmax = bmax.cwiseMax(Eigen::Vector3d(acc.maxValues[0], acc.maxValues[1], acc.maxValues[2]));
+            }
+        }
+    double diag = (bmax - bmin).norm();
+    if (!(diag > 1e-12)) diag = 1.0;
+    double weldEps = diag * 1e-6;
+
+    struct PosKey
+    {
+        int64_t x, y, z;
+        bool operator<(const PosKey &o) const { return std::tie(x, y, z) < std::tie(o.x, o.y, o.z); }
+    };
+    auto quant = [&](double v) { return (int64_t)std::llround(v / weldEps); };
+    std::map<PosKey, int> posToVertex;
+    auto weldVertex = [&](const Eigen::Vector3d &p) -> int
+    {
+        PosKey k{quant(p.x()), quant(p.y()), quant(p.z())};
+        auto it = posToVertex.find(k);
+        if (it != posToVertex.end())
+            return it->second;
+        int id = (int)mesh.vertices.size();
+        posToVertex[k] = id;
+        Vertex v;
+        v.pos = p;
+        mesh.vertices.push_back(v);
+        return id;
+    };
+
     for (const auto &gltfMesh : model.meshes)
     {
         for (const auto &prim : gltfMesh.primitives)
@@ -268,18 +334,18 @@ bool loadGLTF(Mesh &mesh, const std::string &path)
                                    ? 3 * sizeof(float)
                                    : posView.byteStride;
 
-            int vertexOffset = (int)mesh.vertices.size();
-
+            // Raw (un-welded) local index -> welded mesh vertex index.
+            std::vector<int> localToMesh(posAcc.count);
             for (size_t i = 0; i < posAcc.count; i++)
             {
                 const float *p = reinterpret_cast<const float *>(
                     reinterpret_cast<const uint8_t *>(posPtr) + i * posStride);
-                Vertex v;
-                v.pos = Eigen::Vector3d(p[0], p[1], p[2]);
-                mesh.vertices.push_back(v);
+                localToMesh[i] = weldVertex(Eigen::Vector3d(p[0], p[1], p[2]));
             }
 
-            // UV (TEXCOORD_0)
+            // UV (TEXCOORD_0): raw local index -> UV value, if present.
+            std::vector<Eigen::Vector2d> localUV;
+            bool hasUV = false;
             auto uvIt = prim.attributes.find("TEXCOORD_0");
             if (uvIt != prim.attributes.end())
             {
@@ -287,31 +353,41 @@ bool loadGLTF(Mesh &mesh, const std::string &path)
                 if (uvAcc.componentType == TINYGLTF_COMPONENT_TYPE_FLOAT &&
                     uvAcc.type == TINYGLTF_TYPE_VEC2)
                 {
+                    hasUV = true;
+                    localUV.resize(posAcc.count, Eigen::Vector2d::Zero());
                     const float *uvPtr = accessorData<float>(model, uvIt->second);
                     const auto &uvView = model.bufferViews[uvAcc.bufferView];
                     size_t uvStride = uvView.byteStride == 0
                                           ? 2 * sizeof(float)
                                           : uvView.byteStride;
-                    for (size_t i = 0; i < uvAcc.count && (vertexOffset + (int)i) < (int)mesh.vertices.size(); i++)
+                    for (size_t i = 0; i < uvAcc.count && i < posAcc.count; i++)
                     {
                         const float *uv = reinterpret_cast<const float *>(
                             reinterpret_cast<const uint8_t *>(uvPtr) + i * uvStride);
-                        mesh.vertices[vertexOffset + i].uv = Eigen::Vector2d(uv[0], uv[1]);
+                        localUV[i] = Eigen::Vector2d(uv[0], uv[1]);
                     }
                 }
             }
+
+            // Builds a Face from 3 raw local indices, welding vertices and
+            // registering each corner's UV on its (welded) vertex.
+            auto makeFace = [&](size_t i0, size_t i1, size_t i2)
+            {
+                Face f;
+                size_t li[3] = {i0, i1, i2};
+                for (int k = 0; k < 3; k++)
+                {
+                    f.v[k] = localToMesh[li[k]];
+                    f.uv[k] = hasUV ? mesh.vertices[f.v[k]].uvIndex(localUV[li[k]]) : 0;
+                }
+                mesh.faces.push_back(f);
+            };
 
             if (prim.indices < 0)
             {
                 // Sem buffer de índices: assume triângulos sequenciais
                 for (size_t i = 0; i + 2 < posAcc.count; i += 3)
-                {
-                    Face f;
-                    f.v[0] = vertexOffset + (int)i;
-                    f.v[1] = vertexOffset + (int)i + 1;
-                    f.v[2] = vertexOffset + (int)i + 2;
-                    mesh.faces.push_back(f);
-                }
+                    makeFace(i, i + 1, i + 2);
             }
             else
             {
@@ -321,13 +397,7 @@ bool loadGLTF(Mesh &mesh, const std::string &path)
                 auto addFaces = [&](auto *idx)
                 {
                     for (size_t i = 0; i + 2 < idxCount; i += 3)
-                    {
-                        Face f;
-                        f.v[0] = vertexOffset + (int)idx[i];
-                        f.v[1] = vertexOffset + (int)idx[i + 1];
-                        f.v[2] = vertexOffset + (int)idx[i + 2];
-                        mesh.faces.push_back(f);
-                    }
+                        makeFace((size_t)idx[i], (size_t)idx[i + 1], (size_t)idx[i + 2]);
                 };
 
                 switch (idxAcc.componentType)
@@ -388,49 +458,61 @@ bool loadGLTF(Mesh &mesh, const std::string &path)
 
 bool saveGLTF(const Mesh &mesh, const std::string &path)
 {
-    // Compactar vértices (remover os marcados como removed)
-    std::vector<int> remap(mesh.vertices.size(), -1);
-    std::vector<float> positions;
-    int newIdx = 0;
-    for (int i = 0; i < (int)mesh.vertices.size(); i++)
-    {
-        if (!mesh.vertices[i].removed)
-        {
-            remap[i] = newIdx++;
-            positions.push_back(mesh.vertices[i].pos.x());
-            positions.push_back(mesh.vertices[i].pos.y());
-            positions.push_back(mesh.vertices[i].pos.z());
-        }
-    }
+    // Explode em vértices GPU-friendly: cada (vértice, slot de UV) distinto
+    // usado por algum canto de face vira um vértice único aqui.
+    Mesh::GPUMesh gpu = mesh.explodeForGPU();
 
-    std::vector<uint32_t> indices;
-    for (const auto &fc : mesh.faces)
-    {
-        if (fc.removed)
-            continue;
-        indices.push_back((uint32_t)remap[fc.v[0]]);
-        indices.push_back((uint32_t)remap[fc.v[1]]);
-        indices.push_back((uint32_t)remap[fc.v[2]]);
-    }
-
-    if (positions.empty() || indices.empty())
+    if (gpu.positions.empty() || gpu.indices.empty())
     {
         std::cerr << "GLTF: malha vazia, nada a salvar\n";
         return false;
     }
 
+    bool hasUV = false;
+    for (auto &uv : gpu.uvs)
+        if (uv.squaredNorm() > 1e-12)
+        {
+            hasUV = true;
+            break;
+        }
+
+    std::vector<float> positions;
+    positions.reserve(gpu.positions.size() * 3);
+    for (auto &p : gpu.positions)
+    {
+        positions.push_back((float)p.x());
+        positions.push_back((float)p.y());
+        positions.push_back((float)p.z());
+    }
+
+    std::vector<float> uvs;
+    if (hasUV)
+    {
+        uvs.reserve(gpu.uvs.size() * 2);
+        for (auto &uv : gpu.uvs)
+        {
+            uvs.push_back((float)uv.x());
+            uvs.push_back((float)uv.y());
+        }
+    }
+
+    const std::vector<uint32_t> &indices = gpu.indices;
+
     tinygltf::Model model;
     model.asset.version = "2.0";
     model.asset.generator = "QEM Simplifier";
 
-    // ── Buffer único: [positions | indices] ──────────────────────────────────
+    // ── Buffer único: [positions | uvs? | indices] ────────────────────────────
     size_t posBytes = positions.size() * sizeof(float);
+    size_t uvBytes = uvs.size() * sizeof(float);
     size_t idxBytes = indices.size() * sizeof(uint32_t);
 
     tinygltf::Buffer buf;
-    buf.data.resize(posBytes + idxBytes);
+    buf.data.resize(posBytes + uvBytes + idxBytes);
     std::memcpy(buf.data.data(), positions.data(), posBytes);
-    std::memcpy(buf.data.data() + posBytes, indices.data(), idxBytes);
+    if (hasUV)
+        std::memcpy(buf.data.data() + posBytes, uvs.data(), uvBytes);
+    std::memcpy(buf.data.data() + posBytes + uvBytes, indices.data(), idxBytes);
     model.buffers.push_back(std::move(buf));
 
     // ── Buffer views ──────────────────────────────────────────────────────────
@@ -441,11 +523,24 @@ bool saveGLTF(const Mesh &mesh, const std::string &path)
     posView.target = TINYGLTF_TARGET_ARRAY_BUFFER;
     model.bufferViews.push_back(posView);
 
+    int uvViewIdx = -1;
+    if (hasUV)
+    {
+        tinygltf::BufferView uvView;
+        uvView.buffer = 0;
+        uvView.byteOffset = posBytes;
+        uvView.byteLength = uvBytes;
+        uvView.target = TINYGLTF_TARGET_ARRAY_BUFFER;
+        uvViewIdx = (int)model.bufferViews.size();
+        model.bufferViews.push_back(uvView);
+    }
+
     tinygltf::BufferView idxView;
     idxView.buffer = 0;
-    idxView.byteOffset = posBytes;
+    idxView.byteOffset = posBytes + uvBytes;
     idxView.byteLength = idxBytes;
     idxView.target = TINYGLTF_TARGET_ELEMENT_ARRAY_BUFFER;
+    int idxViewIdx = (int)model.bufferViews.size();
     model.bufferViews.push_back(idxView);
 
     // ── Bounding box para o accessor de posições ──────────────────────────────
@@ -466,24 +561,41 @@ bool saveGLTF(const Mesh &mesh, const std::string &path)
     posAcc.bufferView = 0;
     posAcc.byteOffset = 0;
     posAcc.componentType = TINYGLTF_COMPONENT_TYPE_FLOAT;
-    posAcc.count = (size_t)newIdx;
+    posAcc.count = gpu.positions.size();
     posAcc.type = TINYGLTF_TYPE_VEC3;
     posAcc.minValues = {(double)minX, (double)minY, (double)minZ};
     posAcc.maxValues = {(double)maxX, (double)maxY, (double)maxZ};
+    int posAccIdx = (int)model.accessors.size();
     model.accessors.push_back(posAcc);
 
+    int uvAccIdx = -1;
+    if (hasUV)
+    {
+        tinygltf::Accessor uvAcc;
+        uvAcc.bufferView = uvViewIdx;
+        uvAcc.byteOffset = 0;
+        uvAcc.componentType = TINYGLTF_COMPONENT_TYPE_FLOAT;
+        uvAcc.count = gpu.uvs.size();
+        uvAcc.type = TINYGLTF_TYPE_VEC2;
+        uvAccIdx = (int)model.accessors.size();
+        model.accessors.push_back(uvAcc);
+    }
+
     tinygltf::Accessor idxAcc;
-    idxAcc.bufferView = 1;
+    idxAcc.bufferView = idxViewIdx;
     idxAcc.byteOffset = 0;
     idxAcc.componentType = TINYGLTF_COMPONENT_TYPE_UNSIGNED_INT;
     idxAcc.count = indices.size();
     idxAcc.type = TINYGLTF_TYPE_SCALAR;
+    int idxAccIdx = (int)model.accessors.size();
     model.accessors.push_back(idxAcc);
 
     // ── Mesh ──────────────────────────────────────────────────────────────────
     tinygltf::Primitive prim;
-    prim.attributes["POSITION"] = 0;
-    prim.indices = 1;
+    prim.attributes["POSITION"] = posAccIdx;
+    if (hasUV)
+        prim.attributes["TEXCOORD_0"] = uvAccIdx;
+    prim.indices = idxAccIdx;
     prim.mode = TINYGLTF_MODE_TRIANGLES;
 
     tinygltf::Mesh gltfMesh;

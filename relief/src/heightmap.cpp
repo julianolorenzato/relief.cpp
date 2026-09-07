@@ -59,9 +59,9 @@ HeightmapBaker::rasterizeUV(const Mesh &mesh, int W, int H)
             continue;
         n.normalize();
 
-        const auto &uv0 = mesh.vertices[fc.v[0]].uv;
-        const auto &uv1 = mesh.vertices[fc.v[1]].uv;
-        const auto &uv2 = mesh.vertices[fc.v[2]].uv;
+        Eigen::Vector2d uv0 = mesh.cornerUV(fi, 0);
+        Eigen::Vector2d uv1 = mesh.cornerUV(fi, 1);
+        Eigen::Vector2d uv2 = mesh.cornerUV(fi, 2);
 
         double u0 = uv0.x() * W, v0 = uv0.y() * H;
         double u1 = uv1.x() * W, v1 = uv1.y() * H;
