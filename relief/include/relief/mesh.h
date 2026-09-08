@@ -1,7 +1,7 @@
 /**
  * @file mesh.h
  * @brief Triangle mesh data type: vertices, faces, textures, and basic
- *        topology queries. See mesh_io.h for OBJ/glTF I/O.
+ *        topology queries. See mesh/io.h for OBJ/glTF I/O.
  */
 #pragma once
 #include <vector>

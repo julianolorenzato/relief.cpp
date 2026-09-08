@@ -6,18 +6,13 @@
  *        position, different vertex index). Not part of the library build.
  */
 #include "relief/mesh.h"
-#include "relief/mesh_io.h"
+#include "relief/mesh/io.h"
 #include <iostream>
 #include <map>
 #include <string>
 #include <array>
 #include <cmath>
 #include <vector>
-
-static bool endsWith(const std::string &s, const std::string &suf)
-{
-    return s.size() >= suf.size() && s.compare(s.size() - suf.size(), suf.size(), suf) == 0;
-}
 
 int main(int argc, char **argv)
 {
@@ -29,7 +24,7 @@ int main(int argc, char **argv)
     std::string path = argv[1];
 
     Mesh mesh;
-    bool ok = endsWith(path, ".obj") ? loadOBJ(mesh, path) : loadGLTF(mesh, path);
+    bool ok = loadMesh(mesh, path);
     if (!ok)
     {
         std::cerr << "falha ao carregar " << path << "\n";

@@ -26,7 +26,7 @@
 #include <cmath>
 
 #include "gui/texture_inspector_widget.h"
-#include "relief/mesh_io.h"
+#include "relief/mesh/io.h"
 #include "relief/textures.h"
 #include "relief/uv_atlas.h"
 
@@ -345,9 +345,7 @@ void ReliefSandboxModule::onLoadMesh() {
     if (path.isEmpty()) return;
 
     auto m = std::make_unique<Mesh>();
-    bool ok = path.endsWith(".obj", Qt::CaseInsensitive)
-                  ? loadOBJ(*m, path.toStdString())
-                  : loadGLTF(*m, path.toStdString());
+    bool ok = loadMesh(*m, path.toStdString());
 
     if (!ok) {
         QMessageBox::critical(this, "Error", "Failed to load mesh file.");

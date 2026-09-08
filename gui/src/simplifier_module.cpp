@@ -238,11 +238,7 @@ bool SimplifierModule::loadModel(const QString &path)
     originalMesh_ = std::make_unique<Mesh>();
     simplifiedMesh_ = std::make_unique<Mesh>();
 
-    bool success = false;
-    if (path.endsWith(".obj", Qt::CaseInsensitive))
-        success = loadOBJ(*originalMesh_, path.toStdString());
-    else
-        success = loadGLTF(*originalMesh_, path.toStdString());
+    bool success = loadMesh(*originalMesh_, path.toStdString());
 
     if (!success)
         return false;
@@ -305,11 +301,7 @@ bool SimplifierModule::saveSimplified(const QString &path)
     if (!simplifiedMesh_ || simplifiedMesh_->faceCount() == 0)
         return false;
 
-    bool success = false;
-    if (path.endsWith(".obj", Qt::CaseInsensitive))
-        success = saveOBJ(*simplifiedMesh_, path.toStdString());
-    else
-        success = saveGLTF(*simplifiedMesh_, path.toStdString());
+    bool success = saveMesh(*simplifiedMesh_, path.toStdString());
 
     return success;
 }
