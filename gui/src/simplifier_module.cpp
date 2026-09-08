@@ -156,11 +156,6 @@ void SimplifierModule::buildUI()
         "de colapso, alem de v1, v2 e ponto medio.");
     controlsRows->addWidget(useOptimalCandidateCheck_);
 
-    showBoundaryEdgesCheck_ = new QCheckBox("Show Boundary Edges");
-    connect(showBoundaryEdgesCheck_, &QCheckBox::toggled, glWidgetOriginal_, &Orbital3DView::setShowBoundaryEdges);
-    connect(showBoundaryEdgesCheck_, &QCheckBox::toggled, glWidgetSimplified_, &Orbital3DView::setShowBoundaryEdges);
-    controlsRows->addWidget(showBoundaryEdgesCheck_);
-
     showInternalEdgesCheck_ = new QCheckBox("Show Internal Edges");
     connect(showInternalEdgesCheck_, &QCheckBox::toggled, glWidgetOriginal_, &Orbital3DView::setShowInternalEdges);
     connect(showInternalEdgesCheck_, &QCheckBox::toggled, glWidgetSimplified_, &Orbital3DView::setShowInternalEdges);

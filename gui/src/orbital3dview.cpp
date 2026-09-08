@@ -229,7 +229,6 @@ void Orbital3DView::setWireframe(bool v)         { wireframe_    = v; update(); 
 void Orbital3DView::setCullFace(bool v)           { cullFace_     = v; update(); }
 void Orbital3DView::setTextured(bool v)           { textured_     = v; update(); }
 void Orbital3DView::setUVMode(bool v)             { uvMode_       = v; update(); }
-void Orbital3DView::setShowBoundaryEdges(bool v)  { showBoundary_ = v; update(); }
 void Orbital3DView::setShowInternalEdges(bool v)  { showInternal_ = v; update(); }
 void Orbital3DView::setShowSeamEdges(bool v)      { showSeam_ = v; update(); }
 
@@ -532,16 +531,15 @@ void Orbital3DView::buildSecondaryBuffers() {
 void Orbital3DView::buildEdgeBuffers() {
     if (!primaryMesh_) return;
 
-    static const float kBound[3]    = {1.0f, 0.15f, 0.1f};
     static const float kSeam[3]     = {1.0f, 0.1f,  0.85f};
     static const float kInternal[3] = {0.8f, 0.8f,  0.8f};
 
-    auto edges = primaryMesh_->classifyEdges();
+    auto edgeFaces = primaryMesh_->buildEdgeFaces();
     auto seamPairs = uv_atlas::findSeamEdges(*primaryMesh_);
     std::set<std::pair<int, int>> seamSet(seamPairs.begin(), seamPairs.end());
 
     std::vector<float> lineVerts;
-    lineVerts.reserve(edges.size() * 2 * 6);
+    lineVerts.reserve(edgeFaces.size() * 2 * 6);
 
     auto append = [&](const Eigen::Vector3d& a, const Eigen::Vector3d& b, const float* c) {
         lineVerts.push_back((float)a.x()); lineVerts.push_back((float)a.y()); lineVerts.push_back((float)a.z());
@@ -550,21 +548,15 @@ void Orbital3DView::buildEdgeBuffers() {
         lineVerts.push_back(c[0]); lineVerts.push_back(c[1]); lineVerts.push_back(c[2]);
     };
 
-    for (const auto& e : edges) {
-        if (!e.isBoundary()) continue;
-        append(primaryMesh_->vertices[e.v1].pos, primaryMesh_->vertices[e.v2].pos, kBound);
-    }
-    boundaryEdgeEnd_ = (int)(lineVerts.size() / 6);
-
-    for (const auto& e : edges) {
-        if (e.isBoundary() || !seamSet.count({e.v1, e.v2})) continue;
-        append(primaryMesh_->vertices[e.v1].pos, primaryMesh_->vertices[e.v2].pos, kSeam);
+    for (const auto& [edge, faceIds] : edgeFaces) {
+        if (faceIds.size() == 1 || !seamSet.count(edge)) continue;
+        append(primaryMesh_->vertices[edge.first].pos, primaryMesh_->vertices[edge.second].pos, kSeam);
     }
     seamEdgeEnd_ = (int)(lineVerts.size() / 6);
 
-    for (const auto& e : edges) {
-        if (e.isBoundary() || seamSet.count({e.v1, e.v2})) continue;
-        append(primaryMesh_->vertices[e.v1].pos, primaryMesh_->vertices[e.v2].pos, kInternal);
+    for (const auto& [edge, faceIds] : edgeFaces) {
+        if (faceIds.size() == 1 || seamSet.count(edge)) continue;
+        append(primaryMesh_->vertices[edge.first].pos, primaryMesh_->vertices[edge.second].pos, kInternal);
     }
     edgeVertexCount_ = (int)(lineVerts.size() / 6);
 
@@ -722,7 +714,7 @@ void Orbital3DView::paintSolid() {
 
     glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
 
-    if ((showBoundary_ || showInternal_ || showSeam_) && edgeVao_.isCreated() && edgeVertexCount_ > 0) {
+    if ((showInternal_ || showSeam_) && edgeVao_.isCreated() && edgeVertexCount_ > 0) {
         auto proj = projMatrix();
         auto view = viewMatrix();
         auto mdl  = modelMatrix();
@@ -733,10 +725,8 @@ void Orbital3DView::paintSolid() {
         glDepthFunc(GL_LEQUAL);
         glLineWidth(1.5f);
         edgeVao_.bind();
-        if (showBoundary_ && boundaryEdgeEnd_ > 0)
-            glDrawArrays(GL_LINES, 0, boundaryEdgeEnd_);
-        if (showSeam_ && seamEdgeEnd_ > boundaryEdgeEnd_)
-            glDrawArrays(GL_LINES, boundaryEdgeEnd_, seamEdgeEnd_ - boundaryEdgeEnd_);
+        if (showSeam_ && seamEdgeEnd_ > 0)
+            glDrawArrays(GL_LINES, 0, seamEdgeEnd_);
         if (showInternal_ && edgeVertexCount_ > seamEdgeEnd_)
             glDrawArrays(GL_LINES, seamEdgeEnd_, edgeVertexCount_ - seamEdgeEnd_);
         edgeVao_.release();

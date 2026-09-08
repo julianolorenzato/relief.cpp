@@ -77,7 +77,6 @@ private:
     QComboBox* boundaryModeCombo_         = nullptr;
     QCheckBox* envelopeConstraintCheck_   = nullptr;
     QCheckBox* useOptimalCandidateCheck_  = nullptr;
-    QCheckBox* showBoundaryEdgesCheck_    = nullptr;
     QCheckBox* showInternalEdgesCheck_    = nullptr;
     QCheckBox* showSeamEdgesCheck_        = nullptr;
 

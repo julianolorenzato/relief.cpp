@@ -75,7 +75,6 @@ public slots:
     void setCullFace(bool);
     void setTextured(bool);
     void setUVMode(bool);
-    void setShowBoundaryEdges(bool);
     void setShowInternalEdges(bool);
     void setShowSeamEdges(bool);
     void setPrimaryColor(const QColor &c);
@@ -109,7 +108,6 @@ private:
     bool cullFace_ = true;
     bool textured_ = false;
     bool uvMode_ = false;
-    bool showBoundary_ = false;
     bool showInternal_ = false;
     bool showSeam_ = false;
 
@@ -150,7 +148,6 @@ private:
     QOpenGLBuffer edgeVbo_{QOpenGLBuffer::VertexBuffer};
     QOpenGLVertexArrayObject edgeVao_;
     int edgeVertexCount_ = 0;
-    int boundaryEdgeEnd_ = 0;
     int seamEdgeEnd_ = 0;
 
     // UV wireframe (UV mode): 2D UV positions sharing primaryEbo_
@@ -167,7 +164,7 @@ private:
     void createShaders();
     void buildPrimaryBuffers();   ///< Uploads the primary mesh; recomputes meshCenter_/meshNormScale_.
     void buildSecondaryBuffers(); ///< Uploads the secondary mesh; reuses existing meshCenter_/meshNormScale_.
-    /// Rebuilds the boundary/internal edge overlay buffer from the primary mesh.
+    /// Rebuilds the seam/internal edge overlay buffer from the primary mesh.
     void buildEdgeBuffers();
     /// Rebuilds the UV-space wireframe buffer from the primary mesh.
     void buildUVBuffers();

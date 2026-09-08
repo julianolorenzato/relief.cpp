@@ -1,6 +1,6 @@
 /**
  * @file mesh.cpp
- * @brief Mesh implementation: counts and edge classification.
+ * @brief Mesh implementation: counts and edge adjacency.
  */
 #include "relief/mesh.h"
 
@@ -64,18 +64,4 @@ EdgeFaces Mesh::buildEdgeFaces() const {
         }
     }
     return edgeFaces;
-}
-
-std::vector<Edge> Mesh::classifyEdges() const {
-    EdgeFaces edgeFaces = buildEdgeFaces();
-
-    std::vector<Edge> result;
-    result.reserve(edgeFaces.size());
-    for (auto &[edge, faceList] : edgeFaces) {
-        std::optional<int> faceId = faceList.size() == 1
-                                        ? std::optional<int>(faceList[0])
-                                        : std::nullopt;
-        result.push_back({edge.first, edge.second, faceId});
-    }
-    return result;
 }

@@ -6,7 +6,6 @@
 #pragma once
 #include <vector>
 #include <cstdint>
-#include <optional>
 #include <map>
 #include <utility>
 #include <Eigen/Dense>
@@ -39,20 +38,10 @@ struct Face {
     bool removed = false;
 };
 
-/// An edge produced by Mesh::classifyEdges: boundary = referenced by exactly
-/// 1 face (same criterion used by Simplifier::addBoundaryConstraints). Used
-/// both internally by the simplifier and by the viewport so both see the
-/// same thing.
-struct Edge {
-    int  v1, v2;
-    std::optional<int> faceId; ///< The (unique) incident face, present iff boundary.
-
-    /// @return true if this edge is referenced by exactly one face.
-    bool isBoundary() const { return faceId.has_value(); }
-};
-
 /// Maps a (small vertex id, large vertex id) edge key to every face
-/// (by index) that has that edge as one of its 3 sides.
+/// (by index) that has that edge as one of its 3 sides. A boundary edge
+/// (same criterion used by Simplifier::addBoundaryConstraints) is one
+/// referenced by exactly 1 face.
 using EdgeFaces = std::map<std::pair<int, int>, std::vector<int>>;
 
 /**
@@ -76,10 +65,6 @@ public:
     int faceCount() const;
     /// @return Number of non-removed vertices.
     int vertexCount() const;
-
-    /// @brief Classifies every edge of the current mesh as boundary or interior.
-    /// @return One Edge per unique edge.
-    std::vector<Edge> classifyEdges() const;
 
     /// @return Edge-to-incident-faces adjacency for the current mesh, keyed
     ///         by (small, large) position-vertex id.

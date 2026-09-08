@@ -255,16 +255,16 @@ std::vector<std::pair<int,int>> Simplifier::edgeUVPairs(int v1, int v2) const
 // Desde que vértices passaram a ser únicos por posição, uma aresta de seam
 // não é mais topológica (é referenciada por 2 faces, uma de cada lado, que
 // hoje compartilham vértice de posição) — então precisa ser detectada à
-// parte via uv_atlas::findSeamEdges, não aparece em mesh_.classifyEdges().
+// parte via uv_atlas::findSeamEdges, não aparece em mesh_.buildEdgeFaces().
 void Simplifier::markBoundaryVertices()
 {
     boundaryVertex.assign(mesh_.vertices.size(), false);
-    for (const auto &e : mesh_.classifyEdges())
+    for (const auto &[edge, faceIds] : mesh_.buildEdgeFaces())
     {
-        if (!e.isBoundary())
+        if (faceIds.size() != 1)
             continue;
-        boundaryVertex[e.v1] = true;
-        boundaryVertex[e.v2] = true;
+        boundaryVertex[edge.first] = true;
+        boundaryVertex[edge.second] = true;
     }
     for (const auto &[v1, v2] : uv_atlas::findSeamEdges(mesh_))
     {
@@ -395,15 +395,15 @@ void Simplifier::mergeVertexPair(int keep, int remove, const Eigen::Vector3d &po
 // Passo 3/4: Penalidade para arestas de fronteira (seams e bordas)
 void Simplifier::addBoundaryConstraints(double weight)
 {
-    auto edges = mesh_.classifyEdges();
+    auto edgeFaces = mesh_.buildEdgeFaces();
 
     int count = 0;
-    for (auto &e : edges)
+    for (auto &[edge, faceIds] : edgeFaces)
     {
-        if (!e.isBoundary())
+        if (faceIds.size() != 1)
             continue;
-        int a = e.v1, b = e.v2;
-        int fi = *e.faceId;
+        int a = edge.first, b = edge.second;
+        int fi = faceIds[0];
 
         const Eigen::Vector3d &p0 = mesh_.vertices[mesh_.faces[fi].v[0]].pos;
         const Eigen::Vector3d &p1 = mesh_.vertices[mesh_.faces[fi].v[1]].pos;

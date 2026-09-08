@@ -1,7 +1,7 @@
 /**
  * @file edge_diag.cpp
  * @brief Diagnostic tool: loads a mesh and checks whether boundary edges
- *        reported by Mesh::classifyEdges are "real" mesh boundaries or
+ *        reported by Mesh::buildEdgeFaces are "real" mesh boundaries or
  *        artifacts of duplicated vertices at UV/material seams (same 3D
  *        position, different vertex index). Not part of the library build.
  */
@@ -36,15 +36,15 @@ int main(int argc, char **argv)
         return 1;
     }
 
-    auto edges = mesh.classifyEdges();
+    auto edgeFaces = mesh.buildEdgeFaces();
 
     int boundaryCount = 0;
-    std::vector<Edge> boundaryEdges;
-    for (auto &e : edges)
-        if (e.isBoundary())
+    std::vector<std::pair<int, int>> boundaryEdges;
+    for (auto &[edge, faceIds] : edgeFaces)
+        if (faceIds.size() == 1)
         {
             boundaryCount++;
-            boundaryEdges.push_back(e);
+            boundaryEdges.push_back(edge);
         }
 
     // Chave geométrica: posições 3D das duas pontas da aresta, arredondadas.
@@ -59,7 +59,7 @@ int main(int argc, char **argv)
 
     for (auto &e : boundaryEdges)
     {
-        auto a = posKey(e.v1), b = posKey(e.v2);
+        auto a = posKey(e.first), b = posKey(e.second);
         if (b < a)
             std::swap(a, b);
         geomEdgeCount[{a, b}]++;
@@ -72,7 +72,7 @@ int main(int argc, char **argv)
 
     std::cout << "vertices: " << mesh.vertices.size() << "\n";
     std::cout << "faces: " << mesh.faces.size() << "\n";
-    std::cout << "arestas totais: " << edges.size() << "\n";
+    std::cout << "arestas totais: " << edgeFaces.size() << "\n";
     std::cout << "arestas de borda (por indice): " << boundaryCount << "\n";
     std::cout << "arestas de borda com posicao 3D duplicada (provavel costura UV/material): "
               << seamArtifacts << " (" << (boundaryCount ? 100.0 * seamArtifacts / boundaryCount : 0.0) << "%)\n";
