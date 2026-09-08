@@ -7,6 +7,8 @@
 #include <vector>
 #include <cstdint>
 #include <optional>
+#include <map>
+#include <utility>
 #include <Eigen/Dense>
 
 /// A single mesh vertex: position, accumulated quadric, and (optionally)
@@ -49,6 +51,10 @@ struct Edge {
     bool isBoundary() const { return faceId.has_value(); }
 };
 
+/// Maps a (small vertex id, large vertex id) edge key to every face
+/// (by index) that has that edge as one of its 3 sides.
+using EdgeFaces = std::map<std::pair<int, int>, std::vector<int>>;
+
 /**
  * @brief Triangle mesh with position/UV/texture data.
  */
@@ -74,6 +80,10 @@ public:
     /// @brief Classifies every edge of the current mesh as boundary or interior.
     /// @return One Edge per unique edge.
     std::vector<Edge> classifyEdges() const;
+
+    /// @return Edge-to-incident-faces adjacency for the current mesh, keyed
+    ///         by (small, large) position-vertex id.
+    EdgeFaces buildEdgeFaces() const;
 
     /// @return The UV used at the given corner (0..2) of the given face, or
     ///         (0,0) if that vertex has no UV data.

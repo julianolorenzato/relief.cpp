@@ -17,36 +17,11 @@ constexpr double kPi = 3.14159265358979323846;
 
 // ─── 3D-edge adjacency (shared by island detection and seam baking) ──────────
 
-/// One face's reference to a shared 3D edge, keyed by the edge's vertex ids.
-struct EdgeRef {
-    int face;
-    int cornerAtFirst;  ///< Face corner (0..2) whose vertex == the edge key's smaller id.
-    int cornerAtSecond; ///< Face corner (0..2) whose vertex == the edge key's larger id.
-};
-/// Maps a (small id, large id) edge key to every face referencing it.
-using EdgeMap = std::map<std::pair<int, int>, std::vector<EdgeRef>>;
-
-/// @return The UV used at `ref`'s given corner, in `mesh`.
-Eigen::Vector2d edgeRefUV(const Mesh& mesh, const EdgeRef& ref, bool atFirst) {
-    return mesh.cornerUV(ref.face, atFirst ? ref.cornerAtFirst : ref.cornerAtSecond);
-}
-
-/// Builds the shared-edge map for `mesh`, keyed by (position-)vertex ids.
-/// Vertices are already unique by position, so no welding is needed here.
-EdgeMap buildEdgeMap(const Mesh& mesh) {
-    EdgeMap edgeMap;
-    for (int f = 0; f < (int)mesh.faces.size(); f++) {
-        const auto& face = mesh.faces[f];
-        if (face.removed) continue;
-        for (int k = 0; k < 3; k++) {
-            int ka = k, kb = (k + 1) % 3;
-            int va = face.v[ka], vb = face.v[kb];
-            if (va == vb) continue;
-            if (va < vb) edgeMap[{va, vb}].push_back({f, ka, kb});
-            else         edgeMap[{vb, va}].push_back({f, kb, ka});
-        }
-    }
-    return edgeMap;
+/// @return The UV at the corner of `face` whose vertex is `vertexId`.
+Eigen::Vector2d vertexUV(const Mesh& mesh, int face, int vertexId) {
+    const Face& f = mesh.faces[face];
+    for (int k = 0; k < 3; k++) if (f.v[k] == vertexId) return mesh.cornerUV(face, k);
+    return Eigen::Vector2d::Zero();
 }
 
 /// @return Shortest distance from point `p` to segment [a, b].
@@ -198,14 +173,13 @@ void rasterizeBand(
  *        (within epsilon). Faces sharing a 3D edge but disagreeing on UV at
  *        that edge are considered seam-separated (different islands).
  * @param mesh Mesh to partition into UV islands.
+ * @param edgeFaces Edge-to-incident-faces adjacency, from mesh.buildEdgeFaces().
  * @return One island id per face, in face order; removed faces get id -1.
  */
-std::vector<int> detectIslands(const Mesh& mesh) {
+std::vector<int> detectIslands(const Mesh& mesh, const EdgeFaces& edgeFaces) {
     int nf = (int)mesh.faces.size();
     std::vector<int> island(nf, -1);
     if (nf == 0) return island;
-
-    EdgeMap edgeMap = buildEdgeMap(mesh);
 
     std::vector<int> parent(nf);
     for (int i = 0; i < nf; i++) parent[i] = i;
@@ -219,17 +193,16 @@ std::vector<int> detectIslands(const Mesh& mesh) {
     };
 
     constexpr double kUVEps2 = 1e-10;
-    for (const auto& [key, refs] : edgeMap) {
-        if (refs.size() != 2) continue; // boundary or non-manifold edge: no weld across it
-        const EdgeRef& e0 = refs[0];
-        const EdgeRef& e1 = refs[1];
-        if (mesh.faces[e0.face].removed || mesh.faces[e1.face].removed) continue;
+    for (const auto& [key, faceIds] : edgeFaces) {
+        if (faceIds.size() != 2) continue; // boundary or non-manifold edge: no weld across it
+        int f0 = faceIds[0], f1 = faceIds[1];
+        if (mesh.faces[f0].removed || mesh.faces[f1].removed) continue;
 
         bool uvMatch =
-            (edgeRefUV(mesh, e0, true)  - edgeRefUV(mesh, e1, true) ).squaredNorm() < kUVEps2 &&
-            (edgeRefUV(mesh, e0, false) - edgeRefUV(mesh, e1, false)).squaredNorm() < kUVEps2;
+            (vertexUV(mesh, f0, key.first)  - vertexUV(mesh, f1, key.first) ).squaredNorm() < kUVEps2 &&
+            (vertexUV(mesh, f0, key.second) - vertexUV(mesh, f1, key.second)).squaredNorm() < kUVEps2;
 
-        if (uvMatch) unite(e0.face, e1.face);
+        if (uvMatch) unite(f0, f1);
     }
 
     std::map<int, int> rootToId;
@@ -256,7 +229,8 @@ MipPyramid buildOffsetMap(
     const Mesh& mesh,
     int width, int height,
     int seamBandTexels) {
-    std::vector<int> faceIsland = detectIslands(mesh);
+    EdgeFaces edgeFaces = mesh.buildEdgeFaces();
+    std::vector<int> faceIsland = detectIslands(mesh, edgeFaces);
 
     std::vector<float> data((size_t)width * height * 4, 0.0f);
 
@@ -271,20 +245,17 @@ MipPyramid buildOffsetMap(
     double bandWidthUV = (double)std::max(1, seamBandTexels) / (double)std::min(width, height);
     std::vector<int> islandAt = buildIslandTexelMap(mesh, faceIsland, width, height);
 
-    EdgeMap edgeMap = buildEdgeMap(mesh);
+    for (const auto& [key, faceIds] : edgeFaces) {
+        if (faceIds.size() != 2) continue;
+        int f0 = faceIds[0], f1 = faceIds[1];
+        if (mesh.faces[f0].removed || mesh.faces[f1].removed) continue;
 
-    for (const auto& [key, refs] : edgeMap) {
-        if (refs.size() != 2) continue;
-        const EdgeRef& e0 = refs[0];
-        const EdgeRef& e1 = refs[1];
-        if (mesh.faces[e0.face].removed || mesh.faces[e1.face].removed) continue;
-
-        int islandA = faceIsland[e0.face];
-        int islandB = faceIsland[e1.face];
+        int islandA = faceIsland[f0];
+        int islandB = faceIsland[f1];
         if (islandA < 0 || islandB < 0 || islandA == islandB) continue; // not a cross-island seam
 
-        Eigen::Vector2d uvA0 = edgeRefUV(mesh, e0, true),  uvA1 = edgeRefUV(mesh, e0, false);
-        Eigen::Vector2d uvB0 = edgeRefUV(mesh, e1, true),  uvB1 = edgeRefUV(mesh, e1, false);
+        Eigen::Vector2d uvA0 = vertexUV(mesh, f0, key.first),  uvA1 = vertexUV(mesh, f0, key.second);
+        Eigen::Vector2d uvB0 = vertexUV(mesh, f1, key.first),  uvB1 = vertexUV(mesh, f1, key.second);
 
         Eigen::Vector2d dirA = uvA1 - uvA0;
         Eigen::Vector2d dirB = uvB1 - uvB0;
@@ -334,18 +305,17 @@ MipPyramid buildOffsetMap(
 }
 
 std::vector<std::pair<int, int>> findSeamEdges(const Mesh& mesh) {
-    std::vector<int> faceIsland = detectIslands(mesh);
-    EdgeMap edgeMap = buildEdgeMap(mesh);
+    EdgeFaces edgeFaces = mesh.buildEdgeFaces();
+    std::vector<int> faceIsland = detectIslands(mesh, edgeFaces);
 
     std::vector<std::pair<int, int>> seams;
-    for (const auto& [key, refs] : edgeMap) {
-        if (refs.size() != 2) continue; // boundary or non-manifold: not a seam between islands.
-        const EdgeRef& e0 = refs[0];
-        const EdgeRef& e1 = refs[1];
-        if (mesh.faces[e0.face].removed || mesh.faces[e1.face].removed) continue;
+    for (const auto& [key, faceIds] : edgeFaces) {
+        if (faceIds.size() != 2) continue; // boundary or non-manifold: not a seam between islands.
+        int f0 = faceIds[0], f1 = faceIds[1];
+        if (mesh.faces[f0].removed || mesh.faces[f1].removed) continue;
 
-        int islandA = faceIsland[e0.face];
-        int islandB = faceIsland[e1.face];
+        int islandA = faceIsland[f0];
+        int islandB = faceIsland[f1];
         if (islandA < 0 || islandB < 0 || islandA == islandB) continue;
 
         seams.push_back(key);

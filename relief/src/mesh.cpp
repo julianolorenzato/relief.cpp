@@ -53,8 +53,8 @@ int Mesh::vertexCount() const {
     return n;
 }
 
-std::vector<Edge> Mesh::classifyEdges() const {
-    std::map<std::pair<int, int>, std::vector<int>> edgeFaces;
+EdgeFaces Mesh::buildEdgeFaces() const {
+    EdgeFaces edgeFaces;
     for (int fi = 0; fi < (int)faces.size(); fi++) {
         if (faces[fi].removed) continue;
         for (int i = 0; i < 3; i++) {
@@ -63,6 +63,11 @@ std::vector<Edge> Mesh::classifyEdges() const {
             edgeFaces[{a, b}].push_back(fi);
         }
     }
+    return edgeFaces;
+}
+
+std::vector<Edge> Mesh::classifyEdges() const {
+    EdgeFaces edgeFaces = buildEdgeFaces();
 
     std::vector<Edge> result;
     result.reserve(edgeFaces.size());
