@@ -13,6 +13,7 @@
 #include <map>
 #include <tuple>
 #include <cmath>
+#include <stdexcept>
 
 namespace mesh::io::gltf {
 
@@ -76,6 +77,11 @@ static bool extractTexture(const tinygltf::Model &model, int texIdx,
 
 bool loadGLTF(Mesh &mesh, const std::string &path)
 {
+    // glTF/GLB loading is temporarily disabled; hard-fail instead of
+    // returning a recoverable false, since callers aren't expected to
+    // handle this case gracefully while it's unsupported.
+    throw std::runtime_error("GLTF loading is temporarily disabled: " + path);
+
     tinygltf::Model model;
     tinygltf::TinyGLTF loader;
     std::string err, warn;
