@@ -13,6 +13,8 @@
 #include <QLabel>
 #include <QScrollArea>
 
+using namespace textures;
+
 TextureInspectorWidget::TextureInspectorWidget(const MipPyramid *colorMap,
                                                 const MipPyramid *reliefMap,
                                                 const MipPyramid *normalMap,

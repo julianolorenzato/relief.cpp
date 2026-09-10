@@ -29,15 +29,15 @@ public:
     ~ReliefView() override;
 
     /// Sets the mesh to render (not owned).
-    void setMesh(const Mesh *mesh);
+    void setMesh(const mesh::Mesh *mesh);
     /// Uploads the relief-mapping color map.
-    void setColorMap(const MipPyramid& pyr);
+    void setColorMap(const textures::MipPyramid& pyr);
     /// Uploads the relief-mapping depth/height map.
-    void setReliefMap(const MipPyramid& pyr);
+    void setReliefMap(const textures::MipPyramid& pyr);
     /// Uploads the relief-mapping normal map.
-    void setNormalMap(const MipPyramid& pyr);
+    void setNormalMap(const textures::MipPyramid& pyr);
     /// Uploads the cross-seam Offset_Map used to leap relief rays across UV islands.
-    void setOffsetMap(const MipPyramid& off);
+    void setOffsetMap(const textures::MipPyramid& off);
     /// @return true once all four textures (color/relief/normal/offset) have been uploaded.
     bool hasTextures() const { return colorTex && reliefTex && normalTex && offsetTex; }
 
@@ -113,7 +113,7 @@ private:
     void performPick(const QPoint &widgetPos);
 
     // Mesh (not owned)
-    const Mesh *mesh = nullptr;
+    const mesh::Mesh *mesh = nullptr;
 
     // OpenGL resources
     QOpenGLShaderProgram     prog;
@@ -151,7 +151,7 @@ private:
     /// Uploads each of `pyr`'s mip levels into a newly (re)allocated `tex`
     /// (replacing whatever was there before, or leaving `tex` null if `pyr`
     /// is empty), with the given GL format and sampling filters.
-    void uploadTexture(QOpenGLTexture *&tex, const MipPyramid &pyr,
+    void uploadTexture(QOpenGLTexture *&tex, const textures::MipPyramid &pyr,
                         QOpenGLTexture::TextureFormat format,
                         QOpenGLTexture::PixelFormat pixelFormat,
                         QOpenGLTexture::Filter minFilter,

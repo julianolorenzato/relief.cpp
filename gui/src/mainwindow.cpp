@@ -12,6 +12,8 @@
 #include <QMessageBox>
 #include <QStatusBar>
 
+using namespace mesh;
+
 // ─── Constructor ─────────────────────────────────────────────────────────────
 
 MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent) {

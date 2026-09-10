@@ -17,6 +17,9 @@
 #include <iostream>
 #include <set>
 
+using namespace mesh;
+using namespace uv_atlas;
+
 // ─── Anonymous helpers ────────────────────────────────────────────────────────
 
 namespace {

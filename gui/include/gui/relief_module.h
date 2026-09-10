@@ -27,7 +27,7 @@ public:
 
 public slots:
     /// Stores the mesh pointers and marks them pending for sync.
-    void setMeshes(Mesh* original, Mesh* simplified);
+    void setMeshes(mesh::Mesh* original, mesh::Mesh* simplified);
     /// Stores the texture-prep source and marks its maps pending for sync.
     void onTexturesReady(TexturePrepModule* source);
     /// Called when this tab is activated — flushes any pending data.
@@ -62,8 +62,8 @@ private:
     bool texturesPending_ = false;
 
     // Non-owned mesh pointers
-    Mesh* originalMesh_   = nullptr;
-    Mesh* simplifiedMesh_ = nullptr;
+    mesh::Mesh* originalMesh_   = nullptr;
+    mesh::Mesh* simplifiedMesh_ = nullptr;
 
     // Non-owned texture-prep source
     TexturePrepModule* texturePrepSource_ = nullptr;

@@ -59,7 +59,7 @@ class NormalMapModule : public QWidget {
     QImage heightImg;
 
     /** Normal pyramid derived from `heightImg` by the last Generate. */
-    MipPyramid normalMap;
+    textures::MipPyramid normalMap;
 
     // ── Preview panels ───────────────────────────────────────────────────
     QLabel *heightPreview = nullptr;

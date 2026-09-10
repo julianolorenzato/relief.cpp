@@ -29,20 +29,20 @@ public:
 
 public slots:
     /// Called when a new model is loaded: sets the mesh pointer and does a full reset.
-    void onModelLoaded(Mesh* simplified);
+    void onModelLoaded(mesh::Mesh* simplified);
     /// Called when the mesh is updated after simplification: sets mesh + refreshes thumbnails/button.
-    void onMeshUpdated(Mesh* simplified);
+    void onMeshUpdated(mesh::Mesh* simplified);
     /// Called when a heightmap bake finishes: stores the result and refreshes.
-    void onHeightmapReady(const HeightmapResult& result);
+    void onHeightmapReady(const heightmap::HeightmapResult& result);
 
     /// @return The baked color mip pyramid (valid once hasTextures() is true).
-    const MipPyramid& colorMap() const { return colorMapData_; }
+    const textures::MipPyramid& colorMap() const { return colorMapData_; }
     /// @return The baked relief (min/max/seam-mask) mip pyramid.
-    const MipPyramid& reliefMap() const { return reliefMapData_; }
+    const textures::MipPyramid& reliefMap() const { return reliefMapData_; }
     /// @return The baked normal mip pyramid.
-    const MipPyramid& normalMap() const { return normalMapData_; }
+    const textures::MipPyramid& normalMap() const { return normalMapData_; }
     /// @return The baked cross-seam Offset_Map.
-    const MipPyramid& offsetMap() const { return offsetMapData_; }
+    const textures::MipPyramid& offsetMap() const { return offsetMapData_; }
     /// @return true once all four baked outputs above are populated.
     bool hasTextures() const {
         return colorMapData_.levelCount() > 0 && reliefMapData_.levelCount() > 0 &&
@@ -102,11 +102,11 @@ private:
     QCheckBox*   tpChannelCheck_[3][4] = {};
 
     // ── State ─────────────────────────────────────────────────────────────────
-    MipPyramid colorMapData_, reliefMapData_, normalMapData_, offsetMapData_;
+    textures::MipPyramid colorMapData_, reliefMapData_, normalMapData_, offsetMapData_;
 
     // Stored heightmap result (copy)
-    HeightmapResult hmResult_;
+    heightmap::HeightmapResult hmResult_;
 
     // Non-owned mesh pointer
-    Mesh* simplifiedMesh_ = nullptr;
+    mesh::Mesh* simplifiedMesh_ = nullptr;
 };

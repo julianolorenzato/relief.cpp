@@ -18,6 +18,10 @@
 #include <tuple>
 #include <cmath>
 
+using namespace mesh;
+using namespace mesh::io;
+using namespace simplification;
+
 // ─── Constructor ─────────────────────────────────────────────────────────────
 
 SimplifierModule::SimplifierModule(QWidget *parent)

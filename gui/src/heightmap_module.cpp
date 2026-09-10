@@ -6,6 +6,9 @@
 #include "gui/heightmap_module.h"
 #include "relief/heightmap.h"
 
+using namespace mesh;
+using namespace heightmap;
+
 namespace {
 /// Runs HeightmapBaker::bakeUVDistance() on a worker thread, owned by HeightmapModule::launchBake().
 class HeightmapWorker : public QObject {

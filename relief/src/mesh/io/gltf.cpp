@@ -14,6 +14,8 @@
 #include <tuple>
 #include <cmath>
 
+namespace mesh::io::gltf {
+
 // ─── glTF helpers ───────────────────────────────────────────────────────────
 
 /// @return true if `path` ends in ".glb" (case-insensitive).
@@ -454,3 +456,5 @@ bool saveGLTF(const Mesh &mesh, const std::string &path)
         std::cerr << "GLTF: falha ao salvar " << path << "\n";
     return ok;
 }
+
+} // namespace mesh::io::gltf

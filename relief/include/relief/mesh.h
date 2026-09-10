@@ -10,6 +10,8 @@
 #include <utility>
 #include <Eigen/Dense>
 
+namespace mesh {
+
 /// A single mesh vertex: position, accumulated quadric, and (optionally)
 /// multiple UVs and envelope planes. Vertices are unique by position: a
 /// vertex touched by a UV seam holds one entry in `uvs` per distinct UV
@@ -22,8 +24,8 @@ struct Vertex {
 
     /// Outward-oriented planes (n.x,n.y,n.z,d) of original faces already
     /// absorbed by this vertex over the course of its collapses (see
-    /// Simplifier::envelopeConstraint). Empty when the envelope
-    /// constraint is disabled.
+    /// simplification::Simplifier::envelopeConstraint). Empty when the
+    /// envelope constraint is disabled.
     std::vector<Eigen::Vector4d> envelope;
 
     /// @return Index into `uvs` of `uv`: an existing near-equal entry if one
@@ -40,8 +42,8 @@ struct Face {
 
 /// Maps a (small vertex id, large vertex id) edge key to every face
 /// (by index) that has that edge as one of its 3 sides. A boundary edge
-/// (same criterion used by Simplifier::addBoundaryConstraints) is one
-/// referenced by exactly 1 face.
+/// (same criterion used by simplification::Simplifier::addBoundaryConstraints)
+/// is one referenced by exactly 1 face.
 using EdgeFaces = std::map<std::pair<int, int>, std::vector<int>>;
 
 /**
@@ -95,3 +97,5 @@ public:
     /// @return The GPU-friendly explosion of this mesh (see GPUMesh).
     GPUMesh explodeForGPU() const;
 };
+
+} // namespace mesh

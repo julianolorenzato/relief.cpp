@@ -7,6 +7,8 @@
 #include <map>
 #include <utility>
 
+namespace mesh {
+
 int Vertex::uvIndex(const Eigen::Vector2d& uv, double eps) {
     double eps2 = eps * eps;
     for (size_t i = 0; i < uvs.size(); i++)
@@ -65,3 +67,5 @@ EdgeFaces Mesh::buildEdgeFaces() const {
     }
     return edgeFaces;
 }
+
+} // namespace mesh

@@ -11,6 +11,13 @@
 #include <limits>
 #include <functional>
 
+namespace uv_atlas {
+
+using mesh::Mesh;
+using mesh::Face;
+using mesh::EdgeFaces;
+using textures::MipPyramid;
+
 namespace {
 
 constexpr double kPi = 3.14159265358979323846;
@@ -222,8 +229,6 @@ std::vector<int> detectIslands(const Mesh& mesh, const EdgeFaces& edgeFaces) {
 }
 
 } // namespace
-
-namespace uv_atlas {
 
 MipPyramid buildOffsetMap(
     const Mesh& mesh,

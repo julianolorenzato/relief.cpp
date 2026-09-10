@@ -11,6 +11,8 @@
 #include <Eigen/Dense>
 #include "relief/mesh.h"
 
+namespace simplification {
+
 /**
  * @brief Builds the fundamental error matrix for the plane ax+by+cz+d=0.
  * @param a Plane normal x component.
@@ -88,7 +90,7 @@ enum class BoundaryMode {
 class Simplifier {
 public:
     /// @param mesh Mesh to simplify in place. Must outlive the Simplifier.
-    explicit Simplifier(Mesh& mesh) : mesh_(mesh) {}
+    explicit Simplifier(mesh::Mesh& mesh) : mesh_(mesh) {}
 
     BoundaryMode boundaryMode = BoundaryMode::Constraint;
 
@@ -111,7 +113,7 @@ public:
     void run(int targetFaces);
 
 private:
-    Mesh& mesh_;
+    mesh::Mesh& mesh_;
 
     std::map<std::pair<int,int>, EdgeCollapse> edgeMap;
 
@@ -163,3 +165,5 @@ private:
     /// @return false if the edge can't be collapsed (locked).
     bool buildCandidate(int p, int q, EdgeCollapse& out) const;
 };
+
+} // namespace simplification

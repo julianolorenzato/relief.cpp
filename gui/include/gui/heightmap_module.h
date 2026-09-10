@@ -16,12 +16,12 @@ public:
 
 public slots:
     // Called when a new model is loaded: stores pointers and resets state.
-    void onModelLoaded(Mesh* original, Mesh* simplified);
+    void onModelLoaded(mesh::Mesh* original, mesh::Mesh* simplified);
     // Called when the mesh is updated after simplification: just stores ptrs.
-    void onMeshUpdated(Mesh* original, Mesh* simplified);
+    void onMeshUpdated(mesh::Mesh* original, mesh::Mesh* simplified);
 
 signals:
-    void bakeReady(const HeightmapResult& result);
+    void bakeReady(const heightmap::HeightmapResult& result);
     void statusMessage(const QString& msg);
 
 private slots:
@@ -33,7 +33,7 @@ private slots:
 private:
     void buildUI();
     void launchBake();
-    void displayHeightmap(const HeightmapResult& r);
+    void displayHeightmap(const heightmap::HeightmapResult& r);
     void setBakeButtonsEnabled(bool enabled);
     void reset();
 
@@ -49,11 +49,11 @@ private:
     QLabel*       hmProgressLabel_ = nullptr;
 
     // ── State ─────────────────────────────────────────────────────────────────
-    HeightmapResult  hmResult_;
+    heightmap::HeightmapResult  hmResult_;
     QObject*         hmWorker_ = nullptr;
     QThread*         hmThread_ = nullptr;
 
     // Non-owned mesh pointers (set by onModelLoaded / onMeshUpdated)
-    Mesh* originalMesh_   = nullptr;
-    Mesh* simplifiedMesh_ = nullptr;
+    mesh::Mesh* originalMesh_   = nullptr;
+    mesh::Mesh* simplifiedMesh_ = nullptr;
 };

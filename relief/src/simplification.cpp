@@ -10,6 +10,11 @@
 #include <algorithm>
 #include <iostream>
 
+namespace simplification {
+
+using mesh::Mesh;
+using mesh::Vertex;
+
 int Simplifier::canonicalize(int &a, int &b) const
 {
     if (a > b)
@@ -550,3 +555,5 @@ void Simplifier::run(int targetFaces)
     std::cout << "QEM concluído: " << mesh_.faceCount() << " faces, "
               << mesh_.vertexCount() << " vértices\n";
 }
+
+} // namespace simplification

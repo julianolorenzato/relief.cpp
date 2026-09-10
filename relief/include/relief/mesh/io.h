@@ -6,6 +6,8 @@
 #include <string>
 #include "relief/mesh.h"
 
+namespace mesh::io {
+
 /// @brief Loads a mesh from a file, dispatching on extension (.obj vs .gltf/.glb).
 /// @param mesh Mesh to load into (replaces its contents).
 /// @param path Path to the mesh file.
@@ -16,3 +18,5 @@ bool loadMesh(Mesh& mesh, const std::string& path);
 /// @param path Destination path.
 /// @return true on success.
 bool saveMesh(const Mesh& mesh, const std::string& path);
+
+} // namespace mesh::io

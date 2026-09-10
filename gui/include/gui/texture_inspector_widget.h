@@ -24,10 +24,10 @@ class TextureInspectorWidget : public QWidget
     Q_OBJECT
 
 public:
-    TextureInspectorWidget(const MipPyramid *colorMap,
-                            const MipPyramid *reliefMap,
-                            const MipPyramid *normalMap,
-                            const MipPyramid *offsetMap,
+    TextureInspectorWidget(const textures::MipPyramid *colorMap,
+                            const textures::MipPyramid *reliefMap,
+                            const textures::MipPyramid *normalMap,
+                            const textures::MipPyramid *offsetMap,
                             QWidget *parent = nullptr);
 
     /// Re-reads the constructor-provided pyramids (e.g. after a rebake),
@@ -64,8 +64,8 @@ private:
     /// Renders one channel (or "RGB combined" when channelIndex == 0) of the current map/mip as a QImage.
     QImage renderChannel(int channelIndex) const;
 
-    const MipPyramid *colorMap_, *reliefMap_, *normalMap_;
-    const MipPyramid *offsetMap_;
+    const textures::MipPyramid *colorMap_, *reliefMap_, *normalMap_;
+    const textures::MipPyramid *offsetMap_;
 
     std::vector<MapInfo> maps;
 

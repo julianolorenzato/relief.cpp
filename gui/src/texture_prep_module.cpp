@@ -16,6 +16,11 @@
 #include <algorithm>
 #include <cmath>
 
+using namespace mesh;
+using namespace textures;
+using namespace heightmap;
+using namespace uv_atlas;
+
 // ─── Static helpers ───────────────────────────────────────────────────────────
 
 /// Wraps a raw RGBA8 buffer (e.g. a mesh's embedded texture) in a detached QImage copy.

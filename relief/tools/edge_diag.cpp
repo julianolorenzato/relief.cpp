@@ -14,6 +14,9 @@
 #include <cmath>
 #include <vector>
 
+using namespace mesh;
+using namespace mesh::io;
+
 int main(int argc, char **argv)
 {
     if (argc < 2)

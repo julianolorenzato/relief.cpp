@@ -8,6 +8,8 @@
 #include <algorithm>
 #include <cctype>
 
+namespace mesh::io {
+
 /// @return true if `path` ends with `suffix` (case-insensitive).
 static bool endsWithCI(const std::string &path, const std::string &suffix)
 {
@@ -19,10 +21,12 @@ static bool endsWithCI(const std::string &path, const std::string &suffix)
 
 bool loadMesh(Mesh &mesh, const std::string &path)
 {
-    return endsWithCI(path, ".obj") ? loadOBJ(mesh, path) : loadGLTF(mesh, path);
+    return endsWithCI(path, ".obj") ? obj::loadOBJ(mesh, path) : gltf::loadGLTF(mesh, path);
 }
 
 bool saveMesh(const Mesh &mesh, const std::string &path)
 {
-    return endsWithCI(path, ".obj") ? saveOBJ(mesh, path) : saveGLTF(mesh, path);
+    return endsWithCI(path, ".obj") ? obj::saveOBJ(mesh, path) : gltf::saveGLTF(mesh, path);
 }
+
+} // namespace mesh::io

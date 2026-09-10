@@ -36,8 +36,8 @@ namespace uv_atlas {
  * @return A single-level (never downsampled), 4-channel MipPyramid holding
  *         the baked offset map.
  */
-MipPyramid buildOffsetMap(
-    const Mesh& mesh,
+textures::MipPyramid buildOffsetMap(
+    const mesh::Mesh& mesh,
     int width, int height,
     int seamBandTexels);
 
@@ -52,6 +52,6 @@ MipPyramid buildOffsetMap(
  * @return One (v1, v2) position-vertex-index pair per seam edge, each
  *         sorted (v1 <= v2).
  */
-std::vector<std::pair<int, int>> findSeamEdges(const Mesh& mesh);
+std::vector<std::pair<int, int>> findSeamEdges(const mesh::Mesh& mesh);
 
 } // namespace uv_atlas

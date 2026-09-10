@@ -9,6 +9,8 @@
 #include <cstdint>
 #include <functional>
 
+namespace heightmap {
+
 /// Progress callback invoked with a value in [0, 100] while baking runs.
 using ProgressCb = std::function<void(int)>;
 
@@ -40,8 +42,8 @@ public:
      * @return Baked HeightmapResult; `valid` is false if baking failed.
      */
     static HeightmapResult bakeUVDistance(
-        const Mesh& simplified,
-        const Mesh& original,
+        const mesh::Mesh& simplified,
+        const mesh::Mesh& original,
         int texWidth, int texHeight,
         ProgressCb cb = {});
 
@@ -59,8 +61,10 @@ private:
     /// Rasterizes `mesh`'s UV triangles onto a WxH grid, interpolating
     /// position and normal per texel via barycentric coordinates.
     static std::vector<TexelSample> rasterizeUV(
-        const Mesh& mesh, int W, int H);
+        const mesh::Mesh& mesh, int W, int H);
 
     /// Fills `r.image` by remapping `r.heights` into normalized 0-255 grayscale.
     static void normalize(HeightmapResult& r);
 };
+
+} // namespace heightmap

@@ -16,6 +16,8 @@
 #include <QVBoxLayout>
 #include <algorithm>
 
+using namespace textures;
+
 // ─── Static helpers ──────────────────────────────────────────────────────────
 
 /// Converts one mip level's raw float data into a displayable QImage.

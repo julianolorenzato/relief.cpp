@@ -7,6 +7,9 @@
 #include <vector>
 #include <cstdint>
 
+/// Map builders for the different texture kinds used by relief mapping.
+namespace textures {
+
 /// Raw uncompressed image (uint8, row-major). channels: 1=grey, 3=RGB, 4=RGBA.
 struct RawImage {
     const uint8_t* data = nullptr;
@@ -32,9 +35,6 @@ struct MipPyramid {
     /// @return Number of mip levels stored.
     int levelCount() const { return (int)mips.size(); }
 };
-
-/// Map builders for the different texture kinds used by relief mapping.
-namespace textures {
 
 /// @return The smallest power of two >= minSize (minimum 1).
 int nextPowerOfTwo(int minSize);

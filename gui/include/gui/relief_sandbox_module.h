@@ -137,7 +137,7 @@ class ReliefSandboxModule : public QWidget {
      *
      * It is supposed to already be simplified.
      */
-    std::unique_ptr<Mesh> mesh;
+    std::unique_ptr<mesh::Mesh> mesh;
 
     /**
      * The widget that renders the mesh
@@ -163,7 +163,7 @@ class ReliefSandboxModule : public QWidget {
      * Baked pyramids fed to ReliefView,
      * kept around for the texture inspector.
      */
-    MipPyramid colorMap, reliefMap, normalMap, offsetMap;
+    textures::MipPyramid colorMap, reliefMap, normalMap, offsetMap;
 
     MeshControls meshControls;
     TextureControls textureControls;

@@ -12,6 +12,9 @@
 #include <cmath>
 #include <iostream>
 
+using namespace mesh;
+using namespace textures;
+
 // ─── Anonymous helpers ────────────────────────────────────────────────────────
 
 namespace

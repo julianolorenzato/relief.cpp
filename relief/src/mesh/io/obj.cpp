@@ -8,6 +8,8 @@
 #include <sstream>
 #include <map>
 
+namespace mesh::io::obj {
+
 bool loadOBJ(Mesh &mesh, const std::string &path)
 {
     std::ifstream f(path);
@@ -175,3 +177,5 @@ bool saveOBJ(const Mesh &mesh, const std::string &path)
     std::cout << "OBJ salvo: " << path << "\n";
     return true;
 }
+
+} // namespace mesh::io::obj

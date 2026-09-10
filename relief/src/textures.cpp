@@ -7,6 +7,8 @@
 #include <algorithm>
 #include <cmath>
 
+namespace textures {
+
 namespace {
 
 /// Downsamples `src` by 2x2 box-average, per channel.
@@ -272,8 +274,6 @@ std::vector<float> extractChannel(const std::vector<float>& data, size_t texelCo
 }
 
 } // namespace
-
-namespace textures {
 
 int nextPowerOfTwo(int minSize) {
     int size = 1;

@@ -37,9 +37,9 @@ public:
 
 signals:
     /// Emitted after loadModel() succeeds, with pointers to the (yet unsimplified) meshes.
-    void modelLoaded(Mesh* original, Mesh* simplified);
+    void modelLoaded(mesh::Mesh* original, mesh::Mesh* simplified);
     /// Emitted after a simplification run completes.
-    void simplificationDone(Mesh* original, Mesh* simplified);
+    void simplificationDone(mesh::Mesh* original, mesh::Mesh* simplified);
     void statusMessage(const QString& msg);
 
 private slots:
@@ -58,8 +58,8 @@ private:
     void updateStats();
 
     // ── Mesh data ─────────────────────────────────────────────────────────────
-    std::unique_ptr<Mesh> originalMesh_;
-    std::unique_ptr<Mesh> simplifiedMesh_;
+    std::unique_ptr<mesh::Mesh> originalMesh_;
+    std::unique_ptr<mesh::Mesh> simplifiedMesh_;
 
     // ── Viewports ─────────────────────────────────────────────────────────────
     Orbital3DView* glWidgetOriginal_   = nullptr;

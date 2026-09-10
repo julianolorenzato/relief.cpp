@@ -30,6 +30,10 @@
 #include "relief/textures.h"
 #include "relief/uv_atlas.h"
 
+using namespace mesh;
+using namespace mesh::io;
+using namespace textures;
+
 /**
  * A bunch of tiny helpers.
  */

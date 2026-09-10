@@ -11,6 +11,8 @@
 #include <QSplitter>
 #include <QLabel>
 
+using namespace mesh;
+
 // ─── Constructor ─────────────────────────────────────────────────────────────
 
 ReliefModule::ReliefModule(QWidget* parent)

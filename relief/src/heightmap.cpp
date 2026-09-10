@@ -11,6 +11,10 @@
 #include <iostream>
 #include <thread>
 
+namespace heightmap {
+
+using mesh::Mesh;
+
 using V3 = Eigen::Vector3d;
 
 // Helpers
@@ -210,3 +214,5 @@ HeightmapResult HeightmapBaker::bakeUVDistance(
     result.valid = true;
     return result;
 }
+
+} // namespace heightmap
