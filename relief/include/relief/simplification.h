@@ -66,7 +66,7 @@ struct EdgeCollapse {
     Eigen::Vector3d target   = Eigen::Vector3d::Zero();
     double          cost     = 0.0;
 
-    /// Per-incident-face UV pairing for this edge: (uv slot of v1, uv slot of
+    /// Per-incident-face UV pairing for this edge: (wedge at v1, wedge at
     /// v2, interpolated UV at `target`). Usually one entry; two if the edge
     /// is a UV seam (v1/v2 each carry a different UV per side).
     std::vector<std::tuple<int, int, Eigen::Vector2d>> uvTargets;
@@ -128,11 +128,12 @@ private:
     /// accumulated planes of v1/v2, returning false if none remain viable
     /// (the edge can't collapse at this step).
     bool computeCollapse(int v1, int v2, EdgeCollapse& out) const;
-    /// @return The distinct (uv slot of v1, uv slot of v2) pairs actually
+    /// @return The distinct (wedge at v1, wedge at v2) pairs actually
     ///         used together by some face incident to edge (v1,v2).
     std::vector<std::pair<int,int>> edgeUVPairs(int v1, int v2) const;
-    /// Merges `remove` into `keep` at the given position, updating faces
-    /// (remapping their per-corner UV slot into `keep`'s UV list) and adjacency.
+    /// Merges `remove` into `keep` at the given position: retargets every
+    /// wedge belonging to `remove` onto `keep` in place (no Face needs to
+    /// change which wedge it references) and updates adjacency.
     void mergeVertexPair(int keep, int remove, const Eigen::Vector3d& pos,
                           const std::vector<std::tuple<int,int,Eigen::Vector2d>>& uvTargets);
     /// Rebuilds the priority queue of candidate collapses from current adjacency.

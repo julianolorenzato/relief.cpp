@@ -27,7 +27,7 @@ constexpr double kPi = 3.14159265358979323846;
 /// @return The UV at the corner of `face` whose vertex is `vertexId`.
 Eigen::Vector2d vertexUV(const Mesh& mesh, int face, int vertexId) {
     const Face& f = mesh.faces[face];
-    for (int k = 0; k < 3; k++) if (f.v[k] == vertexId) return mesh.cornerUV(face, k);
+    for (int k = 0; k < 3; k++) if (mesh.wedges[f.w[k]].vertex == vertexId) return mesh.cornerUV(face, k);
     return Eigen::Vector2d::Zero();
 }
 

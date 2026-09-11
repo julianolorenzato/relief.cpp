@@ -82,6 +82,11 @@ bool loadGLTF(Mesh &mesh, const std::string &path)
     // handle this case gracefully while it's unsupported.
     throw std::runtime_error("GLTF loading is temporarily disabled: " + path);
 
+/* Unreachable (see throw above) since glTF loading was disabled, and now
+   also predates the Wedge-based Face (Face::v/Face::uv, Vertex::uvIndex),
+   so it wouldn't compile as-is even if re-enabled. Left here for reference
+   until glTF import is revisited.
+
     tinygltf::Model model;
     tinygltf::TinyGLTF loader;
     std::string err, warn;
@@ -288,6 +293,8 @@ bool loadGLTF(Mesh &mesh, const std::string &path)
     std::cout << "GLTF carregado: " << mesh.vertices.size()
               << " vértices, " << mesh.faces.size() << " faces\n";
     return !mesh.vertices.empty();
+*/
+    return false;
 }
 
 // ─── saveGLTF ────────────────────────────────────────────────────────────────

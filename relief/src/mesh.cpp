@@ -9,33 +9,20 @@
 
 namespace mesh {
 
-int Vertex::uvIndex(const Eigen::Vector2d& uv, double eps) {
-    double eps2 = eps * eps;
-    for (size_t i = 0; i < uvs.size(); i++)
-        if ((uvs[i] - uv).squaredNorm() < eps2)
-            return (int)i;
-    uvs.push_back(uv);
-    return (int)uvs.size() - 1;
-}
-
 Mesh::GPUMesh Mesh::explodeForGPU() const {
     GPUMesh out;
-    std::map<std::pair<int, int>, uint32_t> keyToIdx;
+    std::vector<int> wedgeToIdx(wedges.size(), -1);
     out.indices.reserve(faces.size() * 3);
     for (const auto &f : faces) {
         if (f.removed) continue;
         for (int k = 0; k < 3; k++) {
-            int vi = f.v[k];
-            int uvi = f.uv[k];
-            auto [it, inserted] = keyToIdx.try_emplace({vi, uvi}, (uint32_t)out.positions.size());
-            if (inserted) {
-                const Vertex &v = vertices[vi];
-                out.positions.push_back(v.pos);
-                out.uvs.push_back(uvi >= 0 && uvi < (int)v.uvs.size()
-                                       ? v.uvs[uvi]
-                                       : Eigen::Vector2d::Zero());
+            int wi = f.w[k];
+            if (wedgeToIdx[wi] < 0) {
+                wedgeToIdx[wi] = (int)out.positions.size();
+                out.positions.push_back(vertices[wedges[wi].vertex].pos);
+                out.uvs.push_back(wedges[wi].uv);
             }
-            out.indices.push_back(it->second);
+            out.indices.push_back((uint32_t)wedgeToIdx[wi]);
         }
     }
     return out;
@@ -60,7 +47,7 @@ EdgeFaces Mesh::buildEdgeFaces() const {
     for (int fi = 0; fi < (int)faces.size(); fi++) {
         if (faces[fi].removed) continue;
         for (int i = 0; i < 3; i++) {
-            int a = faces[fi].v[i], b = faces[fi].v[(i + 1) % 3];
+            int a = wedges[faces[fi].w[i]].vertex, b = wedges[faces[fi].w[(i + 1) % 3]].vertex;
             if (a > b) std::swap(a, b);
             edgeFaces[{a, b}].push_back(fi);
         }

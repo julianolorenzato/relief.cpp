@@ -32,18 +32,21 @@ void Simplifier::computeQ()
     {
         if (fc.removed)
             continue;
-        const Eigen::Vector3d &p0 = mesh_.vertices[fc.v[0]].pos;
-        const Eigen::Vector3d &p1 = mesh_.vertices[fc.v[1]].pos;
-        const Eigen::Vector3d &p2 = mesh_.vertices[fc.v[2]].pos;
+        int v0 = mesh_.wedges[fc.w[0]].vertex;
+        int v1 = mesh_.wedges[fc.w[1]].vertex;
+        int v2 = mesh_.wedges[fc.w[2]].vertex;
+        const Eigen::Vector3d &p0 = mesh_.vertices[v0].pos;
+        const Eigen::Vector3d &p1 = mesh_.vertices[v1].pos;
+        const Eigen::Vector3d &p2 = mesh_.vertices[v2].pos;
 
         Eigen::Vector3d n = (p1 - p0).cross(p2 - p0).normalized();
         double d = -n.dot(p0);
 
         Eigen::Matrix4d Kp = quadricFromPlane(n.x(), n.y(), n.z(), d);
 
-        mesh_.vertices[fc.v[0]].Q += Kp;
-        mesh_.vertices[fc.v[1]].Q += Kp;
-        mesh_.vertices[fc.v[2]].Q += Kp;
+        mesh_.vertices[v0].Q += Kp;
+        mesh_.vertices[v1].Q += Kp;
+        mesh_.vertices[v2].Q += Kp;
     }
 }
 
@@ -99,17 +102,20 @@ void Simplifier::computeEnvelope()
     {
         if (fc.removed)
             continue;
-        const Eigen::Vector3d &p0 = mesh_.vertices[fc.v[0]].pos;
-        const Eigen::Vector3d &p1 = mesh_.vertices[fc.v[1]].pos;
-        const Eigen::Vector3d &p2 = mesh_.vertices[fc.v[2]].pos;
+        int v0 = mesh_.wedges[fc.w[0]].vertex;
+        int v1 = mesh_.wedges[fc.w[1]].vertex;
+        int v2 = mesh_.wedges[fc.w[2]].vertex;
+        const Eigen::Vector3d &p0 = mesh_.vertices[v0].pos;
+        const Eigen::Vector3d &p1 = mesh_.vertices[v1].pos;
+        const Eigen::Vector3d &p2 = mesh_.vertices[v2].pos;
 
         Eigen::Vector3d n = (p1 - p0).cross(p2 - p0).normalized();
         double d = -n.dot(p0);
         Eigen::Vector4d plane(n.x(), n.y(), n.z(), d);
 
-        mesh_.vertices[fc.v[0]].envelope.push_back(plane);
-        mesh_.vertices[fc.v[1]].envelope.push_back(plane);
-        mesh_.vertices[fc.v[2]].envelope.push_back(plane);
+        mesh_.vertices[v0].envelope.push_back(plane);
+        mesh_.vertices[v1].envelope.push_back(plane);
+        mesh_.vertices[v2].envelope.push_back(plane);
     }
 }
 
@@ -215,18 +221,16 @@ bool Simplifier::computeCollapse(int v1, int v2, EdgeCollapse &ec) const
         return false;
 
     // UV is purely a function of the chosen 3D target: interpolate each
-    // (v1,v2) UV pairing used by the faces incident to this edge along the
-    // segment, evaluated at ec.target. Usually one pairing; two if this edge
-    // is a UV seam.
+    // (v1,v2) wedge pairing used by the faces incident to this edge along
+    // the segment, evaluated at ec.target. Usually one pairing; two if this
+    // edge is a UV seam.
     ec.uvTargets.clear();
-    for (auto &[i1, i2] : edgeUVPairs(v1, v2))
+    for (auto &[w1, w2] : edgeUVPairs(v1, v2))
     {
-        const auto &uvs1 = mesh_.vertices[v1].uvs;
-        const auto &uvs2 = mesh_.vertices[v2].uvs;
-        Eigen::Vector2d uvA = (i1 >= 0 && i1 < (int)uvs1.size()) ? uvs1[i1] : Eigen::Vector2d::Zero();
-        Eigen::Vector2d uvB = (i2 >= 0 && i2 < (int)uvs2.size()) ? uvs2[i2] : Eigen::Vector2d::Zero();
+        const Eigen::Vector2d &uvA = mesh_.wedges[w1].uv;
+        const Eigen::Vector2d &uvB = mesh_.wedges[w2].uv;
         Eigen::Vector2d merged = interpolateUVAlongSegment(ec.target, mesh_.vertices[v1].pos, uvA, mesh_.vertices[v2].pos, uvB);
-        ec.uvTargets.push_back({i1, i2, merged});
+        ec.uvTargets.push_back({w1, w2, merged});
     }
 
     return true;
@@ -239,20 +243,18 @@ std::vector<std::pair<int,int>> Simplifier::edgeUVPairs(int v1, int v2) const
     {
         if (fc.removed)
             continue;
-        int i1 = -1, i2 = -1;
+        int w1 = -1, w2 = -1;
         for (int k = 0; k < 3; k++)
         {
-            if (fc.v[k] == v1) i1 = k;
-            if (fc.v[k] == v2) i2 = k;
+            if (mesh_.wedges[fc.w[k]].vertex == v1) w1 = fc.w[k];
+            if (mesh_.wedges[fc.w[k]].vertex == v2) w2 = fc.w[k];
         }
-        if (i1 < 0 || i2 < 0)
+        if (w1 < 0 || w2 < 0)
             continue;
-        auto p = std::make_pair(fc.uv[i1], fc.uv[i2]);
+        auto p = std::make_pair(w1, w2);
         if (std::find(pairs.begin(), pairs.end(), p) == pairs.end())
             pairs.push_back(p);
     }
-    if (pairs.empty())
-        pairs.push_back({0, 0});
     return pairs;
 }
 
@@ -297,7 +299,7 @@ void Simplifier::buildAdjacency()
             continue;
         for (int i = 0; i < 3; i++)
         {
-            int a = fc.v[i], b = fc.v[(i + 1) % 3];
+            int a = mesh_.wedges[fc.w[i]].vertex, b = mesh_.wedges[fc.w[(i + 1) % 3]].vertex;
             adjacency[a].insert(b);
             adjacency[b].insert(a);
         }
@@ -319,7 +321,7 @@ void Simplifier::rebuildQueue(
             continue;
         for (int i = 0; i < 3; i++)
         {
-            int a = face.v[i], b = face.v[(i + 1) % 3];
+            int a = mesh_.wedges[face.w[i]].vertex, b = mesh_.wedges[face.w[(i + 1) % 3]].vertex;
             canonicalize(a, b);
             auto key = std::make_pair(a, b);
             if (edgeMap.count(key))
@@ -343,44 +345,47 @@ void Simplifier::mergeVertexPair(int keep, int remove, const Eigen::Vector3d &po
     kv.Q += rv.Q;
     kv.envelope.insert(kv.envelope.end(), rv.envelope.begin(), rv.envelope.end());
 
-    // Old (remove) UV slot -> new (keep) UV slot. Slots touched by this edge
-    // move to the interpolated target; any other slot `remove` carries (from
-    // an unrelated shell not touching this edge) is appended as-is.
-    std::vector<int> removeUVRemap(std::max<size_t>(rv.uvs.size(), 1), -1);
-    for (auto &[keepUVi, removeUVi, mergedUV] : uvTargets)
+    // Each uvTarget pairing collapses onto one surviving wedge (wKeep): if
+    // wRemove stayed a separate (but now identical-valued) wedge, faces on
+    // either side of the old edge would explode into two distinct GPU
+    // vertices at the same spot (explodeForGPU dedups by wedge id, not
+    // value), each only accumulating its own half of the normal -- faceting
+    // the shading right along every collapsed edge. So faces still pointing
+    // at wRemove are repointed at wKeep below, folded into the face pass
+    // already needed for degeneracy checking.
+    std::map<int, int> wedgeRemap; // wRemove -> wKeep
+    for (auto &[wKeep, wRemove, mergedUV] : uvTargets)
     {
-        if (keepUVi >= (int)kv.uvs.size())
-            kv.uvs.resize(keepUVi + 1, Eigen::Vector2d::Zero());
-        kv.uvs[keepUVi] = mergedUV;
-        if (removeUVi >= 0 && removeUVi < (int)removeUVRemap.size())
-            removeUVRemap[removeUVi] = keepUVi;
+        mesh_.wedges[wKeep].uv = mergedUV;
+        wedgeRemap[wRemove] = wKeep;
     }
-    for (size_t i = 0; i < rv.uvs.size(); i++)
-        if (removeUVRemap[i] < 0)
-            removeUVRemap[i] = kv.uvIndex(rv.uvs[i]);
+
+    // Any other wedge still belonging to `remove` (parts of its fan that
+    // don't touch this edge) simply moves to `keep`, UV unchanged.
+    for (auto &wg : mesh_.wedges)
+        if (wg.vertex == remove)
+            wg.vertex = keep;
 
     rv.removed = true;
 
+    // Repoint faces off any merged-away wedge, and mark now-degenerate faces
+    // (two corners collapsed onto the same vertex) removed.
     for (auto &fc : mesh_.faces)
     {
         if (fc.removed)
             continue;
-        bool ref = false;
-        for (int i = 0; i < 3; i++)
-        {
-            if (fc.v[i] == remove)
+        if (!wedgeRemap.empty())
+            for (int i = 0; i < 3; i++)
             {
-                int oldUV = fc.uv[i];
-                fc.v[i] = keep;
-                fc.uv[i] = (oldUV >= 0 && oldUV < (int)removeUVRemap.size()) ? removeUVRemap[oldUV] : 0;
-                ref = true;
+                auto it = wedgeRemap.find(fc.w[i]);
+                if (it != wedgeRemap.end())
+                    fc.w[i] = it->second;
             }
-        }
-        if (ref)
-        {
-            if (fc.v[0] == fc.v[1] || fc.v[1] == fc.v[2] || fc.v[0] == fc.v[2])
-                fc.removed = true;
-        }
+        int a = mesh_.wedges[fc.w[0]].vertex;
+        int b = mesh_.wedges[fc.w[1]].vertex;
+        int c = mesh_.wedges[fc.w[2]].vertex;
+        if (a == b || b == c || a == c)
+            fc.removed = true;
     }
 
     // Mantém a adjacência viva (necessária para buildCandidate checar se o
@@ -410,9 +415,9 @@ void Simplifier::addBoundaryConstraints(double weight)
         int a = edge.first, b = edge.second;
         int fi = faceIds[0];
 
-        const Eigen::Vector3d &p0 = mesh_.vertices[mesh_.faces[fi].v[0]].pos;
-        const Eigen::Vector3d &p1 = mesh_.vertices[mesh_.faces[fi].v[1]].pos;
-        const Eigen::Vector3d &p2 = mesh_.vertices[mesh_.faces[fi].v[2]].pos;
+        const Eigen::Vector3d &p0 = mesh_.vertices[mesh_.wedges[mesh_.faces[fi].w[0]].vertex].pos;
+        const Eigen::Vector3d &p1 = mesh_.vertices[mesh_.wedges[mesh_.faces[fi].w[1]].vertex].pos;
+        const Eigen::Vector3d &p2 = mesh_.vertices[mesh_.wedges[mesh_.faces[fi].w[2]].vertex].pos;
 
         Eigen::Vector3d faceNormal = (p1 - p0).cross(p2 - p0).normalized();
         Eigen::Vector3d edgeDir = (mesh_.vertices[b].pos - mesh_.vertices[a].pos).normalized();
@@ -491,14 +496,14 @@ void Simplifier::run(int targetFaces)
                 continue;
             for (int i = 0; i < 3; i++)
             {
-                if (fc.v[i] != keep)
+                if (mesh_.wedges[fc.w[i]].vertex != keep)
                     continue;
                 // fc toca `keep`: revalida a aresta (keep, outro vértice da face) para os outros 2 vértices da face.
                 for (int j = 0; j < 3; j++)
                 {
                     if (j == i)
                         continue;
-                    int p = keep, q = fc.v[j];
+                    int p = keep, q = mesh_.wedges[fc.w[j]].vertex;
                     canonicalize(p, q);
                     auto ekey = std::make_pair(p, q);
                     invalidEdges.erase(ekey); // pode ter sido invalidada por um colapso anterior; volta a ser válida.

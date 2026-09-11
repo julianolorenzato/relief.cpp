@@ -270,13 +270,12 @@ bool SimplifierModule::loadModel(const QString &path)
         texturedCheck_->setChecked(false);
 
     bool hasUVs = false;
-    for (const auto &v : originalMesh_->vertices)
-        for (const auto &uv : v.uvs)
-            if (uv.squaredNorm() > 1e-12)
-            {
-                hasUVs = true;
-                break;
-            }
+    for (const auto &wg : originalMesh_->wedges)
+        if (wg.uv.squaredNorm() > 1e-12)
+        {
+            hasUVs = true;
+            break;
+        }
     uvViewCheck_->setEnabled(hasUVs);
     if (!hasUVs)
         uvViewCheck_->setChecked(false);
@@ -342,13 +341,16 @@ void SimplifierModule::onSimplify()
     {
         if (f.removed)
             continue;
-        const auto &p0 = baseSimplifiedPositions_[f.v[0]];
-        const auto &p1 = baseSimplifiedPositions_[f.v[1]];
-        const auto &p2 = baseSimplifiedPositions_[f.v[2]];
+        int v0 = simplifiedMesh_->wedges[f.w[0]].vertex;
+        int v1 = simplifiedMesh_->wedges[f.w[1]].vertex;
+        int v2 = simplifiedMesh_->wedges[f.w[2]].vertex;
+        const auto &p0 = baseSimplifiedPositions_[v0];
+        const auto &p1 = baseSimplifiedPositions_[v1];
+        const auto &p2 = baseSimplifiedPositions_[v2];
         Eigen::Vector3d n = (p1 - p0).cross(p2 - p0);
-        simplifiedVertexNormals_[f.v[0]] += n;
-        simplifiedVertexNormals_[f.v[1]] += n;
-        simplifiedVertexNormals_[f.v[2]] += n;
+        simplifiedVertexNormals_[v0] += n;
+        simplifiedVertexNormals_[v1] += n;
+        simplifiedVertexNormals_[v2] += n;
     }
 
     // Vértices duplicados na mesma posição 3D (ex.: costuras de UV, separadas

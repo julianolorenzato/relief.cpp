@@ -54,9 +54,9 @@ HeightmapBaker::rasterizeUV(const Mesh &mesh, int W, int H)
         if (fc.removed)
             continue;
 
-        const V3 &p0 = mesh.vertices[fc.v[0]].pos;
-        const V3 &p1 = mesh.vertices[fc.v[1]].pos;
-        const V3 &p2 = mesh.vertices[fc.v[2]].pos;
+        const V3 &p0 = mesh.vertices[mesh.wedges[fc.w[0]].vertex].pos;
+        const V3 &p1 = mesh.vertices[mesh.wedges[fc.w[1]].vertex].pos;
+        const V3 &p2 = mesh.vertices[mesh.wedges[fc.w[2]].vertex].pos;
 
         V3 n = (p1 - p0).cross(p2 - p0);
         if (n.norm() < 1e-10)

@@ -17,7 +17,14 @@ set(TINYGLTF_INSTALL              OFF CACHE BOOL "" FORCE)
 set(TINYGLTF_HEADER_ONLY          ON  CACHE BOOL "" FORCE)
 FetchContent_MakeAvailable(tinygltf)
 
+FetchContent_Declare(tinyobjloader GIT_REPOSITORY https://github.com/tinyobjloader/tinyobjloader.git GIT_TAG v2.0.0rc13)
+FetchContent_GetProperties(tinyobjloader)
+if(NOT tinyobjloader_POPULATED)
+  FetchContent_Populate(tinyobjloader)
+endif()
+
 set_source_files_properties(src/mesh/io/gltf.cpp PROPERTIES COMPILE_FLAGS "-w")
+set_source_files_properties(src/mesh/io/obj.cpp PROPERTIES COMPILE_FLAGS "-w")
 
 add_library(relief STATIC
     src/mesh.cpp
@@ -41,10 +48,13 @@ target_link_libraries(relief
         Threads::Threads
 )
 
-# tinygltf é header-only via FetchContent e não é exportável; incluímos
-# apenas seu diretório de includes sem criar dependência de link.
+# tinygltf/tinyobjloader são usados como header-only via FetchContent e não
+# são exportáveis; incluímos apenas seus diretórios de include, sem criar
+# dependência de link (a implementação é compilada uma vez em gltf.cpp/obj.cpp
+# via TINYGLTF_IMPLEMENTATION/TINYOBJLOADER_IMPLEMENTATION).
 target_include_directories(relief PRIVATE
     $<TARGET_PROPERTY:tinygltf,INTERFACE_INCLUDE_DIRECTORIES>
+    ${tinyobjloader_SOURCE_DIR}
 )
 
 # Ferramenta de diagnóstico (temporária): checa se arestas de borda são

@@ -230,9 +230,8 @@ void HeightmapModule::launchBake()
     }
 
     bool hasUVs = false;
-    for (const auto& v : simplifiedMesh_->vertices)
-        for (const auto& uv : v.uvs)
-            if (uv.squaredNorm() > 1e-12) { hasUVs = true; break; }
+    for (const auto& wg : simplifiedMesh_->wedges)
+        if (wg.uv.squaredNorm() > 1e-12) { hasUVs = true; break; }
     if (!hasUVs)
     {
         QMessageBox::warning(this, "Warning",
