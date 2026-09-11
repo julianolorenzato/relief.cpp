@@ -7,12 +7,14 @@
 #include "stb_image.h"
 #define TINYOBJLOADER_IMPLEMENTATION
 #define TINYOBJLOADER_USE_DOUBLE
+#include <array>
 #include <filesystem>
 #include <fstream>
 #include <iostream>
 #include <map>
 #include <sstream>
 #include <string>
+#include <unordered_map>
 #include <vector>
 
 #include "tiny_obj_loader.h"
@@ -40,6 +42,36 @@ bool loadTexture(const fs::path &path, std::vector<uint8_t> &outData, int &outW,
     stbi_image_free(pixels);
     return true;
 }
+
+/// Hashes a 3D position by its exact bits (no epsilon): used to weld
+/// vertices that share bit-identical coordinates (see loadOBJ).
+struct PosHash {
+    size_t operator()(const std::array<double, 3> &p) const {
+        size_t h = 0;
+        auto combine = [&h](double v) {
+            h ^= std::hash<double>{}(v) + 0x9e3779b97f4a7c15ULL + (h << 6) + (h >> 2);
+        };
+        combine(p[0]);
+        combine(p[1]);
+        combine(p[2]);
+        return h;
+    }
+};
+
+/// Hashes a (welded vertex, UV) wedge key by exact bits (no epsilon): used
+/// to dedupe wedges by UV value instead of by raw OBJ texcoord index (see
+/// loadOBJ). std::pair/std::array already give us operator== for free.
+struct WedgeHash {
+    size_t operator()(const std::pair<int, std::array<double, 2>> &k) const {
+        size_t h = std::hash<int>{}(k.first);
+        auto combine = [&h](double v) {
+            h ^= std::hash<double>{}(v) + 0x9e3779b97f4a7c15ULL + (h << 6) + (h >> 2);
+        };
+        combine(k.second[0]);
+        combine(k.second[1]);
+        return h;
+    }
+};
 
 }  // namespace
 
@@ -74,69 +106,57 @@ bool loadOBJ(Mesh &mesh, const std::string &path) {
     // index-based dedup alone would leave geometrically-identical corners as
     // distinct Mesh::Vertex entries (invisible to seam detection, and free
     // to drift apart under simplification since they'd never share
-    // adjacency). Epsilon is relative to the whole model's bounding box.
-    size_t numPositions = attrib.vertices.size() / 3;
-    Eigen::Vector3d bmin(1e18, 1e18, 1e18), bmax(-1e18, -1e18, -1e18);
-    for (size_t i = 0; i < numPositions; i++) {
-        Eigen::Vector3d p(attrib.vertices[3 * i + 0], attrib.vertices[3 * i + 1],
-                          attrib.vertices[3 * i + 2]);
-        bmin = bmin.cwiseMin(p);
-        bmax = bmax.cwiseMax(p);
-    }
-    double diag = (bmax - bmin).norm();
-    if (!(diag > 1e-12)) diag = 1.0;
-    double weldEps = diag * 1e-6;
+    // adjacency). Keyed on the exact position bits (no epsilon): duplicated
+    // "v" lines from the same export pass carry bit-identical coordinates,
+    // so an exact hash catches them without the cost/fuzziness of a
+    // tolerance-based match.
 
-    struct PosKey {
-        int64_t x, y, z;
-        bool operator<(const PosKey &o) const {
-            return std::tie(x, y, z) < std::tie(o.x, o.y, o.z);
-        }
-    };
-    auto quant = [&](double v) { return (int64_t)std::llround(v / weldEps); };
-    std::map<PosKey, int> posToVertex;
-    std::vector<int> rawToVertex(numPositions, -1);  // raw obj vertex_index → welded mesh vertex
+    // pos → vertex_index, avoids multiple vertices with same 3D position
+    std::unordered_map<std::array<double, 3>, int, PosHash> vertexMap;
+    // (vertex_index, uv) → wedge_index,
+    // avoids multiple wedges from same vertex with same UV coordinates
+    std::unordered_map<std::pair<int, std::array<double, 2>>, int, WedgeHash> wedgeMap;
 
-    auto weldedVertex = [&](int rawIdx) -> int {
-        if (rawToVertex[rawIdx] >= 0) return rawToVertex[rawIdx];
-        Eigen::Vector3d p(attrib.vertices[3 * rawIdx + 0], attrib.vertices[3 * rawIdx + 1],
-                          attrib.vertices[3 * rawIdx + 2]);
-        PosKey k{quant(p.x()), quant(p.y()), quant(p.z())};
-        auto [it, inserted] = posToVertex.emplace(k, (int)mesh.vertices.size());
-        if (inserted) {
-            Vertex vx;
-            vx.pos = p;
-            mesh.vertices.push_back(vx);
-        }
-        rawToVertex[rawIdx] = it->second;
-        return it->second;
-    };
-
-    std::map<std::pair<int, int>, int> wedgeMap;  // (welded vertex, texcoord_index) → wedge
     for (const auto &shape : reader.GetShapes()) {
         const auto &indices = shape.mesh.indices;
-        for (size_t i = 0; i + 2 < indices.size(); i += 3) {
-            Face fc;
+        for (size_t i = 0; i + 2 < indices.size(); i += 3) {  // Iterates through faces
+            Face face;
             for (int c = 0; c < 3; c++) {
-                const tinyobj::index_t &ii = indices[i + c];
-                int vIdx = weldedVertex(ii.vertex_index);
+                const tinyobj::index_t &corner = indices[i + c];
 
-                auto wkey = std::make_pair(vIdx, ii.texcoord_index);
-                auto [wit, wInserted] = wedgeMap.emplace(wkey, (int)mesh.wedges.size());
-                if (wInserted) {
-                    Wedge wg;
-                    wg.vertex = vIdx;
-                    if (ii.texcoord_index >= 0)
-                        // OBJ's vt has v=0 at the bottom of the image, but
-                        // texture data is uploaded with row 0 = top — flip
-                        // here so mesh UV matches texel rows.
-                        wg.uv = Eigen::Vector2d(attrib.texcoords[2 * ii.texcoord_index + 0],
-                                                1.0 - attrib.texcoords[2 * ii.texcoord_index + 1]);
-                    mesh.wedges.push_back(wg);
+                double x = attrib.vertices[3 * corner.vertex_index + 0];
+                double y = attrib.vertices[3 * corner.vertex_index + 1];
+                double z = attrib.vertices[3 * corner.vertex_index + 2];
+                std::array<double, 3> position{x, y, z};
+                auto [vIterator, vInserted] =
+                    vertexMap.emplace(position, (int)mesh.vertices.size());
+                if (vInserted) {
+                    // We are only pushing one vertex per position to the Mesh
+                    Vertex vertex{.pos = Eigen::Vector3d(x, y, z)};
+                    mesh.vertices.push_back(vertex);
                 }
-                fc.w[c] = wit->second;
+                int vertexIndex = vIterator->second;
+
+                double u = 0.0, v = 0.0;
+                if (corner.texcoord_index >= 0) {
+                    // OBJ's vt has v=0 at the bottom of the image, but
+                    // texture data is uploaded with row 0 = top — flip
+                    // here so mesh UV matches texel rows.
+                    u = attrib.texcoords[2 * corner.texcoord_index + 0];
+                    v = 1.0 - attrib.texcoords[2 * corner.texcoord_index + 1];
+                }
+
+                auto wkey = std::make_pair(vertexIndex, std::array<double, 2>{u, v});
+                auto [wIterator, wInserted] = wedgeMap.emplace(wkey, (int)mesh.wedges.size());
+                if (wInserted) {
+                    // We are only pushing one wedge
+                    // per vertex per UV to the Mesh
+                    Wedge wedge{.uv = Eigen::Vector2d(u, v), .vertex = vertexIndex};
+                    mesh.wedges.push_back(wedge);
+                }
+                face.w[c] = wIterator->second;
             }
-            mesh.faces.push_back(fc);
+            mesh.faces.push_back(face);
         }
     }
 
