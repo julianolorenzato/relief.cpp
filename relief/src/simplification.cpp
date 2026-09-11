@@ -12,8 +12,6 @@
 
 namespace simplification {
 
-using mesh::Mesh;
-using mesh::Vertex;
 
 int Simplifier::canonicalize(int &a, int &b) const
 {
@@ -338,8 +336,8 @@ void Simplifier::rebuildQueue(
 void Simplifier::mergeVertexPair(int keep, int remove, const Eigen::Vector3d &pos,
                                   const std::vector<std::tuple<int,int,Eigen::Vector2d>> &uvTargets)
 {
-    Vertex &kv = mesh_.vertices[keep];
-    Vertex &rv = mesh_.vertices[remove];
+    mesh::Vertex &kv = mesh_.vertices[keep];
+    mesh::Vertex &rv = mesh_.vertices[remove];
 
     kv.pos = pos;
     kv.Q += rv.Q;
