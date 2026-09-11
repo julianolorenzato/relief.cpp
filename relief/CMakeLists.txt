@@ -62,3 +62,8 @@ target_include_directories(relief PRIVATE
 add_executable(edge_diag tools/edge_diag.cpp)
 target_link_libraries(edge_diag PRIVATE relief)
 
+# Carrega uma malha e imprime Mesh::logSummary(); usado para comparar antes/
+# depois de mudanças nos algoritmos de load/simplificação.
+add_executable(load_summary tools/load_summary.cpp)
+target_link_libraries(load_summary PRIVATE relief)
+

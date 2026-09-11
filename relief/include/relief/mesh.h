@@ -93,6 +93,11 @@ public:
 
     /// @return The GPU-friendly explosion of this mesh (see GPUMesh).
     GPUMesh explodeForGPU() const;
+
+    /// Prints vertex/wedge/face counts and (if present) texture dimensions
+    /// to stdout. Callable anywhere a quick summary of the mesh's current
+    /// state is useful (after load, after simplification, etc.).
+    void logSummary() const;
 };
 
 } // namespace mesh

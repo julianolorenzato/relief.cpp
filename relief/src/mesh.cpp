@@ -4,6 +4,7 @@
  */
 #include "relief/mesh.h"
 
+#include <iostream>
 #include <map>
 #include <utility>
 
@@ -53,6 +54,15 @@ EdgeFaces Mesh::buildEdgeFaces() const {
         }
     }
     return edgeFaces;
+}
+
+void Mesh::logSummary() const {
+    std::cout << "Mesh: " << vertexCount() << " vertices, " << wedges.size()
+              << " wedges, " << faceCount() << " faces\n";
+    if (!textureData.empty())
+        std::cout << "  color texture: " << textureWidth << "x" << textureHeight << "\n";
+    if (!normalTextureData.empty())
+        std::cout << "  normal texture: " << normalTextureWidth << "x" << normalTextureHeight << "\n";
 }
 
 } // namespace mesh
