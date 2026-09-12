@@ -248,8 +248,8 @@ bool Simplifier::buildCandidate(int p, int q, EdgeCollapse &out) const {
     return computeCollapse(p, q, out);
 }
 
-void Simplifier::buildAdjacency() {
-    adjacency.assign(mesh_.vertices.size(), {});
+std::vector<std::set<int>> Simplifier::buildAdjacency() const {
+    std::vector<std::set<int>> adjacency(mesh_.vertices.size());
     for (auto &fc : mesh_.faces) {
         if (fc.removed) continue;
         for (int i = 0; i < 3; i++) {
@@ -258,6 +258,7 @@ void Simplifier::buildAdjacency() {
             adjacency[b].insert(a);
         }
     }
+    return adjacency;
 }
 
 void Simplifier::rebuildQueue(
@@ -282,7 +283,8 @@ void Simplifier::rebuildQueue(
 
 void Simplifier::mergeVertexPair(
     int keep, int remove, const Eigen::Vector3d &pos,
-    const std::vector<std::tuple<int, int, Eigen::Vector2d>> &uvTargets) {
+    const std::vector<std::tuple<int, int, Eigen::Vector2d>> &uvTargets,
+    std::vector<std::set<int>> &adjacency) {
     mesh::Vertex &kv = mesh_.vertices[keep];
     mesh::Vertex &rv = mesh_.vertices[remove];
 
@@ -394,7 +396,7 @@ void Simplifier::run(int targetFaces) {
         markBoundaryVertices();  // marca vértices de borda para travar suas arestas em
                                  // buildCandidate/edgeLocked.
 
-    buildAdjacency();  // vizinhança vértice->vértice, usada por mergeVertexPair.
+    auto adjacency = buildAdjacency();  // vizinhança vértice->vértice, usada por mergeVertexPair.
 
     // Min-heap de candidatos de colapso, ordenada por custo (EdgeCollapse::operator> em
     // simplification.h).
@@ -473,7 +475,7 @@ void Simplifier::run(int targetFaces) {
         invalidEdges.insert(key);
 
         // Apply collapse: move v1 para o ponto-alvo, remove v2 e as faces degeneradas resultantes.
-        mergeVertexPair(ec.v1, ec.v2, ec.target, ec.uvTargets);
+        mergeVertexPair(ec.v1, ec.v2, ec.target, ec.uvTargets, adjacency);
 
         current = mesh_.faceCount();
 

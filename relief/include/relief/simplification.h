@@ -133,18 +133,18 @@ private:
     std::vector<std::pair<int,int>> edgeUVPairs(int v1, int v2) const;
     /// Merges `remove` into `keep` at the given position: retargets every
     /// wedge belonging to `remove` onto `keep` in place (no Face needs to
-    /// change which wedge it references) and updates adjacency.
+    /// change which wedge it references) and updates `adjacency`.
     void mergeVertexPair(int keep, int remove, const Eigen::Vector3d& pos,
-                          const std::vector<std::tuple<int,int,Eigen::Vector2d>>& uvTargets);
+                          const std::vector<std::tuple<int,int,Eigen::Vector2d>>& uvTargets,
+                          std::vector<std::set<int>>& adjacency);
     /// Rebuilds the priority queue of candidate collapses from current adjacency.
     void rebuildQueue(std::priority_queue<EdgeCollapse,
                                          std::vector<EdgeCollapse>,
                                          std::greater<EdgeCollapse>>& pq);
     /// Orders (a, b) into a canonical (a < b) pair; returns the canonicalized first index.
     int canonicalize(int& a, int& b) const;
-    std::vector<std::set<int>> adjacency;
-    /// Rebuilds the vertex adjacency sets from the current face list.
-    void buildAdjacency();
+    /// @return The vertex adjacency sets built from the current face list.
+    std::vector<std::set<int>> buildAdjacency() const;
     /// Adds perpendicular-plane quadrics along boundary edges so boundary
     /// vertices resist being pulled off the mesh silhouette.
     /// @param weight Relative strength of the boundary quadric.
