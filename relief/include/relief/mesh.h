@@ -40,7 +40,7 @@ struct Face {
 /// (by index) that has that edge as one of its 3 sides. A boundary edge
 /// (same criterion used by simplification::Simplifier::addBoundaryConstraints)
 /// is one referenced by exactly 1 face.
-using EdgeFaces = std::map<std::pair<int, int>, std::vector<int>>;
+using EdgeToFaces = std::map<std::pair<int, int>, std::vector<int>>;
 
 /**
  * @brief Triangle mesh with position/UV/texture data.
@@ -67,7 +67,7 @@ public:
 
     /// @return Edge-to-incident-faces adjacency for the current mesh, keyed
     ///         by (small, large) position-vertex id.
-    EdgeFaces buildEdgeFaces() const;
+    EdgeToFaces buildEdgeToFaces() const;
 
     /// @return The UV used at the given corner (0..2) of the given face.
     Eigen::Vector2d cornerUV(int faceIdx, int corner) const {

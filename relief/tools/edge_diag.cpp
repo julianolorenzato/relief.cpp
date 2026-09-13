@@ -1,7 +1,7 @@
 /**
  * @file edge_diag.cpp
  * @brief Diagnostic tool: loads a mesh and checks whether boundary edges
- *        reported by Mesh::buildEdgeFaces are "real" mesh boundaries or
+ *        reported by Mesh::buildEdgeToFaces are "real" mesh boundaries or
  *        artifacts of duplicated vertices at UV/material seams (same 3D
  *        position, different vertex index). Not part of the library build.
  */
@@ -34,11 +34,11 @@ int main(int argc, char **argv)
         return 1;
     }
 
-    auto edgeFaces = mesh.buildEdgeFaces();
+    auto edgeToFaces = mesh.buildEdgeToFaces();
 
     int boundaryCount = 0;
     std::vector<std::pair<int, int>> boundaryEdges;
-    for (auto &[edge, faceIds] : edgeFaces)
+    for (auto &[edge, faceIds] : edgeToFaces)
         if (faceIds.size() == 1)
         {
             boundaryCount++;
@@ -70,7 +70,7 @@ int main(int argc, char **argv)
 
     std::cout << "vertices: " << mesh.vertices.size() << "\n";
     std::cout << "faces: " << mesh.faces.size() << "\n";
-    std::cout << "arestas totais: " << edgeFaces.size() << "\n";
+    std::cout << "arestas totais: " << edgeToFaces.size() << "\n";
     std::cout << "arestas de borda (por indice): " << boundaryCount << "\n";
     std::cout << "arestas de borda com posicao 3D duplicada (provavel costura UV/material): "
               << seamArtifacts << " (" << (boundaryCount ? 100.0 * seamArtifacts / boundaryCount : 0.0) << "%)\n";

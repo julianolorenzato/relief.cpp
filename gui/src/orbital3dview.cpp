@@ -537,12 +537,12 @@ void Orbital3DView::buildEdgeBuffers() {
     static const float kSeam[3]     = {1.0f, 0.1f,  0.85f};
     static const float kInternal[3] = {0.8f, 0.8f,  0.8f};
 
-    auto edgeFaces = primaryMesh_->buildEdgeFaces();
+    auto edgeToFaces = primaryMesh_->buildEdgeToFaces();
     auto seamPairs = uv_atlas::findSeamEdges(*primaryMesh_);
     std::set<std::pair<int, int>> seamSet(seamPairs.begin(), seamPairs.end());
 
     std::vector<float> lineVerts;
-    lineVerts.reserve(edgeFaces.size() * 2 * 6);
+    lineVerts.reserve(edgeToFaces.size() * 2 * 6);
 
     auto append = [&](const Eigen::Vector3d& a, const Eigen::Vector3d& b, const float* c) {
         lineVerts.push_back((float)a.x()); lineVerts.push_back((float)a.y()); lineVerts.push_back((float)a.z());
@@ -551,13 +551,13 @@ void Orbital3DView::buildEdgeBuffers() {
         lineVerts.push_back(c[0]); lineVerts.push_back(c[1]); lineVerts.push_back(c[2]);
     };
 
-    for (const auto& [edge, faceIds] : edgeFaces) {
+    for (const auto& [edge, faceIds] : edgeToFaces) {
         if (faceIds.size() == 1 || !seamSet.count(edge)) continue;
         append(primaryMesh_->vertices[edge.first].pos, primaryMesh_->vertices[edge.second].pos, kSeam);
     }
     seamEdgeEnd_ = (int)(lineVerts.size() / 6);
 
-    for (const auto& [edge, faceIds] : edgeFaces) {
+    for (const auto& [edge, faceIds] : edgeToFaces) {
         if (faceIds.size() == 1 || seamSet.count(edge)) continue;
         append(primaryMesh_->vertices[edge.first].pos, primaryMesh_->vertices[edge.second].pos, kInternal);
     }

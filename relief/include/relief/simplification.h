@@ -121,23 +121,23 @@ private:
     using PQ = std::priority_queue<EdgeCollapse, std::vector<EdgeCollapse>, std::greater<EdgeCollapse>>;
 
     /// Vertex adjacency sets, kept in sync with the mesh by mergeVertexPair as collapses happen.
-    std::vector<std::set<int>> adjacency;
+    std::vector<std::set<int>> vertexToVertices;
 
     /// Merges `remove` into `keep` at the given position: retargets every
     /// wedge belonging to `remove` onto `keep` in place (no Face needs to
-    /// change which wedge it references) and updates `adjacency`.
+    /// change which wedge it references) and updates `vertexToVertices`.
     void mergeVertexPair(int keep, int remove, const Eigen::Vector3d& pos,
                           const std::vector<std::tuple<int,int,Eigen::Vector2d>>& uvTargets);
     /// Builds the priority queue of candidate collapses from current adjacency.
     void buildQueue(PQ& pq);
     /// Recomputes and re-enqueues the collapse cost of every edge touching
-    /// `keep`, using `adjacency[keep]` (called right after `keep` inherits
+    /// `keep`, using `vertexToVertices[keep]` (called right after `keep` inherits
     /// the faces of a removed vertex).
     void refreshAround(int keep, PQ& pq, std::set<std::pair<int,int>>& invalidEdges);
     /// Orders (a, b) into a canonical (a < b) pair; returns the canonicalized first index.
     int canonicalize(int& a, int& b) const;
     /// @return The vertex adjacency sets built from the current face list.
-    std::vector<std::set<int>> buildAdjacency() const;
+    std::vector<std::set<int>> buildVertexToVertices() const;
     /// Adds perpendicular-plane quadrics along boundary edges so boundary
     /// vertices resist being pulled off the mesh silhouette.
     /// @param weight Relative strength of the boundary quadric.

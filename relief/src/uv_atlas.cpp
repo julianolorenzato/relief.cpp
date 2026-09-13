@@ -15,7 +15,7 @@ namespace uv_atlas {
 
 using mesh::Mesh;
 using mesh::Face;
-using mesh::EdgeFaces;
+using mesh::EdgeToFaces;
 using textures::MipPyramid;
 
 namespace {
@@ -180,10 +180,10 @@ void rasterizeBand(
  *        (within epsilon). Faces sharing a 3D edge but disagreeing on UV at
  *        that edge are considered seam-separated (different islands).
  * @param mesh Mesh to partition into UV islands.
- * @param edgeFaces Edge-to-incident-faces adjacency, from mesh.buildEdgeFaces().
+ * @param edgeToFaces Edge-to-incident-faces adjacency, from mesh.buildEdgeToFaces().
  * @return One island id per face, in face order; removed faces get id -1.
  */
-std::vector<int> detectIslands(const Mesh& mesh, const EdgeFaces& edgeFaces) {
+std::vector<int> detectIslands(const Mesh& mesh, const EdgeToFaces& edgeToFaces) {
     int nf = (int)mesh.faces.size();
     std::vector<int> island(nf, -1);
     if (nf == 0) return island;
@@ -200,7 +200,7 @@ std::vector<int> detectIslands(const Mesh& mesh, const EdgeFaces& edgeFaces) {
     };
 
     constexpr double kUVEps2 = 1e-10;
-    for (const auto& [key, faceIds] : edgeFaces) {
+    for (const auto& [key, faceIds] : edgeToFaces) {
         if (faceIds.size() != 2) continue; // boundary or non-manifold edge: no weld across it
         int f0 = faceIds[0], f1 = faceIds[1];
         if (mesh.faces[f0].removed || mesh.faces[f1].removed) continue;
@@ -234,8 +234,8 @@ MipPyramid buildOffsetMap(
     const Mesh& mesh,
     int width, int height,
     int seamBandTexels) {
-    EdgeFaces edgeFaces = mesh.buildEdgeFaces();
-    std::vector<int> faceIsland = detectIslands(mesh, edgeFaces);
+    EdgeToFaces edgeToFaces = mesh.buildEdgeToFaces();
+    std::vector<int> faceIsland = detectIslands(mesh, edgeToFaces);
 
     std::vector<float> data((size_t)width * height * 4, 0.0f);
 
@@ -250,7 +250,7 @@ MipPyramid buildOffsetMap(
     double bandWidthUV = (double)std::max(1, seamBandTexels) / (double)std::min(width, height);
     std::vector<int> islandAt = buildIslandTexelMap(mesh, faceIsland, width, height);
 
-    for (const auto& [key, faceIds] : edgeFaces) {
+    for (const auto& [key, faceIds] : edgeToFaces) {
         if (faceIds.size() != 2) continue;
         int f0 = faceIds[0], f1 = faceIds[1];
         if (mesh.faces[f0].removed || mesh.faces[f1].removed) continue;
@@ -310,11 +310,11 @@ MipPyramid buildOffsetMap(
 }
 
 std::vector<std::pair<int, int>> findSeamEdges(const Mesh& mesh) {
-    EdgeFaces edgeFaces = mesh.buildEdgeFaces();
-    std::vector<int> faceIsland = detectIslands(mesh, edgeFaces);
+    EdgeToFaces edgeToFaces = mesh.buildEdgeToFaces();
+    std::vector<int> faceIsland = detectIslands(mesh, edgeToFaces);
 
     std::vector<std::pair<int, int>> seams;
-    for (const auto& [key, faceIds] : edgeFaces) {
+    for (const auto& [key, faceIds] : edgeToFaces) {
         if (faceIds.size() != 2) continue; // boundary or non-manifold: not a seam between islands.
         int f0 = faceIds[0], f1 = faceIds[1];
         if (mesh.faces[f0].removed || mesh.faces[f1].removed) continue;

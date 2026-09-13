@@ -143,10 +143,10 @@ std::vector<std::pair<int, int>> Simplifier::edgeUVPairs(int v1, int v2) const {
 // Desde que vértices passaram a ser únicos por posição, uma aresta de seam
 // não é mais topológica (é referenciada por 2 faces, uma de cada lado, que
 // hoje compartilham vértice de posição) — então precisa ser detectada à
-// parte via uv_atlas::findSeamEdges, não aparece em mesh_.buildEdgeFaces().
+// parte via uv_atlas::findSeamEdges, não aparece em mesh_.buildEdgeToFaces().
 void Simplifier::markBoundaryVertices() {
     boundaryVertex.assign(mesh_.vertices.size(), false);
-    for (const auto &[edge, faceIds] : mesh_.buildEdgeFaces()) {
+    for (const auto &[edge, faceIds] : mesh_.buildEdgeToFaces()) {
         if (faceIds.size() != 1) continue;
         boundaryVertex[edge.first] = true;
         boundaryVertex[edge.second] = true;
@@ -165,35 +165,26 @@ bool Simplifier::buildCandidate(int p, int q, EdgeCollapse &out) const {
     return computeCollapse(p, q, out);
 }
 
-std::vector<std::set<int>> Simplifier::buildAdjacency() const {
-    std::vector<std::set<int>> adjacency(mesh_.vertices.size());
-    for (auto &fc : mesh_.faces) {
-        if (fc.removed) continue;
-        for (int i = 0; i < 3; i++) {
-            int a = mesh_.wedges[fc.w[i]].vertex, b = mesh_.wedges[fc.w[(i + 1) % 3]].vertex;
-            adjacency[a].insert(b);
-            adjacency[b].insert(a);
-        }
+std::vector<std::set<int>> Simplifier::buildVertexToVertices() const {
+    std::vector<std::set<int>> vertexToVertices(mesh_.vertices.size());
+    for (const auto &entry : mesh_.buildEdgeToFaces()) {
+        const auto &edge = entry.first;
+        vertexToVertices[edge.first].insert(edge.second);
+        vertexToVertices[edge.second].insert(edge.first);
     }
-    return adjacency;
+    return vertexToVertices;
 }
 
 void Simplifier::buildQueue(PQ &pq) {
     while (!pq.empty()) pq.pop();
     edgeMap.clear();
 
-    for (auto &face : mesh_.faces) {
-        if (face.removed) continue;
-        for (int i = 0; i < 3; i++) {
-            int a = mesh_.wedges[face.w[i]].vertex, b = mesh_.wedges[face.w[(i + 1) % 3]].vertex;
-            canonicalize(a, b);
-            auto key = std::make_pair(a, b);
-            if (edgeMap.count(key)) continue;
-            EdgeCollapse ec;
-            if (!buildCandidate(a, b, ec)) continue;
-            edgeMap[key] = ec;
-            pq.push(ec);
-        }
+    for (const auto &entry : mesh_.buildEdgeToFaces()) {
+        const auto &edge = entry.first;
+        EdgeCollapse ec;
+        if (!buildCandidate(edge.first, edge.second, ec)) continue;
+        edgeMap[edge] = ec;
+        pq.push(ec);
     }
 }
 
@@ -244,22 +235,22 @@ void Simplifier::mergeVertexPair(
 
     // Mantém a adjacência viva (necessária para buildCandidate checar se o
     // par espelhado de uma aresta de seam ainda é uma aresta real da malha).
-    for (int n : adjacency[remove]) {
+    for (int n : vertexToVertices[remove]) {
         if (n == keep) continue;
-        adjacency[n].erase(remove);
-        adjacency[n].insert(keep);
-        adjacency[keep].insert(n);
+        vertexToVertices[n].erase(remove);
+        vertexToVertices[n].insert(keep);
+        vertexToVertices[keep].insert(n);
     }
-    adjacency[keep].erase(remove);
-    adjacency[remove].clear();
+    vertexToVertices[keep].erase(remove);
+    vertexToVertices[remove].clear();
 }
 
 // Passo 3/4: Penalidade para arestas de fronteira (seams e bordas)
 void Simplifier::addBoundaryConstraints(double weight) {
-    auto edgeFaces = mesh_.buildEdgeFaces();
+    auto edgeToFaces = mesh_.buildEdgeToFaces();
 
     int count = 0;
-    for (auto &[edge, faceIds] : edgeFaces) {
+    for (auto &[edge, faceIds] : edgeToFaces) {
         if (faceIds.size() != 1) continue;
         int a = edge.first, b = edge.second;
         int fi = faceIds[0];
@@ -288,7 +279,7 @@ void Simplifier::addBoundaryConstraints(double weight) {
 // Recalcula e reenfileira o custo de colapso de toda aresta que toca `keep`
 // (chamado logo após `keep` "herdar" as faces de um vértice removido).
 void Simplifier::refreshAround(int keep, PQ &pq, std::set<std::pair<int, int>> &invalidEdges) {
-    for (int q : adjacency[keep]) {
+    for (int q : vertexToVertices[keep]) {
         int p = keep;
         canonicalize(p, q);
         auto ekey = std::make_pair(p, q);
@@ -328,7 +319,7 @@ void Simplifier::run(int targetFaces) {
         markBoundaryVertices();  // marca vértices de borda para travar suas arestas em
                                  // buildCandidate/edgeLocked.
 
-    adjacency = buildAdjacency();  // vizinhança vértice->vértice, usada por mergeVertexPair.
+    vertexToVertices = buildVertexToVertices();  // vizinhança vértice->vértice, usada por mergeVertexPair.
 
     PQ pq;
     buildQueue(pq);  // popula pq e edgeMap com um candidato por aresta topológica da malha.

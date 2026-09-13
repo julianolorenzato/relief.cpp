@@ -1,6 +1,6 @@
 /**
  * @file mesh.cpp
- * @brief Mesh implementation: counts and edge adjacency.
+ * @brief Mesh implementation: counts and edge-to-faces adjacency.
  */
 #include "relief/mesh.h"
 
@@ -43,17 +43,17 @@ int Mesh::vertexCount() const {
     return n;
 }
 
-EdgeFaces Mesh::buildEdgeFaces() const {
-    EdgeFaces edgeFaces;
+EdgeToFaces Mesh::buildEdgeToFaces() const {
+    EdgeToFaces edgeToFaces;
     for (int fi = 0; fi < (int)faces.size(); fi++) {
         if (faces[fi].removed) continue;
         for (int i = 0; i < 3; i++) {
             int a = wedges[faces[fi].w[i]].vertex, b = wedges[faces[fi].w[(i + 1) % 3]].vertex;
             if (a > b) std::swap(a, b);
-            edgeFaces[{a, b}].push_back(fi);
+            edgeToFaces[{a, b}].push_back(fi);
         }
     }
-    return edgeFaces;
+    return edgeToFaces;
 }
 
 void Mesh::logSummary() const {
