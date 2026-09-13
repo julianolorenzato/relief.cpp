@@ -123,8 +123,8 @@ private:
     void mergeVertexPair(int keep, int remove, const Eigen::Vector3d& pos,
                           const std::vector<std::tuple<int,int,Eigen::Vector2d>>& uvTargets,
                           std::vector<std::set<int>>& adjacency);
-    /// Rebuilds the priority queue of candidate collapses from current adjacency.
-    void rebuildQueue(std::priority_queue<EdgeCollapse,
+    /// Builds the priority queue of candidate collapses from current adjacency.
+    void buildQueue(std::priority_queue<EdgeCollapse,
                                          std::vector<EdgeCollapse>,
                                          std::greater<EdgeCollapse>>& pq);
     /// Orders (a, b) into a canonical (a < b) pair; returns the canonicalized first index.

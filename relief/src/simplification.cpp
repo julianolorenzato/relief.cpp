@@ -178,7 +178,7 @@ std::vector<std::set<int>> Simplifier::buildAdjacency() const {
     return adjacency;
 }
 
-void Simplifier::rebuildQueue(
+void Simplifier::buildQueue(
     std::priority_queue<EdgeCollapse, std::vector<EdgeCollapse>, std::greater<EdgeCollapse>> &pq) {
     while (!pq.empty()) pq.pop();
     edgeMap.clear();
@@ -316,7 +316,7 @@ void Simplifier::run(int targetFaces) {
     using PQ =
         std::priority_queue<EdgeCollapse, std::vector<EdgeCollapse>, std::greater<EdgeCollapse>>;
     PQ pq;
-    rebuildQueue(pq);  // popula pq e edgeMap com um candidato por aresta topológica da malha.
+    buildQueue(pq);  // popula pq e edgeMap com um candidato por aresta topológica da malha.
 
     int current = mesh_.faceCount();
     std::cout << "Iniciando QEM: " << current << " → " << targetFaces << " faces\n";
