@@ -168,6 +168,7 @@ void TexturePrepModule::buildUI()
     tpResCombo_->addItem("512 × 512",   512);
     tpResCombo_->addItem("1024 × 1024", 1024);
     tpResCombo_->addItem("2048 × 2048", 2048);
+    tpResCombo_->addItem("4096 × 4096", 4096);
     tpResCombo_->setCurrentIndex(2);
     resRow->addWidget(tpResCombo_, 1);
     ctrlOuter->addLayout(resRow);
