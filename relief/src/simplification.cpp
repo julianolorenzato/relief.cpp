@@ -43,6 +43,35 @@ void Simplifier::computeQ() {
     }
 }
 
+// step 1b (only when envelopeConstraint is enabled)
+void Simplifier::computeEnvelope() {
+    for (auto &vx : mesh_.vertices) vx.envelope.clear();
+
+    for (auto &fc : mesh_.faces) {
+        if (fc.removed) continue;
+        int v0 = mesh_.wedges[fc.w[0]].vertex;
+        int v1 = mesh_.wedges[fc.w[1]].vertex;
+        int v2 = mesh_.wedges[fc.w[2]].vertex;
+        const Eigen::Vector3d &p0 = mesh_.vertices[v0].pos;
+        const Eigen::Vector3d &p1 = mesh_.vertices[v1].pos;
+        const Eigen::Vector3d &p2 = mesh_.vertices[v2].pos;
+
+        Eigen::Vector3d n = (p1 - p0).cross(p2 - p0).normalized();
+        double d = -n.dot(p0);
+        Eigen::Vector4d plane(n.x(), n.y(), n.z(), d);
+
+        mesh_.vertices[v0].envelope.push_back(plane);
+        mesh_.vertices[v1].envelope.push_back(plane);
+        mesh_.vertices[v2].envelope.push_back(plane);
+    }
+}
+
+// Signed slack of p against outward-oriented plane (n,d): negative means p
+// is on the wrong (interior) side by that amount.
+static double planeSlack(const Eigen::Vector3d &p, const Eigen::Vector4d &plane) {
+    return plane.x() * p.x() + plane.y() * p.y() + plane.z() * p.z() + plane.w();
+}
+
 /**
  * Interpolates UV coordinates along a segment.
  * @param p Query point.
@@ -105,6 +134,60 @@ bool Simplifier::computeCollapse(int v1, int v2, EdgeCollapse &ec) const {
     if (hasOpt && cOpt < bestCost) {
         ec.target = opt;
         ec.cost = cOpt;
+    }
+
+    if (envelopeConstraint) {
+        auto key = std::make_pair(v1, v2);
+        canonicalize(key.first, key.second);
+
+        // Find the plane (from either endpoint's absorbed envelope) that
+        // ec.target violates the most, if any.
+        double worstSlack = std::numeric_limits<double>::infinity();
+        const Eigen::Vector4d *worstPlane = nullptr;
+        for (const auto *planes : {&mesh_.vertices[v1].envelope, &mesh_.vertices[v2].envelope}) {
+            for (const auto &plane : *planes) {
+                double slack = planeSlack(ec.target, plane) + envelopeEps;
+                if (slack < worstSlack) {
+                    worstSlack = slack;
+                    worstPlane = &plane;
+                }
+            }
+        }
+
+        if (worstPlane && worstSlack < 0.0) {
+            // Otherwise-best candidate dips inside the original mesh: re-solve
+            // the quadric minimum subject to the worst-violated plane as an
+            // equality constraint, so the result lies exactly on its boundary.
+            double cx, cy, cz;
+            bool solved = solveQuadricConstrained(Qbar, worstPlane->head<3>(), worstPlane->w(), cx, cy, cz);
+            bool satisfiesAll = false;
+            if (solved) {
+                Eigen::Vector3d candidate(cx, cy, cz);
+                satisfiesAll = true;
+                for (const auto *planes : {&mesh_.vertices[v1].envelope, &mesh_.vertices[v2].envelope}) {
+                    for (const auto &plane : *planes) {
+                        if (planeSlack(candidate, plane) + envelopeEps < 0.0) {
+                            satisfiesAll = false;
+                            break;
+                        }
+                    }
+                    if (!satisfiesAll) break;
+                }
+                if (satisfiesAll) {
+                    ec.target = candidate;
+                    ec.cost = evalQuadric(Qbar, cx, cy, cz);
+                }
+            }
+
+            if (!satisfiesAll) {
+                // Single-plane activation wasn't enough (degenerate solve, or
+                // the constrained point still violates a different plane):
+                // leave this edge uncollapsed this round.
+                envelopeLockedEdges_.insert(key);
+                return false;
+            }
+        }
+        envelopeLockedEdges_.erase(key);
     }
 
     // UV is purely a function of the chosen 3D target: interpolate each
@@ -196,6 +279,7 @@ void Simplifier::mergeVertexPair(
 
     kv.pos = pos;
     kv.Q += rv.Q;
+    kv.envelope.insert(kv.envelope.end(), rv.envelope.begin(), rv.envelope.end());
 
     // Each uvTarget pairing collapses onto one surviving wedge (wKeep): if
     // wRemove stayed a separate (but now identical-valued) wedge, faces on
@@ -309,6 +393,9 @@ void Simplifier::refreshAround(int keep, PQ &pq, std::set<std::pair<int, int>> &
  */
 void Simplifier::run(int targetFaces) {
     computeQ();  // Q por vértice = soma das quádricas de plano das faces incidentes.
+    if (envelopeConstraint)
+        computeEnvelope();  // planos de face originais absorvidos por cada vértice.
+    envelopeLockedEdges_.clear();
 
     // Deriva o flag de comportamento a partir do modo de boundary escolhido.
     lockSeamEdges = (boundaryMode == BoundaryMode::LockSeamVertices);
@@ -370,6 +457,13 @@ void Simplifier::run(int targetFaces) {
 
     std::cout << "QEM concluído: " << mesh_.faceCount() << " faces, " << mesh_.vertexCount()
               << " vértices\n";
+
+    if (envelopeConstraint) {
+        std::cout << "Envelope: " << envelopeLockedEdges_.size() << " arestas travadas\n";
+        if (mesh_.faceCount() > targetFaces)
+            std::cout << "Aviso: alvo não atingido (" << mesh_.faceCount() << " > " << targetFaces
+                      << ") devido ao envelope.\n";
+    }
 }
 
 }  // namespace simplification
