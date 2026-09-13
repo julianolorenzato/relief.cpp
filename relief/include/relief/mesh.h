@@ -12,19 +12,13 @@
 
 namespace mesh {
 
-/// A single mesh vertex: position, accumulated quadric, and envelope planes.
+/// A single mesh vertex: position and accumulated quadric.
 /// Vertices are unique by position; per-corner attributes (UV) live on
 /// Wedge, not here.
 struct Vertex {
     Eigen::Vector3d pos  = Eigen::Vector3d::Zero();
     Eigen::Matrix4d Q    = Eigen::Matrix4d::Zero();
     bool            removed = false;
-
-    /// Outward-oriented planes (n.x,n.y,n.z,d) of original faces already
-    /// absorbed by this vertex over the course of its collapses (see
-    /// simplification::Simplifier::envelopeConstraint). Empty when the
-    /// envelope constraint is disabled.
-    std::vector<Eigen::Vector4d> envelope;
 };
 
 /// A single face-corner's full attribute set: which vertex it uses, and the

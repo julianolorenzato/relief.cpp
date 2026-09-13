@@ -1,7 +1,7 @@
 /**
  * @file simplification.cpp
- * @brief Simplifier implementation: quadric/envelope computation,
- *        boundary/seam handling, and the greedy edge-collapse main loop.
+ * @brief Simplifier implementation: quadric computation, boundary/seam
+ *        handling, and the greedy edge-collapse main loop.
  */
 #include "relief/simplification.h"
 
@@ -43,23 +43,6 @@ void Simplifier::computeQ() {
     }
 }
 
-// Envelope Constraint (half-spaces)
-// A point satisfies an outward-oriented plane (n,d) when n.p + d >= -eps.
-// Since this inequality is affine in p, if all 3 corners of a triangle
-// satisfy it, every interior point does too — this is what lets the planes
-// accumulated per vertex be used as a collapse constraint while still
-// guaranteeing the whole footprint (see docs/envelope-simplification-plan.md).
-
-/// @return true if `p` satisfies every outward-oriented half-space in `planes` (within `eps`).
-static bool pointSatisfiesPlanes(const Eigen::Vector3d &p,
-                                 const std::vector<Eigen::Vector4d> &planes, double eps = 1e-6) {
-    for (const auto &pl : planes) {
-        double val = pl.x() * p.x() + pl.y() * p.y() + pl.z() * p.z() + pl.w();
-        if (val < -eps) return false;
-    }
-    return true;
-}
-
 /**
  * Interpolates UV coordinates along a segment.
  * @param p Query point.
@@ -80,32 +63,7 @@ static Eigen::Vector2d interpolateUVAlongSegment(const Eigen::Vector3d &p, const
     return uvA + t * (uvB - uvA);
 }
 
-void Simplifier::computeEnvelope() {
-    for (auto &vx : mesh_.vertices) vx.envelope.clear();
-
-    for (auto &fc : mesh_.faces) {
-        if (fc.removed) continue;
-        int v0 = mesh_.wedges[fc.w[0]].vertex;
-        int v1 = mesh_.wedges[fc.w[1]].vertex;
-        int v2 = mesh_.wedges[fc.w[2]].vertex;
-        const Eigen::Vector3d &p0 = mesh_.vertices[v0].pos;
-        const Eigen::Vector3d &p1 = mesh_.vertices[v1].pos;
-        const Eigen::Vector3d &p2 = mesh_.vertices[v2].pos;
-
-        Eigen::Vector3d n = (p1 - p0).cross(p2 - p0).normalized();
-        double d = -n.dot(p0);
-        Eigen::Vector4d plane(n.x(), n.y(), n.z(), d);
-
-        mesh_.vertices[v0].envelope.push_back(plane);
-        mesh_.vertices[v1].envelope.push_back(plane);
-        mesh_.vertices[v2].envelope.push_back(plane);
-    }
-}
-
 // step 2
-// Retorna false (sem preencher 'out') quando envelopeConstraint == true e
-// nenhum dos 3 candidatos de sempre satisfaz os planos acumulados de v1/v2:
-// a aresta não pode colapsar nesse passo.
 bool Simplifier::computeCollapse(int v1, int v2, EdgeCollapse &ec) const {
     ec.v1 = v1;
     ec.v2 = v2;
@@ -131,64 +89,23 @@ bool Simplifier::computeCollapse(int v1, int v2, EdgeCollapse &ec) const {
         }
     }
 
-    bool found = false;
-    if (!envelopeConstraint) {
-        double bestCost = c1;
-        ec.target = mesh_.vertices[v1].pos;
-        ec.cost = c1;
-        found = true;
-        if (c2 < bestCost) {
-            bestCost = c2;
-            ec.target = mesh_.vertices[v2].pos;
-            ec.cost = c2;
-        }
-        if (cm < bestCost) {
-            bestCost = cm;
-            ec.target = mid;
-            ec.cost = cm;
-        }
-        if (hasOpt && cOpt < bestCost) {
-            ec.target = opt;
-            ec.cost = cOpt;
-        }
-    } else {
-        bool feas1 = pointSatisfiesPlanes(mesh_.vertices[v1].pos, mesh_.vertices[v1].envelope) &&
-                     pointSatisfiesPlanes(mesh_.vertices[v1].pos, mesh_.vertices[v2].envelope);
-        bool feas2 = pointSatisfiesPlanes(mesh_.vertices[v2].pos, mesh_.vertices[v1].envelope) &&
-                     pointSatisfiesPlanes(mesh_.vertices[v2].pos, mesh_.vertices[v2].envelope);
-        bool feasM = pointSatisfiesPlanes(mid, mesh_.vertices[v1].envelope) &&
-                     pointSatisfiesPlanes(mid, mesh_.vertices[v2].envelope);
-        bool feasOpt = hasOpt && pointSatisfiesPlanes(opt, mesh_.vertices[v1].envelope) &&
-                       pointSatisfiesPlanes(opt, mesh_.vertices[v2].envelope);
-
-        double bestCost = std::numeric_limits<double>::infinity();
-        if (feas1 && c1 < bestCost) {
-            ec.target = mesh_.vertices[v1].pos;
-            ec.cost = c1;
-            bestCost = c1;
-            found = true;
-        }
-        if (feas2 && c2 < bestCost) {
-            ec.target = mesh_.vertices[v2].pos;
-            ec.cost = c2;
-            bestCost = c2;
-            found = true;
-        }
-        if (feasM && cm < bestCost) {
-            ec.target = mid;
-            ec.cost = cm;
-            bestCost = cm;
-            found = true;
-        }
-        if (feasOpt && cOpt < bestCost) {
-            ec.target = opt;
-            ec.cost = cOpt;
-            bestCost = cOpt;
-            found = true;
-        }
+    double bestCost = c1;
+    ec.target = mesh_.vertices[v1].pos;
+    ec.cost = c1;
+    if (c2 < bestCost) {
+        bestCost = c2;
+        ec.target = mesh_.vertices[v2].pos;
+        ec.cost = c2;
     }
-
-    if (!found) return false;
+    if (cm < bestCost) {
+        bestCost = cm;
+        ec.target = mid;
+        ec.cost = cm;
+    }
+    if (hasOpt && cOpt < bestCost) {
+        ec.target = opt;
+        ec.cost = cOpt;
+    }
 
     // UV is purely a function of the chosen 3D target: interpolate each
     // (v1,v2) wedge pairing used by the faces incident to this edge along
@@ -290,7 +207,6 @@ void Simplifier::mergeVertexPair(
 
     kv.pos = pos;
     kv.Q += rv.Q;
-    kv.envelope.insert(kv.envelope.end(), rv.envelope.begin(), rv.envelope.end());
 
     // Each uvTarget pairing collapses onto one surviving wedge (wKeep): if
     // wRemove stayed a separate (but now identical-valued) wedge, faces on
@@ -383,9 +299,6 @@ void Simplifier::addBoundaryConstraints(double weight) {
  */
 void Simplifier::run(int targetFaces) {
     computeQ();  // Q por vértice = soma das quádricas de plano das faces incidentes.
-    if (envelopeConstraint)
-        computeEnvelope();  // planos por vértice usados para restringir o alvo do colapso ao
-                            // footprint original.
 
     // Deriva o flag de comportamento a partir do modo de boundary escolhido.
     lockSeamEdges = (boundaryMode == BoundaryMode::LockSeamVertices);

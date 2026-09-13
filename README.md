@@ -18,7 +18,6 @@ A C++ tool for mesh simplification using Quadric Error Metrics (QEM) with UV-awa
   - `Constraint` — soft penalty quadric perpendicular to the seam plane.
   - `LockSeamVertices` — seam vertices are never collapsed.
   - `SyncSeamTwins` — paired seam vertices are collapsed in sync, preserving UV continuity.
-- **Envelope Constraint** — optional guarantee that the simplified mesh never protrudes outside the original surface.
 - **Heightmap Baking** — per-texel signed displacement computed in UV space using multi-threaded rasterization.
 - **Offset Map Baking** — per-texel leap data for UV island boundary traversal during relief mapping.
 - **OBJ and glTF I/O** — load and save meshes in both formats (glTF with embedded textures).
@@ -60,7 +59,6 @@ Launch the GUI and open an OBJ or glTF mesh. The interface exposes:
 
 - Target face count for simplification.
 - UV seam boundary mode.
-- Envelope constraint toggle.
 - Heightmap resolution and output path.
 - Offset map resolution and seam band width (in texels).
 

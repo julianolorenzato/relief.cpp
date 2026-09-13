@@ -1,7 +1,7 @@
 /**
  * @file simplification.h
  * @brief Mesh simplification via Quadric Error Metrics (QEM), with optional
- *        boundary/seam and envelope constraints.
+ *        boundary/seam constraints.
  */
 #pragma once
 #include <vector>
@@ -84,8 +84,7 @@ enum class BoundaryMode {
 
 /**
  * @brief Simplifies a triangle mesh via iterative edge collapse driven by
- *        Quadric Error Metrics, with optional boundary/seam handling and
- *        envelope (non-penetration) constraints.
+ *        Quadric Error Metrics, with optional boundary/seam handling.
  */
 class Simplifier {
 public:
@@ -94,16 +93,8 @@ public:
 
     BoundaryMode boundaryMode = BoundaryMode::Constraint;
 
-    /// When true, no collapse may produce a vertex that violates the
-    /// accumulated envelope planes of v1/v2: guarantees the simplified mesh
-    /// stays on or outside the original surface.
-    bool envelopeConstraint = false;
-
     /// When true, adds the quadric's unconstrained optimum (solveQuadric) as
-    /// an extra position candidate, alongside v1, v2, and the midpoint. With
-    /// envelopeConstraint also enabled, the optimum is only accepted if it
-    /// respects the accumulated planes; otherwise it falls back to the other
-    /// 3 candidates as before.
+    /// an extra position candidate, alongside v1, v2, and the midpoint.
     bool useOptimalCandidate = false;
 
     /// @brief Runs greedy edge-collapse simplification until the target face
@@ -119,14 +110,9 @@ private:
 
     /// Computes the initial per-vertex quadric from adjacent face planes.
     void computeQ();
-    /// Computes mesh_.vertices[i].envelope from the current faces (once,
-    /// before the collapse loop). Only called when envelopeConstraint == true.
-    void computeEnvelope();
     /// Builds the collapse candidate between v1, v2, the midpoint, and (if
-    /// useOptimalCandidate) the quadric's unconstrained optimum. When
-    /// envelopeConstraint == true, discards candidates that violate the
-    /// accumulated planes of v1/v2, returning false if none remain viable
-    /// (the edge can't collapse at this step).
+    /// useOptimalCandidate) the quadric's unconstrained optimum, picking the
+    /// one with lowest quadric error.
     bool computeCollapse(int v1, int v2, EdgeCollapse& out) const;
     /// @return The distinct (wedge at v1, wedge at v2) pairs actually
     ///         used together by some face incident to edge (v1,v2).

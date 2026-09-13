@@ -147,13 +147,6 @@ void SimplifierModule::buildUI()
     boundaryRow->addWidget(boundaryModeCombo_, 1);
     controlsRows->addLayout(boundaryRow);
 
-    envelopeConstraintCheck_ = new QCheckBox("Envelope Constraint");
-    envelopeConstraintCheck_->setToolTip(
-        "Garante que a malha simplificada fique sempre do lado de fora (ou sobre)\n"
-        "a malha original. Pode travar colapsos em regioes muito concavas, entao\n"
-        "a malha final pode nao atingir a contagem de faces alvo.");
-    controlsRows->addWidget(envelopeConstraintCheck_);
-
     useOptimalCandidateCheck_ = new QCheckBox("Use Optimal Candidate");
     useOptimalCandidateCheck_->setToolTip(
         "Soma o otimo irrestrito da quadrica como mais um candidato de posicao\n"
@@ -324,7 +317,6 @@ void SimplifierModule::onSimplify()
 
     Simplifier simplifier(*simplifiedMesh_);
     simplifier.boundaryMode = (BoundaryMode)boundaryModeCombo_->currentData().toInt();
-    simplifier.envelopeConstraint = envelopeConstraintCheck_->isChecked();
     simplifier.useOptimalCandidate = useOptimalCandidateCheck_->isChecked();
 
     emit statusMessage("Simplifying...");

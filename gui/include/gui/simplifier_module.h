@@ -18,7 +18,7 @@
 #include "gui/orbital3dview.h"
 
 /// @brief Widget that loads a mesh, runs Simplifier with the configured
-///        boundary/envelope options, and shows the original, simplified, and
+///        boundary options, and shows the original, simplified, and
 ///        overlay views alongside an inflate/deflate preview control.
 class SimplifierModule : public QWidget {
     Q_OBJECT
@@ -75,7 +75,6 @@ private:
     QCheckBox* texturedCheck_             = nullptr;
     QCheckBox* uvViewCheck_               = nullptr;
     QComboBox* boundaryModeCombo_         = nullptr;
-    QCheckBox* envelopeConstraintCheck_   = nullptr;
     QCheckBox* useOptimalCandidateCheck_  = nullptr;
     QCheckBox* showInternalEdgesCheck_    = nullptr;
     QCheckBox* showSeamEdgesCheck_        = nullptr;
