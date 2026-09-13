@@ -117,16 +117,23 @@ private:
     /// @return The distinct (wedge at v1, wedge at v2) pairs actually
     ///         used together by some face incident to edge (v1,v2).
     std::vector<std::pair<int,int>> edgeUVPairs(int v1, int v2) const;
+    /// Min-heap of candidate collapses, ordered by cost (EdgeCollapse::operator> above).
+    using PQ = std::priority_queue<EdgeCollapse, std::vector<EdgeCollapse>, std::greater<EdgeCollapse>>;
+
+    /// Vertex adjacency sets, kept in sync with the mesh by mergeVertexPair as collapses happen.
+    std::vector<std::set<int>> adjacency;
+
     /// Merges `remove` into `keep` at the given position: retargets every
     /// wedge belonging to `remove` onto `keep` in place (no Face needs to
     /// change which wedge it references) and updates `adjacency`.
     void mergeVertexPair(int keep, int remove, const Eigen::Vector3d& pos,
-                          const std::vector<std::tuple<int,int,Eigen::Vector2d>>& uvTargets,
-                          std::vector<std::set<int>>& adjacency);
+                          const std::vector<std::tuple<int,int,Eigen::Vector2d>>& uvTargets);
     /// Builds the priority queue of candidate collapses from current adjacency.
-    void buildQueue(std::priority_queue<EdgeCollapse,
-                                         std::vector<EdgeCollapse>,
-                                         std::greater<EdgeCollapse>>& pq);
+    void buildQueue(PQ& pq);
+    /// Recomputes and re-enqueues the collapse cost of every edge touching
+    /// `keep`, using `adjacency[keep]` (called right after `keep` inherits
+    /// the faces of a removed vertex).
+    void refreshAround(int keep, PQ& pq, std::set<std::pair<int,int>>& invalidEdges);
     /// Orders (a, b) into a canonical (a < b) pair; returns the canonicalized first index.
     int canonicalize(int& a, int& b) const;
     /// @return The vertex adjacency sets built from the current face list.
