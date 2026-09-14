@@ -36,16 +36,16 @@ void ReliefModule::buildUI()
     QHBoxLayout* viewportsLayout = new QHBoxLayout(viewportsWidget);
     viewportsLayout->setContentsMargins(0, 0, 0, 0);
 
-    reliefWidget_ = new ReliefView();
-    viewportsLayout->addWidget(reliefWidget_);
+    reliefOriginalWidget_ = new Orbital3DView(RenderMode::Textured, "Original Model");
+    reliefOriginalWidget_->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
+    viewportsLayout->addWidget(reliefOriginalWidget_);
 
     reliefCompareWidget_ = new Orbital3DView(RenderMode::Textured, "Simplified Mesh (no relief)");
     reliefCompareWidget_->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
     viewportsLayout->addWidget(reliefCompareWidget_);
 
-    reliefOriginalWidget_ = new Orbital3DView(RenderMode::Textured, "Original Model");
-    reliefOriginalWidget_->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
-    viewportsLayout->addWidget(reliefOriginalWidget_);
+    reliefWidget_ = new ReliefView();
+    viewportsLayout->addWidget(reliefWidget_);
 
     // Cameras stay in sync across the three viewports so they can be compared directly.
     connect(reliefWidget_,        &ReliefView::cameraChanged,    reliefCompareWidget_,  &Orbital3DView::syncCamera);
@@ -70,7 +70,7 @@ void ReliefModule::buildUI()
     QHBoxLayout* stepsRow = new QHBoxLayout();
     stepsRow->addWidget(new QLabel("Steps:"));
     reliefStepsSpin_ = new QSpinBox();
-    reliefStepsSpin_->setRange(1, 256);
+    reliefStepsSpin_->setRange(1, 4096);
     reliefStepsSpin_->setValue(64);
     connect(reliefStepsSpin_, QOverload<int>::of(&QSpinBox::valueChanged), reliefWidget_, &ReliefView::setSteps);
     stepsRow->addWidget(reliefStepsSpin_, 1);
@@ -161,12 +161,14 @@ void ReliefModule::setMeshes(Mesh* original, Mesh* simplified)
     originalMesh_   = original;
     simplifiedMesh_ = simplified;
     meshPending_    = true;
+    syncIfReady();
 }
 
 void ReliefModule::onTexturesReady(TexturePrepModule* source)
 {
     texturePrepSource_ = source;
     texturesPending_    = true;
+    syncIfReady();
 }
 
 void ReliefModule::onActivated()
