@@ -235,6 +235,10 @@ void Orbital3DView::setUVMode(bool v)             { uvMode_       = v; update();
 void Orbital3DView::setShowInternalEdges(bool v)  { showInternal_ = v; update(); }
 void Orbital3DView::setShowSeamEdges(bool v)      { showSeam_ = v; update(); }
 
+void Orbital3DView::setLightX(double v) { lightPos_.x = (float)v; update(); }
+void Orbital3DView::setLightY(double v) { lightPos_.y = (float)v; update(); }
+void Orbital3DView::setLightZ(double v) { lightPos_.z = (float)v; update(); }
+
 // ─── GL lifecycle ─────────────────────────────────────────────────────────────
 
 void Orbital3DView::initializeGL() {
@@ -364,11 +368,19 @@ void Orbital3DView::createShaders() {
             layout(location = 0) in vec3 position;
             layout(location = 1) in vec3 normal;
             layout(location = 2) in vec2 texCoord;
+            layout(location = 3) in vec4 tangent; // xyz = tangent, w = handedness sign (±1)
             uniform mat4 model; uniform mat4 view; uniform mat4 projection;
             out vec3 FragPos; out vec3 Normal; out vec2 TexCoord;
+            out vec3 Tangent; out float Handedness;
             void main() {
                 FragPos = vec3(model * vec4(position, 1.0));
-                Normal  = mat3(transpose(inverse(model))) * normal;
+                mat3 normalMat = mat3(transpose(inverse(model)));
+                vec3 N = normalize(normalMat * normal);
+                vec3 T = normalize(normalMat * tangent.xyz);
+                T = normalize(T - N * dot(N, T));
+                Normal    = N;
+                Tangent   = T;
+                Handedness = tangent.w;
                 TexCoord = texCoord;
                 gl_Position = projection * view * vec4(FragPos, 1.0);
             }
@@ -376,12 +388,24 @@ void Orbital3DView::createShaders() {
         const char* frag = R"(
             #version 330 core
             in vec3 FragPos; in vec3 Normal; in vec2 TexCoord;
+            in vec3 Tangent; in float Handedness;
             out vec4 FragColor;
             uniform sampler2D textureSampler;
+            uniform sampler2D normalSampler;
             uniform bool useTexture;
+            uniform bool useNormalMap;
+            uniform vec3 LightPosWorld;
             void main() {
-                vec3 n    = normalize(Normal);
-                float diff = max(dot(n, normalize(vec3(1.0, 1.0, 1.0))), 0.0);
+                vec3 n = normalize(Normal);
+                if (useNormalMap) {
+                    vec3 T = normalize(Tangent - n * dot(n, Tangent));
+                    vec3 B = cross(n, T) * Handedness;
+                    mat3 TBN = mat3(T, B, n);
+                    vec3 nTS = texture(normalSampler, TexCoord).rgb * 2.0 - 1.0;
+                    n = normalize(TBN * nTS);
+                }
+                vec3 lightDir = normalize(LightPosWorld - FragPos);
+                float diff = max(dot(n, lightDir), 0.0);
                 vec3 color = useTexture
                     ? texture(textureSampler, TexCoord).rgb
                     : vec3(0.5, 0.7, 0.9);
@@ -521,6 +545,7 @@ void Orbital3DView::buildPrimaryBuffers() {
     buildEdgeBuffers();
     buildUVBuffers();
     uploadColorFromMesh();
+    uploadNormalFromMesh();
 }
 
 void Orbital3DView::buildSecondaryBuffers() {
@@ -631,8 +656,26 @@ void Orbital3DView::uploadColorFromMesh() {
     glBindTexture(GL_TEXTURE_2D, 0);
 }
 
+void Orbital3DView::uploadNormalFromMesh() {
+    if (normalTex_) { glDeleteTextures(1, &normalTex_); normalTex_ = 0; }
+    if (!primaryMesh_ || primaryMesh_->normalTextureData.empty()) return;
+
+    glGenTextures(1, &normalTex_);
+    glBindTexture(GL_TEXTURE_2D, normalTex_);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA,
+                 primaryMesh_->normalTextureWidth, primaryMesh_->normalTextureHeight,
+                 0, GL_RGBA, GL_UNSIGNED_BYTE, primaryMesh_->normalTextureData.data());
+    glGenerateMipmap(GL_TEXTURE_2D);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
+    glBindTexture(GL_TEXTURE_2D, 0);
+}
+
 void Orbital3DView::deleteTextures() {
-    if (colorTex_) { glDeleteTextures(1, &colorTex_); colorTex_ = 0; }
+    if (colorTex_)  { glDeleteTextures(1, &colorTex_);  colorTex_  = 0; }
+    if (normalTex_) { glDeleteTextures(1, &normalTex_); normalTex_ = 0; }
 }
 
 // ─── Camera matrices ──────────────────────────────────────────────────────────
@@ -700,6 +743,7 @@ void Orbital3DView::paintSolid() {
     solidProg_.setUniformValue("projection", toQt(projMatrix()));
     solidProg_.setUniformValue("view",       toQt(viewMatrix()));
     solidProg_.setUniformValue("model",      toQt(modelMatrix()));
+    solidProg_.setUniformValue("LightPosWorld", QVector3D(lightPos_.x, lightPos_.y, lightPos_.z));
 
     bool useTexture = (textured_ || mode_ == RenderMode::Textured) && colorTex_ != 0;
     solidProg_.setUniformValue("useTexture", useTexture);
@@ -709,10 +753,19 @@ void Orbital3DView::paintSolid() {
         solidProg_.setUniformValue("textureSampler", 0);
     }
 
+    bool useNormalMap = useTexture && normalTex_ != 0;
+    solidProg_.setUniformValue("useNormalMap", useNormalMap);
+    if (useNormalMap) {
+        glActiveTexture(GL_TEXTURE1);
+        glBindTexture(GL_TEXTURE_2D, normalTex_);
+        solidProg_.setUniformValue("normalSampler", 1);
+    }
+
     primaryVao_.bind();
     glDrawElements(GL_TRIANGLES, primaryIndexCount_, GL_UNSIGNED_INT, nullptr);
     primaryVao_.release();
-    if (useTexture) glBindTexture(GL_TEXTURE_2D, 0);
+    if (useNormalMap) { glActiveTexture(GL_TEXTURE1); glBindTexture(GL_TEXTURE_2D, 0); }
+    if (useTexture)   { glActiveTexture(GL_TEXTURE0); glBindTexture(GL_TEXTURE_2D, 0); }
     solidProg_.release();
 
     glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);

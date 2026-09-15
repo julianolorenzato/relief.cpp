@@ -38,6 +38,9 @@ signals:
 
 private:
     void buildUI();
+    /// Builds the "Lighting" group box (X/Y/Z sliders) and appends it to
+    /// `outerControls`'s layout, driving the shared point light on all three viewports.
+    void buildLightingGroup(QWidget* outerControls);
     /// Pushes pending mesh/texture data into the viewports once both are available and the tab is visible.
     void syncIfReady();
 

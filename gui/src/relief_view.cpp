@@ -195,6 +195,7 @@ ReliefView::~ReliefView()
 void ReliefView::setMesh(const Mesh *mesh)
 {
     this->mesh = mesh;
+    meshDirty = true;
     update();
     resetCamera();
 }
@@ -350,9 +351,10 @@ void ReliefView::resizeGL(int w, int h)
 
 void ReliefView::paintGL()
 {
-    if (this->mesh && !this->vao.isCreated())
+    if (this->mesh && meshDirty)
     {
         buildMeshBuffers();
+        meshDirty = false;
     }
 
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);

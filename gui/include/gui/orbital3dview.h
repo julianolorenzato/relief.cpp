@@ -79,6 +79,11 @@ public slots:
     void setShowSeamEdges(bool);
     void setPrimaryColor(const QColor &c);
     void setSecondaryColor(const QColor &c);
+    /// Sets the world-space point light position used by Solid/Textured shading
+    /// (matches ReliefView's setLightX/Y/Z so both view types share one light).
+    void setLightX(double v);
+    void setLightY(double v);
+    void setLightZ(double v);
 
 protected:
     void initializeGL() override;
@@ -99,6 +104,9 @@ private:
 
     QColor primaryColor_{89, 140, 242};
     QColor secondaryColor_{242, 127, 25};
+
+    // Point light for Solid/Textured shading — default matches ReliefView::lightPos.
+    glm::vec3 lightPos_{0.f, 2.f, 1.5f};
 
     void createColorRow();
     void applyColorBtnStyle(QPushButton *btn, const QColor &c);
@@ -159,6 +167,7 @@ private:
 
     // GL texture objects
     GLuint colorTex_ = 0;
+    GLuint normalTex_ = 0;
 
     /// Compiles/links all shader programs used by the different render modes.
     void createShaders();
@@ -170,6 +179,8 @@ private:
     void buildUVBuffers();
     /// Uploads the primary mesh's embedded texture as colorTex_.
     void uploadColorFromMesh();
+    /// Uploads the primary mesh's embedded normal map as normalTex_.
+    void uploadNormalFromMesh();
     /// Deletes all owned GL texture objects.
     void deleteTextures();
 

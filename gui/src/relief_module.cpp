@@ -10,6 +10,8 @@
 #include <QScrollArea>
 #include <QSplitter>
 #include <QLabel>
+#include <QSlider>
+#include <functional>
 
 using namespace mesh;
 
@@ -142,6 +144,7 @@ void ReliefModule::buildUI()
     QVBoxLayout* containerLayout = new QVBoxLayout(controlsContainer);
     containerLayout->setContentsMargins(0, 0, 0, 0);
     containerLayout->addWidget(ctrlGroup);
+    buildLightingGroup(controlsContainer);
     containerLayout->addStretch();
 
     QScrollArea* scrollArea = new QScrollArea();
@@ -152,6 +155,54 @@ void ReliefModule::buildUI()
     scrollArea->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
 
     splitter->addWidget(scrollArea);
+}
+
+// ─── buildLightingGroup ────────────────────────────────────────────────────────
+
+void ReliefModule::buildLightingGroup(QWidget* outerControls)
+{
+    QGroupBox* group = new QGroupBox("Lighting");
+    QVBoxLayout* lightLayout = new QVBoxLayout(group);
+
+    // Builds one "<label>: <value> [slider]" row driving all three viewports'
+    // shared point light. Slider stores hundredths internally for 0.01 resolution.
+    auto addAxisRow = [&](const char* label, int minHundredths, int maxHundredths,
+                           int defaultHundredths, std::function<void(double)> apply) {
+        QLabel* valueLbl = new QLabel(
+            QString("%1: %2").arg(label).arg(defaultHundredths / 100.0, 0, 'f', 2));
+        lightLayout->addWidget(valueLbl);
+
+        QSlider* slider = new QSlider(Qt::Horizontal);
+        slider->setMinimum(minHundredths);
+        slider->setMaximum(maxHundredths);
+        slider->setValue(defaultHundredths);
+        lightLayout->addWidget(slider);
+
+        connect(slider, &QSlider::valueChanged, this, [valueLbl, label, apply](int v) {
+            double value = v / 100.0;
+            valueLbl->setText(QString("%1: %2").arg(label).arg(value, 0, 'f', 2));
+            apply(value);
+        });
+    };
+
+    // Ranges/defaults match ReliefView's default lightPos{0.f, 2.f, 1.5f}.
+    addAxisRow("X", -300, 300, 0, [this](double v) {
+        reliefWidget_->setLightX(v);
+        reliefOriginalWidget_->setLightX(v);
+        reliefCompareWidget_->setLightX(v);
+    });
+    addAxisRow("Y", 50, 400, 200, [this](double v) {
+        reliefWidget_->setLightY(v);
+        reliefOriginalWidget_->setLightY(v);
+        reliefCompareWidget_->setLightY(v);
+    });
+    addAxisRow("Z", -300, 300, 150, [this](double v) {
+        reliefWidget_->setLightZ(v);
+        reliefOriginalWidget_->setLightZ(v);
+        reliefCompareWidget_->setLightZ(v);
+    });
+
+    outerControls->layout()->addWidget(group);
 }
 
 // ─── Public slots ─────────────────────────────────────────────────────────────

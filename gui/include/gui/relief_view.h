@@ -114,6 +114,8 @@ private:
 
     // Mesh (not owned)
     const mesh::Mesh *mesh = nullptr;
+    /// True when `mesh` has changed since GPU buffers were last uploaded, signaling paintGL() to rebuild them.
+    bool meshDirty = false;
 
     // OpenGL resources
     QOpenGLShaderProgram     prog;
