@@ -50,7 +50,7 @@ void TexturePrepModule::buildUI()
     QSplitter* splitter = new QSplitter(Qt::Horizontal, this);
     outerLayout->addWidget(splitter);
 
-    // ── Left: 4 preview panels ────────────────────────────────────────────────
+    // ── Left: one preview panel at a time, switched via a dropdown ────────────
     static const char* previewTitles[4] = {
         "Color Map",
         "Relief Map  (R=min G=max(mip-bound) B=offset mask A=—)",
@@ -59,8 +59,20 @@ void TexturePrepModule::buildUI()
     };
 
     QWidget* panelsWidget = new QWidget();
-    QHBoxLayout* panelsLayout = new QHBoxLayout(panelsWidget);
-    panelsLayout->setSpacing(12);
+    QVBoxLayout* panelsLayout = new QVBoxLayout(panelsWidget);
+    panelsLayout->setSpacing(8);
+
+    tpPreviewCombo_ = new QComboBox();
+    for (int i = 0; i < 4; i++)
+        tpPreviewCombo_->addItem(previewTitles[i]);
+    panelsLayout->addWidget(tpPreviewCombo_);
+
+    tpPreviewStack_ = new QStackedWidget();
+    tpPreviewStack_->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
+    panelsLayout->addWidget(tpPreviewStack_, 1);
+
+    connect(tpPreviewCombo_, QOverload<int>::of(&QComboBox::currentIndexChanged),
+            tpPreviewStack_, &QStackedWidget::setCurrentIndex);
 
     for (int i = 0; i < 4; i++)
     {
@@ -126,7 +138,7 @@ void TexturePrepModule::buildUI()
         btnRow->addWidget(tpSaveBtn_[i]);
 
         pLayout->addLayout(btnRow);
-        panelsLayout->addWidget(panel);
+        tpPreviewStack_->addWidget(panel);
     }
 
     panelsWidget->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);

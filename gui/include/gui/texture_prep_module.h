@@ -11,6 +11,7 @@
 #include <QPushButton>
 #include <QProgressBar>
 #include <QCheckBox>
+#include <QStackedWidget>
 #include <QImage>
 #include "relief/heightmap.h"
 #include "relief/mesh.h"
@@ -94,6 +95,9 @@ private:
     QLabel*       tpProgressLabel_ = nullptr;
 
     // ── Output preview panels (0=Color, 1=Relief, 2=Normal, 3=Offset) ────────
+    // Only one panel is shown at a time, selected via tpPreviewCombo_.
+    QComboBox*      tpPreviewCombo_ = nullptr;
+    QStackedWidget* tpPreviewStack_ = nullptr;
     QLabel*      tpPreview_[4]     = {};
     QLabel*      tpInfoLabel_[4]   = {};
     QSpinBox*    tpMipSpin_[4]     = {};
