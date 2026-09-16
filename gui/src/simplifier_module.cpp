@@ -246,6 +246,11 @@ void SimplifierModule::buildUI()
     inflateSlider_->setEnabled(false);
     inflateLayout->addWidget(inflateSlider_);
 
+    simplifyInflatedBtn_ = new QPushButton("Simplify Inflated Mesh");
+    simplifyInflatedBtn_->setEnabled(false);
+    connect(simplifyInflatedBtn_, &QPushButton::clicked, this, &SimplifierModule::onSimplifyInflated);
+    inflateLayout->addWidget(simplifyInflatedBtn_);
+
     connect(inflateSlider_, &QSlider::valueChanged, this, [this](int val)
             {
         double offset = (inflateScale_ > 1e-10) ? val / 1000.0 * inflateScale_ : 0.0;
@@ -311,8 +316,8 @@ bool SimplifierModule::loadModel(const QString &path)
     targetFacesSpinBox_->blockSignals(false);
 
     glWidgetOriginal_->setMesh(originalMesh_.get());
-    glWidgetSimplified_->setMesh(originalMesh_.get());
-    glWidgetOverlay_->setMeshes(originalMesh_.get(), originalMesh_.get());
+    glWidgetSimplified_->setMesh(simplifiedMesh_.get());
+    glWidgetOverlay_->setMeshes(originalMesh_.get(), simplifiedMesh_.get());
 
     bool hasTexture = !originalMesh_->textureData.empty();
     texturedCheck_->setEnabled(hasTexture);
@@ -330,19 +335,9 @@ bool SimplifierModule::loadModel(const QString &path)
     if (!hasUVs)
         uvViewCheck_->setChecked(false);
 
-    // Reset inflate/deflate controls
-    baseSimplifiedPositions_.clear();
-    simplifiedVertexNormals_.clear();
-    simplifiedVertexGroup_.clear();
-    simplifiedVertexGroupCount_ = 0;
-    inflateSlider_->blockSignals(true);
-    inflateSlider_->setValue(0);
-    inflateSlider_->blockSignals(false);
-    inflateSlider_->setEnabled(false);
-    inflateSpin_->blockSignals(true);
-    inflateSpin_->setValue(0.0);
-    inflateSpin_->blockSignals(false);
-    inflateSpin_->setEnabled(false);
+    // Baseline the inflate/deflate controls on the freshly loaded mesh (still a full-resolution
+    // copy of originalMesh_ at this point) so the user can inflate before ever running Simplify.
+    captureInflateBaseline();
 
     updateStats();
     emit modelLoaded(originalMesh_.get(), simplifiedMesh_.get());
@@ -381,6 +376,75 @@ void SimplifierModule::onSimplify()
 
     simplifier.run(targetFaces);
 
+    captureInflateBaseline();
+
+    glWidgetSimplified_->setMesh(simplifiedMesh_.get());
+    glWidgetOverlay_->setMeshes(originalMesh_.get(), simplifiedMesh_.get());
+    updateStats();
+
+    emit simplificationDone(originalMesh_.get(), simplifiedMesh_.get());
+}
+
+/**
+ * @brief Runs Simplifier again directly on simplifiedMesh_, keeping its current (possibly
+ *        inflated) vertex positions as the base instead of resetting from originalMesh_.
+ */
+void SimplifierModule::onSimplifyInflated()
+{
+    if (!simplifiedMesh_ || simplifiedMesh_->faceCount() == 0)
+        return;
+
+    int targetFaces = targetFacesSpinBox_->value();
+
+    // No reset from originalMesh_: keep simplifiedMesh_'s current (possibly
+    // inflated) vertex positions as the base for this decimation pass.
+    Simplifier simplifier(*simplifiedMesh_);
+    simplifier.boundaryMode = (BoundaryMode)boundaryModeCombo_->currentData().toInt();
+    simplifier.useOptimalCandidate = useOptimalCandidateCheck_->isChecked();
+    simplifier.setUserLockedEdges(glWidgetOriginal_->selectedEdges());
+
+    emit statusMessage("Simplifying inflated mesh...");
+
+    simplifier.run(targetFaces);
+
+    captureInflateBaseline();
+
+    glWidgetSimplified_->setMesh(simplifiedMesh_.get());
+    glWidgetOverlay_->setMeshes(originalMesh_.get(), simplifiedMesh_.get());
+    updateStats();
+
+    emit simplificationDone(originalMesh_.get(), simplifiedMesh_.get());
+}
+
+void SimplifierModule::onTargetFacesChanged(int value)
+{
+    targetFaceCount_ = value;
+}
+
+void SimplifierModule::onResetCameras()
+{
+    if (glWidgetOriginal_)
+        glWidgetOriginal_->resetCamera();
+    if (glWidgetSimplified_)
+        glWidgetSimplified_->resetCamera();
+    if (glWidgetOverlay_)
+        glWidgetOverlay_->resetCamera();
+}
+
+void SimplifierModule::onSelectionChanged(int count)
+{
+    if (selectedEdgeCountLabel_)
+        selectedEdgeCountLabel_->setText(QString("Locked edges: %1").arg(count));
+}
+
+// ─── Private methods ──────────────────────────────────────────────────────────
+
+/**
+ * @brief Recomputes the inflate baseline from simplifiedMesh_'s current geometry and
+ *        (re)enables the inflate/deflate and "Simplify Inflated Mesh" controls.
+ */
+void SimplifierModule::captureInflateBaseline()
+{
     // Capture base positions and compute vertex normals for inflate/deflate
     baseSimplifiedPositions_.resize(simplifiedMesh_->vertices.size());
     for (size_t i = 0; i < simplifiedMesh_->vertices.size(); i++)
@@ -485,36 +549,8 @@ void SimplifierModule::onSimplify()
     inflateSlider_->blockSignals(false);
     inflateSlider_->setEnabled(true);
     inflateSpin_->setEnabled(true);
-
-    glWidgetSimplified_->setMesh(simplifiedMesh_.get());
-    glWidgetOverlay_->setMeshes(originalMesh_.get(), simplifiedMesh_.get());
-    updateStats();
-
-    emit simplificationDone(originalMesh_.get(), simplifiedMesh_.get());
+    simplifyInflatedBtn_->setEnabled(true);
 }
-
-void SimplifierModule::onTargetFacesChanged(int value)
-{
-    targetFaceCount_ = value;
-}
-
-void SimplifierModule::onResetCameras()
-{
-    if (glWidgetOriginal_)
-        glWidgetOriginal_->resetCamera();
-    if (glWidgetSimplified_)
-        glWidgetSimplified_->resetCamera();
-    if (glWidgetOverlay_)
-        glWidgetOverlay_->resetCamera();
-}
-
-void SimplifierModule::onSelectionChanged(int count)
-{
-    if (selectedEdgeCountLabel_)
-        selectedEdgeCountLabel_->setText(QString("Locked edges: %1").arg(count));
-}
-
-// ─── Private methods ──────────────────────────────────────────────────────────
 
 void SimplifierModule::applyInflate(double offset)
 {

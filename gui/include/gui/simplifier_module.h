@@ -48,6 +48,9 @@ signals:
 private slots:
     /// Runs Simplifier on the original mesh with the current UI settings and refreshes the views.
     void onSimplify();
+    /// Runs Simplifier again directly on the (possibly inflated) simplified mesh, keeping its
+    /// current vertex positions as the new base instead of resetting from the original mesh.
+    void onSimplifyInflated();
     /// Keeps the target-faces slider and spin box in sync.
     void onTargetFacesChanged(int value);
     /// Resets the camera on all three viewports.
@@ -59,6 +62,9 @@ private:
     void buildUI();
     /// Applies an inflate/deflate offset along cached per-group vertex normals to the simplified mesh preview.
     void applyInflate(double offset);
+    /// @brief Recomputes the inflate baseline (base positions, per-group vertex normals) from
+    ///        the current simplifiedMesh_ geometry and resets/enables the inflate controls.
+    void captureInflateBaseline();
     /// Refreshes the face-count labels for original/simplified meshes.
     void updateStats();
 
@@ -86,6 +92,7 @@ private:
 
     QSlider*        inflateSlider_ = nullptr;
     QDoubleSpinBox* inflateSpin_   = nullptr;
+    QPushButton*    simplifyInflatedBtn_ = nullptr;
 
     // ── Feature edge lock (brush selection) controls ─────────────────────────
     QPushButton*    brushModeToggleBtn_  = nullptr;
