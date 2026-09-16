@@ -32,6 +32,7 @@ add_library(relief STATIC
     src/mesh/io/obj.cpp
     src/mesh/io/gltf.cpp
     src/simplification.cpp
+    src/edge_selection.cpp
     src/heightmap.cpp
     src/uv_atlas.cpp
     src/textures.cpp
@@ -66,4 +67,9 @@ target_link_libraries(edge_diag PRIVATE relief)
 # depois de mudanças nos algoritmos de load/simplificação.
 add_executable(load_summary tools/load_summary.cpp)
 target_link_libraries(load_summary PRIVATE relief)
+
+# Diagnóstico do algoritmo de brush selection: raycast + flood fill de
+# arestas a partir de um ponto/raio fixos, sem depender da GUI.
+add_executable(edge_selection_diag tools/edge_selection_diag.cpp)
+target_link_libraries(edge_selection_diag PRIVATE relief)
 

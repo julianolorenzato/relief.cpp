@@ -17,6 +17,9 @@
 #include "relief/simplification.h"
 #include "gui/orbital3dview.h"
 
+class QPushButton;
+class QLabel;
+
 /// @brief Widget that loads a mesh, runs Simplifier with the configured
 ///        boundary options, and shows the original, simplified, and
 ///        overlay views alongside an inflate/deflate preview control.
@@ -49,6 +52,8 @@ private slots:
     void onTargetFacesChanged(int value);
     /// Resets the camera on all three viewports.
     void onResetCameras();
+    /// Updates the "Locked edges: N" label when the brush selection changes.
+    void onSelectionChanged(int count);
 
 private:
     void buildUI();
@@ -81,6 +86,14 @@ private:
 
     QSlider*        inflateSlider_ = nullptr;
     QDoubleSpinBox* inflateSpin_   = nullptr;
+
+    // ── Feature edge lock (brush selection) controls ─────────────────────────
+    QPushButton*    brushModeToggleBtn_  = nullptr;
+    QDoubleSpinBox* brushRadiusSpin_     = nullptr;
+    QDoubleSpinBox* brushAngleSpin_      = nullptr;
+    QComboBox*      brushPropagationCombo_ = nullptr;
+    QPushButton*    clearSelectionBtn_   = nullptr;
+    QLabel*         selectedEdgeCountLabel_ = nullptr;
 
     // ── Inflate state ─────────────────────────────────────────────────────────
     std::vector<Eigen::Vector3d> baseSimplifiedPositions_;

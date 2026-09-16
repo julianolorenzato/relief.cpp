@@ -138,6 +138,12 @@ public:
     /// @param threshold Maximum acceptable collapse cost; collapses above it are skipped.
     void run(int targetFaces);
 
+    /// User-supplied edges (e.g. from interactive brush selection) that must
+    /// never collapse, independent of boundaryMode/lockSeamEdges. Keys use
+    /// the same (small,large) vertex-id convention as Mesh::buildEdgeToFaces().
+    void setUserLockedEdges(std::set<std::pair<int,int>> edges) { userLockedEdges_ = std::move(edges); }
+    const std::set<std::pair<int,int>>& userLockedEdges() const { return userLockedEdges_; }
+
 private:
     mesh::Mesh& mesh_;
 
@@ -191,9 +197,17 @@ private:
     std::vector<bool> boundaryVertex;
     /// Marks boundaryVertex[i] for every vertex touching a boundary edge or a UV seam.
     void markBoundaryVertices();
-    /// @return true if the edge (a,b) is locked from collapsing under lockSeamEdges.
+
+    /// @return true if the edge (a,b) is locked from collapsing, either by
+    ///         lockSeamEdges or by an explicit user lock.
     bool edgeLocked(int a, int b) const {
-        return lockSeamEdges && (boundaryVertex[a] || boundaryVertex[b]);
+        if (lockSeamEdges && (boundaryVertex[a] || boundaryVertex[b])) return true;
+        if (!userLockedEdges_.empty()) {
+            int p = a, q = b;
+            canonicalize(p, q);
+            if (userLockedEdges_.count({p, q})) return true;
+        }
+        return false;
     }
 
     /// Builds the collapse candidate for edge (p,q), deciding whether it
@@ -206,6 +220,9 @@ private:
     /// satisfies the accumulated envelope planes. Reported at the end of
     /// run(). Mutable because it's updated from computeCollapse() const.
     mutable std::set<std::pair<int,int>> envelopeLockedEdges_;
+
+    /// Backing storage for setUserLockedEdges()/userLockedEdges().
+    std::set<std::pair<int,int>> userLockedEdges_;
 };
 
 } // namespace simplification

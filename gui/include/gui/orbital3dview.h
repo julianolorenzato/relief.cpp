@@ -15,7 +15,9 @@
 #include <QPushButton>
 #include <QPoint>
 #include <glm/glm.hpp>
+#include <set>
 #include "relief/mesh.h"
+#include "relief/edge_selection.h"
 
 /// Selects what Orbital3DView renders and which shader/buffers it uses.
 enum class RenderMode
@@ -23,6 +25,13 @@ enum class RenderMode
     Solid,
     Textured,
     Overlay
+};
+
+/// Selects what mouse-drag input does in the viewport.
+enum class InteractionMode
+{
+    Orbit,       ///< Left-drag orbits the camera (default).
+    BrushSelect, ///< Left/right-drag paints/erases the edge-selection brush.
 };
 
 /**
@@ -66,9 +75,18 @@ public:
     /// Applies external camera parameters (for syncing multiple linked viewports).
     void syncCamera(float rotX, float rotY, float z);
 
+    /// Switches between orbit-camera and brush-selection mouse handling.
+    void setInteractionMode(InteractionMode m);
+    InteractionMode interactionMode() const { return interactionMode_; }
+
+    /// @return The current brush-selected edge set (vertex-id pairs, small-first).
+    const std::set<edgesel::EdgeKey> &selectedEdges() const { return brushSelection_.edges(); }
+
 signals:
     /// Emitted after a mouse-driven camera change, so linked viewports can call syncCamera().
     void cameraChanged(float rotX, float rotY, float z);
+    /// Emitted whenever the brush selection changes (paint, erase, or clear).
+    void selectionChanged(int edgeCount);
 
 public slots:
     void setWireframe(bool);
@@ -84,6 +102,15 @@ public slots:
     void setLightX(double v);
     void setLightY(double v);
     void setLightZ(double v);
+
+    /// Sets the brush radius, in normalized mesh space (bounding-sphere radius 1).
+    void setBrushRadius(double normalizedRadius);
+    /// Sets the max normal angle (degrees) the brush's flood fill may cross between faces.
+    void setBrushAngleThresholdDeg(double degrees);
+    /// Sets how the brush's flood fill decides normal similarity across faces.
+    void setBrushPropagationMode(edgesel::PropagationMode mode);
+    /// Clears the current brush edge selection.
+    void clearBrushSelection();
 
 protected:
     void initializeGL() override;
@@ -125,6 +152,24 @@ private:
     glm::vec3 meshCenter_{0.f, 0.f, 0.f};
     float meshNormScale_ = 1.f;
 
+    // Brush selection
+    InteractionMode interactionMode_ = InteractionMode::Orbit;
+    double brushRadius_ = 0.05;
+    double brushAngleThresholdDeg_ = 35.0;
+    edgesel::PropagationMode brushPropagationMode_ = edgesel::PropagationMode::Chained;
+    edgesel::FaceAdjacency brushAdjacency_;
+    std::vector<Eigen::Vector3d> brushFaceNormals_;
+    edgesel::BrushSelection brushSelection_;
+    /// Set whenever the selection changes; the highlight VBO is only ever
+    /// rebuilt (GL calls) from inside paintGL, where the context is current.
+    bool highlightDirty_ = false;
+    /// Ray, in raw (unnormalized) mesh space, for the given widget-space point.
+    struct Ray { Eigen::Vector3d origin, dir; };
+    Ray screenRay(const QPoint &p) const;
+    /// Raycasts at `p` and, on hit, applies one brush touch (paint or erase).
+    void brushTouchAt(const QPoint &p, bool erase);
+    void rebuildHighlightBuffer();
+
     // Mesh pointers (not owned)
     const mesh::Mesh *primaryMesh_ = nullptr;
     const mesh::Mesh *secondaryMesh_ = nullptr;
@@ -157,6 +202,11 @@ private:
     QOpenGLVertexArrayObject edgeVao_;
     int edgeVertexCount_ = 0;
     int seamEdgeEnd_ = 0;
+
+    // Brush-selection highlight, same layout as edgeVbo_ above.
+    QOpenGLBuffer highlightVbo_{QOpenGLBuffer::VertexBuffer};
+    QOpenGLVertexArrayObject highlightVao_;
+    int highlightVertexCount_ = 0;
 
     // UV wireframe (UV mode): 2D UV positions sharing primaryEbo_
     QOpenGLBuffer uvVbo_{QOpenGLBuffer::VertexBuffer};

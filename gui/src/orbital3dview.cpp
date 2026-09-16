@@ -162,6 +162,8 @@ Orbital3DView::~Orbital3DView() {
     if (secondaryVao_.isCreated()) secondaryVao_.destroy();
     if (edgeVbo_.isCreated())      edgeVbo_.destroy();
     if (edgeVao_.isCreated())      edgeVao_.destroy();
+    if (highlightVbo_.isCreated()) highlightVbo_.destroy();
+    if (highlightVao_.isCreated()) highlightVao_.destroy();
     if (uvVbo_.isCreated())        uvVbo_.destroy();
     if (uvVao_.isCreated())        uvVao_.destroy();
     if (uvBgVbo_.isCreated())      uvBgVbo_.destroy();
@@ -215,6 +217,10 @@ void Orbital3DView::syncCamera(float rotX, float rotY, float z) {
     // No re-emit to avoid feedback loops
 }
 
+void Orbital3DView::setInteractionMode(InteractionMode m) {
+    interactionMode_ = m;
+}
+
 // ─── Slots ────────────────────────────────────────────────────────────────────
 
 void Orbital3DView::setPrimaryColor(const QColor& c) {
@@ -238,6 +244,17 @@ void Orbital3DView::setShowSeamEdges(bool v)      { showSeam_ = v; update(); }
 void Orbital3DView::setLightX(double v) { lightPos_.x = (float)v; update(); }
 void Orbital3DView::setLightY(double v) { lightPos_.y = (float)v; update(); }
 void Orbital3DView::setLightZ(double v) { lightPos_.z = (float)v; update(); }
+
+void Orbital3DView::setBrushRadius(double normalizedRadius) { brushRadius_ = normalizedRadius; }
+void Orbital3DView::setBrushAngleThresholdDeg(double degrees) { brushAngleThresholdDeg_ = degrees; }
+void Orbital3DView::setBrushPropagationMode(edgesel::PropagationMode mode) { brushPropagationMode_ = mode; }
+
+void Orbital3DView::clearBrushSelection() {
+    brushSelection_.clear();
+    highlightDirty_ = true;
+    emit selectionChanged((int)brushSelection_.size());
+    update();
+}
 
 // ─── GL lifecycle ─────────────────────────────────────────────────────────────
 
@@ -546,6 +563,12 @@ void Orbital3DView::buildPrimaryBuffers() {
     buildUVBuffers();
     uploadColorFromMesh();
     uploadNormalFromMesh();
+
+    // Brush-selection topology is only valid for the mesh it was built from.
+    brushAdjacency_ = edgesel::FaceAdjacency::build(*primaryMesh_);
+    brushFaceNormals_ = edgesel::computeFaceNormals(*primaryMesh_);
+    brushSelection_.clear();
+    highlightDirty_ = true;
 }
 
 void Orbital3DView::buildSecondaryBuffers() {
@@ -599,6 +622,36 @@ void Orbital3DView::buildEdgeBuffers() {
     glEnableVertexAttribArray(1);
     glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, 6 * sizeof(float), (void*)(3 * sizeof(float)));
     edgeVao_.release();
+}
+
+void Orbital3DView::rebuildHighlightBuffer() {
+    static const float kHighlight[3] = {1.0f, 0.6f, 0.0f};
+
+    std::vector<float> lineVerts;
+    if (primaryMesh_) {
+        lineVerts.reserve(brushSelection_.edges().size() * 2 * 6);
+        for (const auto &edge : brushSelection_.edges()) {
+            const auto &a = primaryMesh_->vertices[edge.first].pos;
+            const auto &b = primaryMesh_->vertices[edge.second].pos;
+            lineVerts.push_back((float)a.x()); lineVerts.push_back((float)a.y()); lineVerts.push_back((float)a.z());
+            lineVerts.push_back(kHighlight[0]); lineVerts.push_back(kHighlight[1]); lineVerts.push_back(kHighlight[2]);
+            lineVerts.push_back((float)b.x()); lineVerts.push_back((float)b.y()); lineVerts.push_back((float)b.z());
+            lineVerts.push_back(kHighlight[0]); lineVerts.push_back(kHighlight[1]); lineVerts.push_back(kHighlight[2]);
+        }
+    }
+    highlightVertexCount_ = (int)(lineVerts.size() / 6);
+
+    if (!highlightVao_.isCreated()) highlightVao_.create();
+    if (!highlightVbo_.isCreated()) highlightVbo_.create();
+
+    highlightVao_.bind();
+    highlightVbo_.bind();
+    highlightVbo_.allocate(lineVerts.data(), (int)(lineVerts.size() * sizeof(float)));
+    glEnableVertexAttribArray(0);
+    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 6 * sizeof(float), (void*)0);
+    glEnableVertexAttribArray(1);
+    glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, 6 * sizeof(float), (void*)(3 * sizeof(float)));
+    highlightVao_.release();
 }
 
 void Orbital3DView::buildUVBuffers() {
@@ -711,6 +764,10 @@ void Orbital3DView::paintGL() {
         buildSecondaryBuffers();
         secondaryMeshDirty_ = false;
     }
+    if (highlightDirty_) {
+        rebuildHighlightBuffer();
+        highlightDirty_ = false;
+    }
 
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
@@ -790,6 +847,21 @@ void Orbital3DView::paintSolid() {
         glDepthFunc(GL_LESS);
         glLineWidth(1.0f);
     }
+
+    if (highlightVao_.isCreated() && highlightVertexCount_ > 0) {
+        edgeProg_.bind();
+        edgeProg_.setUniformValue("projection", toQt(projMatrix()));
+        edgeProg_.setUniformValue("view",       toQt(viewMatrix()));
+        edgeProg_.setUniformValue("model",      toQt(modelMatrix()));
+        glDepthFunc(GL_LEQUAL);
+        glLineWidth(3.0f);
+        highlightVao_.bind();
+        glDrawArrays(GL_LINES, 0, highlightVertexCount_);
+        highlightVao_.release();
+        edgeProg_.release();
+        glDepthFunc(GL_LESS);
+        glLineWidth(1.0f);
+    }
 }
 
 void Orbital3DView::paintOverlay() {
@@ -858,13 +930,65 @@ void Orbital3DView::paintUV() {
     glEnable(GL_DEPTH_TEST);
 }
 
+// ─── Brush selection ──────────────────────────────────────────────────────────
+
+Orbital3DView::Ray Orbital3DView::screenRay(const QPoint& p) const {
+    // Unprojecting through inverse(proj*view*model) lands the ray directly in
+    // raw (unnormalized) mesh space, matching mesh::Mesh vertex positions —
+    // the same space edgesel::raycastMesh operates in.
+    glm::mat4 invMVP = glm::inverse(projMatrix() * viewMatrix() * modelMatrix());
+
+    float ndcX = (2.0f * (float)p.x()) / std::max(1, width()) - 1.0f;
+    float ndcY = 1.0f - (2.0f * (float)p.y()) / std::max(1, height());
+
+    glm::vec4 nearP = invMVP * glm::vec4(ndcX, ndcY, -1.0f, 1.0f);
+    glm::vec4 farP  = invMVP * glm::vec4(ndcX, ndcY,  1.0f, 1.0f);
+    nearP /= nearP.w;
+    farP  /= farP.w;
+
+    Ray ray;
+    ray.origin = Eigen::Vector3d(nearP.x, nearP.y, nearP.z);
+    Eigen::Vector3d dir = Eigen::Vector3d(farP.x - nearP.x, farP.y - nearP.y, farP.z - nearP.z);
+    ray.dir = dir.normalized();
+    return ray;
+}
+
+void Orbital3DView::brushTouchAt(const QPoint& p, bool erase) {
+    if (!primaryMesh_ || brushFaceNormals_.empty()) return;
+
+    Ray ray = screenRay(p);
+    edgesel::RayHit hit = edgesel::raycastMesh(*primaryMesh_, ray.origin, ray.dir);
+    if (!hit.found) return;
+
+    double rawRadius = brushRadius_ / std::max(1e-6f, meshNormScale_);
+    double angleRad = brushAngleThresholdDeg_ * (3.14159265358979323846 / 180.0);
+
+    brushSelection_.applyBrush(*primaryMesh_, brushAdjacency_, brushFaceNormals_,
+                                hit.faceIdx, hit.point, rawRadius, angleRad,
+                                brushPropagationMode_, erase);
+    highlightDirty_ = true;
+    emit selectionChanged((int)brushSelection_.size());
+    update();
+}
+
 // ─── Mouse / camera ───────────────────────────────────────────────────────────
 
 void Orbital3DView::mousePressEvent(QMouseEvent* event) {
     lastMouse_ = event->pos();
+    if (interactionMode_ == InteractionMode::BrushSelect) {
+        if (event->button() == Qt::LeftButton) brushTouchAt(event->pos(), false);
+        else if (event->button() == Qt::RightButton) brushTouchAt(event->pos(), true);
+    }
 }
 
 void Orbital3DView::mouseMoveEvent(QMouseEvent* event) {
+    if (interactionMode_ == InteractionMode::BrushSelect) {
+        if (event->buttons() & Qt::LeftButton) brushTouchAt(event->pos(), false);
+        else if (event->buttons() & Qt::RightButton) brushTouchAt(event->pos(), true);
+        lastMouse_ = event->pos();
+        return;
+    }
+
     if (!(event->buttons() & Qt::LeftButton)) return;
     int dx = event->pos().x() - lastMouse_.x();
     int dy = event->pos().y() - lastMouse_.y();

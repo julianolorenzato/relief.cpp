@@ -4,6 +4,7 @@
  *        Mesh, and the inflate/deflate preview.
  */
 #include "gui/simplifier_module.h"
+#include "relief/edge_selection.h"
 #include <QVBoxLayout>
 #include <QHBoxLayout>
 #include <QGroupBox>
@@ -165,6 +166,62 @@ void SimplifierModule::buildUI()
 
     layout->addWidget(controlsGroup);
 
+    // ── Feature Edge Lock (brush selection) ──────────────────────────────────
+    QGroupBox *brushGroup = new QGroupBox("Feature Edge Lock");
+    QVBoxLayout *brushRows = new QVBoxLayout(brushGroup);
+    brushRows->setSpacing(4);
+
+    brushModeToggleBtn_ = new QPushButton("Brush Select Edges");
+    brushModeToggleBtn_->setCheckable(true);
+    connect(brushModeToggleBtn_, &QPushButton::toggled, this, [this](bool checked) {
+        glWidgetOriginal_->setInteractionMode(checked ? InteractionMode::BrushSelect : InteractionMode::Orbit);
+    });
+    brushRows->addWidget(brushModeToggleBtn_);
+
+    QHBoxLayout *radiusRow = new QHBoxLayout();
+    radiusRow->addWidget(new QLabel("Radius:"));
+    brushRadiusSpin_ = new QDoubleSpinBox();
+    brushRadiusSpin_->setRange(0.001, 1.0);
+    brushRadiusSpin_->setSingleStep(0.005);
+    brushRadiusSpin_->setDecimals(3);
+    brushRadiusSpin_->setValue(0.05);
+    connect(brushRadiusSpin_, &QDoubleSpinBox::valueChanged, glWidgetOriginal_, &Orbital3DView::setBrushRadius);
+    radiusRow->addWidget(brushRadiusSpin_, 1);
+    brushRows->addLayout(radiusRow);
+
+    QHBoxLayout *angleRow = new QHBoxLayout();
+    angleRow->addWidget(new QLabel("Angle Threshold (deg):"));
+    brushAngleSpin_ = new QDoubleSpinBox();
+    brushAngleSpin_->setRange(1.0, 180.0);
+    brushAngleSpin_->setSingleStep(1.0);
+    brushAngleSpin_->setValue(35.0);
+    connect(brushAngleSpin_, &QDoubleSpinBox::valueChanged, glWidgetOriginal_, &Orbital3DView::setBrushAngleThresholdDeg);
+    angleRow->addWidget(brushAngleSpin_, 1);
+    brushRows->addLayout(angleRow);
+
+    QHBoxLayout *propagationRow = new QHBoxLayout();
+    propagationRow->addWidget(new QLabel("Propagation:"));
+    brushPropagationCombo_ = new QComboBox();
+    brushPropagationCombo_->addItem("Chained (follow curvature)", (int)edgesel::PropagationMode::Chained);
+    brushPropagationCombo_->addItem("Anchored to seed (strict)", (int)edgesel::PropagationMode::AnchoredToSeed);
+    connect(brushPropagationCombo_, QOverload<int>::of(&QComboBox::currentIndexChanged), this, [this](int) {
+        auto mode = (edgesel::PropagationMode)brushPropagationCombo_->currentData().toInt();
+        glWidgetOriginal_->setBrushPropagationMode(mode);
+    });
+    propagationRow->addWidget(brushPropagationCombo_, 1);
+    brushRows->addLayout(propagationRow);
+
+    clearSelectionBtn_ = new QPushButton("Clear Selection");
+    connect(clearSelectionBtn_, &QPushButton::clicked, glWidgetOriginal_, &Orbital3DView::clearBrushSelection);
+    brushRows->addWidget(clearSelectionBtn_);
+
+    selectedEdgeCountLabel_ = new QLabel("Locked edges: 0");
+    brushRows->addWidget(selectedEdgeCountLabel_);
+
+    connect(glWidgetOriginal_, &Orbital3DView::selectionChanged, this, &SimplifierModule::onSelectionChanged);
+
+    layout->addWidget(brushGroup);
+
     // ── Inflate / Deflate ──────────────────────────────────────────────────
     QGroupBox *inflateGroup = new QGroupBox("Inflate / Deflate");
     QVBoxLayout *inflateLayout = new QVBoxLayout(inflateGroup);
@@ -318,6 +375,7 @@ void SimplifierModule::onSimplify()
     Simplifier simplifier(*simplifiedMesh_);
     simplifier.boundaryMode = (BoundaryMode)boundaryModeCombo_->currentData().toInt();
     simplifier.useOptimalCandidate = useOptimalCandidateCheck_->isChecked();
+    simplifier.setUserLockedEdges(glWidgetOriginal_->selectedEdges());
 
     emit statusMessage("Simplifying...");
 
@@ -448,6 +506,12 @@ void SimplifierModule::onResetCameras()
         glWidgetSimplified_->resetCamera();
     if (glWidgetOverlay_)
         glWidgetOverlay_->resetCamera();
+}
+
+void SimplifierModule::onSelectionChanged(int count)
+{
+    if (selectedEdgeCountLabel_)
+        selectedEdgeCountLabel_->setText(QString("Locked edges: %1").arg(count));
 }
 
 // ─── Private methods ──────────────────────────────────────────────────────────
