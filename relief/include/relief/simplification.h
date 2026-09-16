@@ -141,7 +141,18 @@ public:
     /// User-supplied edges (e.g. from interactive brush selection) that must
     /// never collapse, independent of boundaryMode/lockSeamEdges. Keys use
     /// the same (small,large) vertex-id convention as Mesh::buildEdgeToFaces().
-    void setUserLockedEdges(std::set<std::pair<int,int>> edges) { userLockedEdges_ = std::move(edges); }
+    /// Also marks both endpoints of every locked edge as fully protected
+    /// (see userLockedVertex_): otherwise a collapse of some other, unlocked
+    /// edge sharing an endpoint would silently remove that vertex -- and the
+    /// locked edge along with it -- without ever failing the lock check.
+    void setUserLockedEdges(std::set<std::pair<int,int>> edges) {
+        userLockedEdges_ = std::move(edges);
+        userLockedVertex_.assign(mesh_.vertices.size(), false);
+        for (const auto& [a, b] : userLockedEdges_) {
+            userLockedVertex_[a] = true;
+            userLockedVertex_[b] = true;
+        }
+    }
     const std::set<std::pair<int,int>>& userLockedEdges() const { return userLockedEdges_; }
 
 private:
@@ -199,14 +210,11 @@ private:
     void markBoundaryVertices();
 
     /// @return true if the edge (a,b) is locked from collapsing, either by
-    ///         lockSeamEdges or by an explicit user lock.
+    ///         lockSeamEdges, or because either endpoint touches a user-locked
+    ///         edge (see userLockedVertex_).
     bool edgeLocked(int a, int b) const {
         if (lockSeamEdges && (boundaryVertex[a] || boundaryVertex[b])) return true;
-        if (!userLockedEdges_.empty()) {
-            int p = a, q = b;
-            canonicalize(p, q);
-            if (userLockedEdges_.count({p, q})) return true;
-        }
+        if (!userLockedVertex_.empty() && (userLockedVertex_[a] || userLockedVertex_[b])) return true;
         return false;
     }
 
@@ -223,6 +231,10 @@ private:
 
     /// Backing storage for setUserLockedEdges()/userLockedEdges().
     std::set<std::pair<int,int>> userLockedEdges_;
+    /// Per-vertex flag: true if the vertex is an endpoint of any edge in
+    /// userLockedEdges_. Protects that vertex from being removed by *any*
+    /// collapse, not just the specific locked edge -- see edgeLocked().
+    std::vector<bool> userLockedVertex_;
 };
 
 } // namespace simplification
