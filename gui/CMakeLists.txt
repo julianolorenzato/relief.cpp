@@ -31,7 +31,7 @@ add_executable(gui
     src/modules/relief_sandbox_module.cpp
     src/texture_inspector_widget.cpp
     src/modules/normal_map_module.cpp
-    src/shaders/shaders.qrc
+    shaders/shaders.qrc
 )
 
 set_target_properties(gui PROPERTIES
