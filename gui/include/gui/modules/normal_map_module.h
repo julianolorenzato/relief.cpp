@@ -13,6 +13,7 @@
 #include <QSpinBox>
 #include <QWidget>
 
+#include "gui/module.h"
 #include "relief/textures.h"
 
 /**
@@ -21,11 +22,11 @@
  *        textures::buildNormalMapFromHeight, and previews/saves the result.
  *        It is not wired into the pipeline.
  */
-class NormalMapModule : public QWidget {
+class NormalMapModule : public Module {
     Q_OBJECT
 
    public:
-    explicit NormalMapModule(QWidget *parent = nullptr);
+    explicit NormalMapModule(GlobalContext *context, QWidget *parent = nullptr);
 
    signals:
     void statusMessage(const QString &msg);

@@ -11,6 +11,7 @@
 #include <QComboBox>
 #include <QPushButton>
 #include "relief/mesh.h"
+#include "gui/module.h"
 #include "gui/orbital3dview.h"
 #include "gui/relief_view.h"
 #include "gui/modules/texture_prep_module.h"
@@ -19,11 +20,11 @@
 /// @brief Widget hosting the relief-mapped preview, a textured comparison of
 ///        the original mesh, and the relief-mapping controls (steps, depth
 ///        scale, atlas leaping, debug view).
-class ReliefModule : public QWidget {
+class ReliefModule : public Module {
     Q_OBJECT
 
 public:
-    explicit ReliefModule(QWidget* parent = nullptr);
+    explicit ReliefModule(GlobalContext* context, QWidget* parent = nullptr);
 
 public slots:
     /// Stores the mesh pointers and marks them pending for sync.

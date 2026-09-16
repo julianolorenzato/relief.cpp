@@ -34,8 +34,8 @@ static QImage rgbaTextureToQImage(const std::vector<uint8_t>& data, int w, int h
 
 // ─── Constructor ─────────────────────────────────────────────────────────────
 
-TexturePrepModule::TexturePrepModule(QWidget* parent)
-    : QWidget(parent)
+TexturePrepModule::TexturePrepModule(GlobalContext* context, QWidget* parent)
+    : Module(context, parent)
 {
     buildUI();
 }
@@ -229,7 +229,7 @@ void TexturePrepModule::buildUI()
 
 // ─── Public slots ─────────────────────────────────────────────────────────────
 
-void TexturePrepModule::onModelLoaded(Mesh* simplified)
+void TexturePrepModule::onSimplifiedMeshLoaded(Mesh* simplified)
 {
     simplifiedMesh_ = simplified;
     hmResult_ = HeightmapResult{};

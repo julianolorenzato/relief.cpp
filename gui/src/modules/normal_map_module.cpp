@@ -44,7 +44,7 @@ static QImage mipLevelToQImage(const std::vector<float> &data, int w, int h,
 
 // ─── Constructor ─────────────────────────────────────────────────────────────
 
-NormalMapModule::NormalMapModule(QWidget *parent) : QWidget(parent) {
+NormalMapModule::NormalMapModule(GlobalContext *context, QWidget *parent) : Module(context, parent) {
     buildUI();
 }
 

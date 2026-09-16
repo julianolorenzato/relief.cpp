@@ -23,8 +23,7 @@
 
 // ─── Constructor ─────────────────────────────────────────────────────────────
 
-SimplifierModule::SimplifierModule(QWidget *parent) : QWidget(parent) {
-    this->originalMesh = std::make_unique<mesh::Mesh>();
+SimplifierModule::SimplifierModule(GlobalContext *context, QWidget *parent) : Module(context, parent) {
     this->simplifiedMesh = std::make_unique<mesh::Mesh>();
     buildUI();
 }
@@ -318,17 +317,12 @@ void SimplifierModule::buildUI() {
 
 // ─── Public methods ───────────────────────────────────────────────────────────
 
-bool SimplifierModule::loadModel(const QString &path) {
-    this->originalMesh = std::make_unique<mesh::Mesh>();
-    this->simplifiedMesh = std::make_unique<mesh::Mesh>();
-
-    bool success = mesh::io::loadMesh(*this->originalMesh, path.toStdString());
-
-    if (!success) return false;
+void SimplifierModule::onModelLoaded(mesh::Mesh *original) {
+    this->originalMesh = original;
 
     // Start "simplified" as a copy of the original so Textures Preparation /
     // Relief Mapping work even before the user runs Simplify.
-    *this->simplifiedMesh = *this->originalMesh;
+    this->simplifiedMesh = std::make_unique<mesh::Mesh>(*this->originalMesh);
 
     this->originalFaceCount = this->originalMesh->faceCount();
     this->targetFaceCount = std::max(4, this->originalFaceCount / 4);
@@ -339,9 +333,9 @@ bool SimplifierModule::loadModel(const QString &path) {
     this->simplificationSlider->setValue(75);
     this->targetFacesSpinBox->blockSignals(false);
 
-    this->glWidgetOriginal->setMesh(this->originalMesh.get());
+    this->glWidgetOriginal->setMesh(this->originalMesh);
     this->glWidgetSimplified->setMesh(this->simplifiedMesh.get());
-    this->glWidgetOverlay->setMeshes(this->originalMesh.get(), this->simplifiedMesh.get());
+    this->glWidgetOverlay->setMeshes(this->originalMesh, this->simplifiedMesh.get());
 
     bool hasTexture = !this->originalMesh->textureData.empty();
     this->texturedCheck->setEnabled(hasTexture);
@@ -362,8 +356,7 @@ bool SimplifierModule::loadModel(const QString &path) {
     captureInflateBaseline();
 
     updateStats();
-    emit modelLoaded(this->originalMesh.get(), this->simplifiedMesh.get());
-    return true;
+    emit modelLoaded(this->originalMesh, this->simplifiedMesh.get());
 }
 
 bool SimplifierModule::saveSimplified(const QString &path) {
@@ -398,10 +391,10 @@ void SimplifierModule::onSimplify() {
     captureInflateBaseline();
 
     this->glWidgetSimplified->setMesh(this->simplifiedMesh.get());
-    this->glWidgetOverlay->setMeshes(this->originalMesh.get(), this->simplifiedMesh.get());
+    this->glWidgetOverlay->setMeshes(this->originalMesh, this->simplifiedMesh.get());
     updateStats();
 
-    emit simplificationDone(this->originalMesh.get(), this->simplifiedMesh.get());
+    emit simplificationDone(this->originalMesh, this->simplifiedMesh.get());
 }
 
 /**
@@ -428,10 +421,10 @@ void SimplifierModule::onSimplifyInflated() {
     captureInflateBaseline();
 
     this->glWidgetSimplified->setMesh(this->simplifiedMesh.get());
-    this->glWidgetOverlay->setMeshes(this->originalMesh.get(), this->simplifiedMesh.get());
+    this->glWidgetOverlay->setMeshes(this->originalMesh, this->simplifiedMesh.get());
     updateStats();
 
-    emit simplificationDone(this->originalMesh.get(), this->simplifiedMesh.get());
+    emit simplificationDone(this->originalMesh, this->simplifiedMesh.get());
 }
 
 void SimplifierModule::onTargetFacesChanged(int value) { this->targetFaceCount = value; }

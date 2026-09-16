@@ -15,6 +15,8 @@ endif()
 
 add_executable(gui
     include/gui/mainwindow.h
+    include/gui/global_context.h
+    include/gui/module.h
     include/gui/orbital3dview.h
     include/gui/modules/simplifier_module.h
     include/gui/modules/heightmap_module.h
@@ -26,6 +28,8 @@ add_executable(gui
     include/gui/modules/normal_map_module.h
     src/main.cpp
     src/mainwindow.cpp
+    src/global_context.cpp
+    src/module.cpp
     src/orbital3dview.cpp
     src/modules/simplifier_module.cpp
     src/modules/heightmap_module.cpp

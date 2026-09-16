@@ -45,8 +45,8 @@ public slots:
 
 // ─── Constructor ─────────────────────────────────────────────────────────────
 
-HeightmapModule::HeightmapModule(QWidget* parent)
-    : QWidget(parent)
+HeightmapModule::HeightmapModule(GlobalContext* context, QWidget* parent)
+    : Module(context, parent)
 {
     buildUI();
 }
@@ -141,7 +141,7 @@ void HeightmapModule::buildUI()
 
 // ─── Public slots ─────────────────────────────────────────────────────────────
 
-void HeightmapModule::onModelLoaded(Mesh* original, Mesh* simplified)
+void HeightmapModule::onSimplifierModelLoaded(Mesh* original, Mesh* simplified)
 {
     originalMesh_   = original;
     simplifiedMesh_ = simplified;

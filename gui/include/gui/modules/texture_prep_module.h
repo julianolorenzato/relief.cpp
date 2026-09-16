@@ -13,6 +13,7 @@
 #include <QCheckBox>
 #include <QStackedWidget>
 #include <QImage>
+#include "gui/module.h"
 #include "relief/heightmap.h"
 #include "relief/mesh.h"
 #include "relief/textures.h"
@@ -22,15 +23,15 @@
 ///        normal mip pyramids, plus the UV-atlas Offset_Map) from the
 ///        simplified mesh and its heightmap bake, with preview/save controls
 ///        for each output.
-class TexturePrepModule : public QWidget {
+class TexturePrepModule : public Module {
     Q_OBJECT
 
 public:
-    explicit TexturePrepModule(QWidget* parent = nullptr);
+    explicit TexturePrepModule(GlobalContext* context, QWidget* parent = nullptr);
 
 public slots:
     /// Called when a new model is loaded: sets the mesh pointer and does a full reset.
-    void onModelLoaded(mesh::Mesh* simplified);
+    void onSimplifiedMeshLoaded(mesh::Mesh* simplified);
     /// Called when the mesh is updated after simplification: sets mesh + refreshes thumbnails/button.
     void onMeshUpdated(mesh::Mesh* simplified);
     /// Called when a heightmap bake finishes: stores the result and refreshes.

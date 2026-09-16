@@ -6,8 +6,13 @@
 #pragma once
 #include <QMainWindow>
 #include <QLabel>
+#include <QString>
 #include <QToolBar>
 #include <QStackedWidget>
+#include <utility>
+#include <vector>
+#include "gui/global_context.h"
+#include "gui/module.h"
 #include "gui/modules/simplifier_module.h"
 #include "gui/modules/heightmap_module.h"
 #include "gui/modules/texture_prep_module.h"
@@ -34,17 +39,13 @@ private slots:
 private:
     void setupUI();
     void createMenuBar();
-    /// Switches the viewport stack (and toolbar checked state) to the module at `index`.
-    void switchContext(int index);
 
     QToolBar*       contextToolBar = nullptr;
     QStackedWidget* viewportStack  = nullptr;
     QLabel*         statusLabel    = nullptr;
 
-    SimplifierModule*   simplifier   = nullptr;
-    HeightmapModule*    heightmap    = nullptr;
-    TexturePrepModule*  texturePrep  = nullptr;
-    ReliefModule*        relief        = nullptr;
-    ReliefSandboxModule* reliefSandbox = nullptr;
-    NormalMapModule*     normalMap     = nullptr;
+    GlobalContext* globalContext = nullptr;
+
+    /// Modules paired with their toolbar label, in toolbar/viewport-stack order.
+    std::vector<std::pair<QString, Module*>> modules;
 };

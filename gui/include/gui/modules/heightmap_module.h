@@ -5,18 +5,19 @@
 #include <QPushButton>
 #include <QProgressBar>
 #include <QThread>
+#include "gui/module.h"
 #include "relief/heightmap.h"
 #include "relief/mesh.h"
 
-class HeightmapModule : public QWidget {
+class HeightmapModule : public Module {
     Q_OBJECT
 
 public:
-    explicit HeightmapModule(QWidget* parent = nullptr);
+    explicit HeightmapModule(GlobalContext* context, QWidget* parent = nullptr);
 
 public slots:
     // Called when a new model is loaded: stores pointers and resets state.
-    void onModelLoaded(mesh::Mesh* original, mesh::Mesh* simplified);
+    void onSimplifierModelLoaded(mesh::Mesh* original, mesh::Mesh* simplified);
     // Called when the mesh is updated after simplification: just stores ptrs.
     void onMeshUpdated(mesh::Mesh* original, mesh::Mesh* simplified);
 
@@ -53,7 +54,7 @@ private:
     QObject*         hmWorker_ = nullptr;
     QThread*         hmThread_ = nullptr;
 
-    // Non-owned mesh pointers (set by onModelLoaded / onMeshUpdated)
+    // Non-owned mesh pointers (set by onSimplifierModelLoaded / onMeshUpdated)
     mesh::Mesh* originalMesh_   = nullptr;
     mesh::Mesh* simplifiedMesh_ = nullptr;
 };

@@ -12,6 +12,7 @@
 #include <QComboBox>
 #include <memory>
 #include <vector>
+#include "gui/module.h"
 #include "relief/mesh.h"
 #include "relief/mesh/io.h"
 #include "relief/simplification.h"
@@ -23,27 +24,28 @@ class QLabel;
 /// @brief Widget that loads a mesh, runs Simplifier with the configured
 ///        boundary options, and shows the original, simplified, and
 ///        overlay views alongside an inflate/deflate preview control.
-class SimplifierModule : public QWidget {
+class SimplifierModule : public Module {
     Q_OBJECT
 
 public:
-    explicit SimplifierModule(QWidget* parent = nullptr);
+    explicit SimplifierModule(GlobalContext* context, QWidget* parent = nullptr);
 
-    /// @brief Loads a mesh file (OBJ or GLTF) as the working original mesh.
-    /// @param path Path to the mesh file.
-    /// @return true on success.
-    bool loadModel(const QString& path);
     /// @brief Saves the current simplified mesh to a file.
     /// @param path Destination path.
     /// @return true on success.
     bool saveSimplified(const QString& path);
 
 signals:
-    /// Emitted after loadModel() succeeds, with pointers to the (yet unsimplified) meshes.
+    /// Emitted after onModelLoaded() runs, with pointers to the (yet unsimplified) meshes.
     void modelLoaded(mesh::Mesh* original, mesh::Mesh* simplified);
     /// Emitted after a simplification run completes.
     void simplificationDone(mesh::Mesh* original, mesh::Mesh* simplified);
     void statusMessage(const QString& msg);
+
+public slots:
+    /// Receives the original mesh loaded by the shared GlobalContext, starts the
+    /// simplified working copy from it, and refreshes the views/UI.
+    void onModelLoaded(mesh::Mesh* original) override;
 
 private slots:
     /// Runs Simplifier on the original mesh with the current UI settings and refreshes the views.
@@ -69,7 +71,7 @@ private:
     void updateStats();
 
     // ── Mesh data ─────────────────────────────────────────────────────────────
-    std::unique_ptr<mesh::Mesh> originalMesh;
+    mesh::Mesh* originalMesh = nullptr; // owned by GlobalContext
     std::unique_ptr<mesh::Mesh> simplifiedMesh;
 
     // ── Viewports ─────────────────────────────────────────────────────────────

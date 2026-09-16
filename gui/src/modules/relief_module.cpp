@@ -17,8 +17,8 @@ using namespace mesh;
 
 // ─── Constructor ─────────────────────────────────────────────────────────────
 
-ReliefModule::ReliefModule(QWidget* parent)
-    : QWidget(parent)
+ReliefModule::ReliefModule(GlobalContext* context, QWidget* parent)
+    : Module(context, parent)
 {
     buildUI();
 }

@@ -4,6 +4,7 @@
  *        signals into the pipeline, and sets up the toolbar/menu.
  */
 #include "gui/mainwindow.h"
+
 #include <QAction>
 #include <QActionGroup>
 #include <QFileDialog>
@@ -17,168 +18,162 @@ using namespace mesh;
 // ─── Constructor ─────────────────────────────────────────────────────────────
 
 MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent) {
-  setWindowTitle("Relief Standalone Viewer");
-  setGeometry(100, 100, 1600, 900);
+    setWindowTitle("Relief Standalone Viewer");
+    setGeometry(100, 100, 1600, 900);
 
-  setupUI();
-  createMenuBar();
+    setupUI();
+    createMenuBar();
 }
 
 // ─── Setup ───────────────────────────────────────────────────────────────────
 
 void MainWindow::setupUI() {
-  // ── Create modules ───────────────────────────────────────────────────────
-  this->simplifier = new SimplifierModule(this);
-  this->heightmap = new HeightmapModule(this);
-  this->texturePrep = new TexturePrepModule(this);
-  this->relief = new ReliefModule(this);
-  this->reliefSandbox = new ReliefSandboxModule(this);
-  this->normalMap = new NormalMapModule(this);
+    this->globalContext = new GlobalContext(this);
 
-  // ── Context toolbar ────────────────────────────────────────────────────
-  this->contextToolBar = addToolBar("Contexts");
-  this->contextToolBar->setMovable(false);
-  this->contextToolBar->setStyleSheet(R"(
+    this->modules = {
+        {"Mesh", new SimplifierModule(this->globalContext, this)},
+        {"Heightmap", new HeightmapModule(this->globalContext, this)},
+        {"Textures", new TexturePrepModule(this->globalContext, this)},
+        {"Relief", new ReliefModule(this->globalContext, this)},
+        {"Relief Sandbox", new ReliefSandboxModule(this->globalContext, this)},
+        {"Normal Map", new NormalMapModule(this->globalContext, this)},
+    };
+
+    auto *simplifier = static_cast<SimplifierModule *>(this->modules[0].second);
+    auto *heightmap = static_cast<HeightmapModule *>(this->modules[1].second);
+    auto *texturePrep = static_cast<TexturePrepModule *>(this->modules[2].second);
+    auto *relief = static_cast<ReliefModule *>(this->modules[3].second);
+    auto *normalMap = static_cast<NormalMapModule *>(this->modules[5].second);
+
+    // ── Context toolbar ────────────────────────────────────────────────────
+    this->contextToolBar = addToolBar("Contexts");
+    this->contextToolBar->setMovable(false);
+    this->contextToolBar->setStyleSheet(R"(
         QToolBar { background: #2d2d2d; border: none; spacing: 2px; padding: 2px 6px; }
         QToolButton { background: transparent; color: #ccc; border: none;
                       border-radius: 3px; padding: 5px 14px; font-weight: bold; }
         QToolButton:checked { background: #4a7abf; color: white; }
         QToolButton:hover:!checked { background: #3d3d3d; }
     )");
-  auto *group = new QActionGroup(this);
-  group->setExclusive(true);
-  const char *labels[] = {"Mesh", "Heightmap", "Textures", "Relief",
-                          "Relief Sandbox", "Normal Map"};
-  for (int i = 0; i < 6; ++i) {
-    auto *act = new QAction(labels[i], this);
-    act->setCheckable(true);
-    group->addAction(act);
-    this->contextToolBar->addAction(act);
-    connect(act, &QAction::triggered, this,
-            [this, i](bool) { switchContext(i); });
-  }
-  group->actions().first()->setChecked(true);
+    // ── Viewport stack (central widget) ──────────────────────────────────────
+    this->viewportStack = new QStackedWidget();
 
-  // ── Viewport stack (central widget) ──────────────────────────────────────
-  this->viewportStack = new QStackedWidget();
-  this->viewportStack->addWidget(this->simplifier);
-  this->viewportStack->addWidget(this->heightmap);
-  this->viewportStack->addWidget(this->texturePrep);
-  this->viewportStack->addWidget(this->relief);
-  this->viewportStack->addWidget(this->reliefSandbox);
-  this->viewportStack->addWidget(this->normalMap);
-  setCentralWidget(this->viewportStack);
+    auto *group = new QActionGroup(this);
+    group->setExclusive(true);
+    int i = 0;
+    for (auto &[label, module] : this->modules) {
+        auto *act = new QAction(label, this);
+        act->setCheckable(true);
+        group->addAction(act);
+        this->contextToolBar->addAction(act);
+        connect(act, &QAction::triggered, this, [this, i, relief](bool) {
+            this->viewportStack->setCurrentIndex(i);
+            if (i == 3) relief->onActivated();
+        });
 
-  // ── Status bar ───────────────────────────────────────────────────────────
-  this->statusLabel = new QLabel("Ready");
-  statusBar()->addWidget(this->statusLabel);
+        this->viewportStack->addWidget(module);
+        ++i;
+    }
+    group->actions().first()->setChecked(true);
 
-  // ── Signal wiring ────────────────────────────────────────────────────────
+    setCentralWidget(this->viewportStack);
 
-  // simplifier → downstream
-  connect(this->simplifier, &SimplifierModule::modelLoaded, this->heightmap,
-          &HeightmapModule::onModelLoaded);
-  connect(this->simplifier, &SimplifierModule::simplificationDone,
-          this->heightmap, &HeightmapModule::onMeshUpdated);
-  connect(this->simplifier, &SimplifierModule::modelLoaded, this,
-          [this](Mesh *, Mesh *s) {
-            this->texturePrep->onModelLoaded(s);
-          });
-  connect(this->simplifier, &SimplifierModule::simplificationDone, this,
-          [this](Mesh *, Mesh *s) {
-            this->texturePrep->onMeshUpdated(s);
-          });
-  connect(this->simplifier, &SimplifierModule::modelLoaded, this->relief,
-          &ReliefModule::setMeshes);
-  connect(this->simplifier, &SimplifierModule::simplificationDone, this->relief,
-          &ReliefModule::setMeshes);
+    // ── Status bar ───────────────────────────────────────────────────────────
+    this->statusLabel = new QLabel("Ready");
+    statusBar()->addWidget(this->statusLabel);
 
-  // heightmap → texture prep
-  connect(this->heightmap, &HeightmapModule::bakeReady, this->texturePrep,
-          &TexturePrepModule::onHeightmapReady);
+    // ── Signal wiring ────────────────────────────────────────────────────────
 
-  // texture prep → relief
-  connect(this->texturePrep, &TexturePrepModule::texturesReady, this,
-          [this]() { this->relief->onTexturesReady(this->texturePrep); });
+    // simplifier → downstream
+    // (GlobalContext → SimplifierModule::onModelLoaded is wired by the Module
+    // base class itself.)
+    connect(simplifier, &SimplifierModule::modelLoaded, heightmap,
+            &HeightmapModule::onSimplifierModelLoaded);
+    connect(simplifier, &SimplifierModule::simplificationDone, heightmap,
+            &HeightmapModule::onMeshUpdated);
+    connect(simplifier, &SimplifierModule::modelLoaded, this,
+            [texturePrep](Mesh *, Mesh *s) { texturePrep->onSimplifiedMeshLoaded(s); });
+    connect(simplifier, &SimplifierModule::simplificationDone, this,
+            [texturePrep](Mesh *, Mesh *s) { texturePrep->onMeshUpdated(s); });
+    connect(simplifier, &SimplifierModule::modelLoaded, relief, &ReliefModule::setMeshes);
+    connect(simplifier, &SimplifierModule::simplificationDone, relief, &ReliefModule::setMeshes);
 
-  // status messages
-  connect(this->simplifier, &SimplifierModule::statusMessage, this->statusLabel,
-          &QLabel::setText);
-  connect(this->heightmap, &HeightmapModule::statusMessage, this->statusLabel,
-          &QLabel::setText);
-  connect(this->texturePrep, &TexturePrepModule::statusMessage,
-          this->statusLabel, &QLabel::setText);
-  connect(this->normalMap, &NormalMapModule::statusMessage, this->statusLabel,
-          &QLabel::setText);
+    // heightmap → texture prep
+    connect(heightmap, &HeightmapModule::bakeReady, texturePrep,
+            &TexturePrepModule::onHeightmapReady);
+
+    // texture prep → relief
+    connect(texturePrep, &TexturePrepModule::texturesReady, this,
+            [relief, texturePrep]() { relief->onTexturesReady(texturePrep); });
+
+    // status messages
+    connect(simplifier, &SimplifierModule::statusMessage, this->statusLabel, &QLabel::setText);
+    connect(heightmap, &HeightmapModule::statusMessage, this->statusLabel, &QLabel::setText);
+    connect(texturePrep, &TexturePrepModule::statusMessage, this->statusLabel, &QLabel::setText);
+    connect(normalMap, &NormalMapModule::statusMessage, this->statusLabel, &QLabel::setText);
+    connect(this->globalContext, &GlobalContext::statusMessage, this->statusLabel,
+            &QLabel::setText);
 }
 
 // ─── Menu
 // ─────────────────────────────────────────────────────────────────────
 
 void MainWindow::createMenuBar() {
-  QMenuBar *menuBar = new QMenuBar(this);
-  setMenuBar(menuBar);
+    QMenuBar *menuBar = new QMenuBar(this);
+    setMenuBar(menuBar);
 
-  QMenu *fileMenu = menuBar->addMenu("&File");
+    QMenu *fileMenu = menuBar->addMenu("&File");
 
-  QAction *loadAction = fileMenu->addAction("&Load Model...");
-  connect(loadAction, &QAction::triggered, this, &MainWindow::onLoadModel);
+    QAction *loadAction = fileMenu->addAction("&Load Model...");
+    connect(loadAction, &QAction::triggered, this, &MainWindow::onLoadModel);
 
-  QAction *saveAction = fileMenu->addAction("&Save Simplified...");
-  connect(saveAction, &QAction::triggered, this, &MainWindow::onSaveSimplified);
+    QAction *saveAction = fileMenu->addAction("&Save Simplified...");
+    connect(saveAction, &QAction::triggered, this, &MainWindow::onSaveSimplified);
 
-  fileMenu->addSeparator();
+    fileMenu->addSeparator();
 
-  QAction *exitAction = fileMenu->addAction("E&xit");
-  connect(exitAction, &QAction::triggered, this, &QWidget::close);
+    QAction *exitAction = fileMenu->addAction("E&xit");
+    connect(exitAction, &QAction::triggered, this, &QWidget::close);
 
-  QMenu *helpMenu = menuBar->addMenu("&Help");
-  QAction *aboutAction = helpMenu->addAction("&About");
-  connect(aboutAction, &QAction::triggered, this, [this]() {
-    QMessageBox::about(this, "About QEM Simplifier",
-                       "QEM Mesh Simplifier\n\n"
-                       "Quadric Error Metrics simplification with Qt GUI\n"
-                       "Mouse: Drag to rotate, Scroll to zoom\n"
-                       "Formats: OBJ, GLTF\n\n"
-                       "Heightmap tab: bakes displacement between simplified "
-                       "and original mesh\n"
-                       "via shared UV correspondence.");
-  });
+    QMenu *helpMenu = menuBar->addMenu("&Help");
+    QAction *aboutAction = helpMenu->addAction("&About");
+    connect(aboutAction, &QAction::triggered, this, [this]() {
+        QMessageBox::about(this, "About QEM Simplifier",
+                           "QEM Mesh Simplifier\n\n"
+                           "Quadric Error Metrics simplification with Qt GUI\n"
+                           "Mouse: Drag to rotate, Scroll to zoom\n"
+                           "Formats: OBJ, GLTF\n\n"
+                           "Heightmap tab: bakes displacement between simplified "
+                           "and original mesh\n"
+                           "via shared UV correspondence.");
+    });
 }
 
 // ─── Slots ───────────────────────────────────────────────────────────────────
 
-void MainWindow::switchContext(int index) {
-  viewportStack->setCurrentIndex(index);
-  if (index == 3)
-    relief->onActivated();
-}
-
 void MainWindow::onLoadModel() {
-  QString fileName = QFileDialog::getOpenFileName(
-      this, "Open Mesh File", "",
-      "Model Files (*.obj *.gltf *.glb);;OBJ Files (*.obj);;GLTF Files (*.gltf "
-      "*.glb);;All Files (*)");
+    QString fileName = QFileDialog::getOpenFileName(
+        this, "Open Mesh File", "",
+        "Model Files (*.obj *.gltf *.glb);;OBJ Files (*.obj);;GLTF Files (*.gltf "
+        "*.glb);;All Files (*)");
 
-  if (fileName.isEmpty())
-    return;
+    if (fileName.isEmpty()) return;
 
-  if (!simplifier->loadModel(fileName))
-    QMessageBox::critical(this, "Error", "Failed to load mesh file!");
+    if (!globalContext->loadModel(fileName))
+        QMessageBox::critical(this, "Error", "Failed to load mesh file!");
 }
 
 void MainWindow::onSaveSimplified() {
-  QString fileName = QFileDialog::getSaveFileName(
-      this, "Save Simplified Mesh", "",
-      "OBJ Files (*.obj);;GLTF Files (*.gltf);;All Files (*)");
+    QString fileName = QFileDialog::getSaveFileName(
+        this, "Save Simplified Mesh", "", "OBJ Files (*.obj);;GLTF Files (*.gltf);;All Files (*)");
 
-  if (fileName.isEmpty())
-    return;
+    if (fileName.isEmpty()) return;
 
-  if (!simplifier->saveSimplified(fileName))
-    QMessageBox::critical(this, "Error", "Failed to save mesh!");
-  else {
-    statusLabel->setText("Saved: " + fileName);
-    QMessageBox::information(this, "Success", "Mesh saved successfully!");
-  }
+    auto *simplifier = static_cast<SimplifierModule *>(modules[0].second);
+    if (!simplifier->saveSimplified(fileName))
+        QMessageBox::critical(this, "Error", "Failed to save mesh!");
+    else {
+        statusLabel->setText("Saved: " + fileName);
+        QMessageBox::information(this, "Success", "Mesh saved successfully!");
+    }
 }

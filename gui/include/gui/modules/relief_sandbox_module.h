@@ -10,6 +10,7 @@
 #include <QWidget>
 #include <memory>
 
+#include "gui/module.h"
 #include "gui/relief_view.h"
 #include "relief/mesh.h"
 #include "relief/textures.h"
@@ -66,7 +67,7 @@ struct PixelPickControls {
  *        dialogs, bakes synchronously, and inspects the result in a single
  *        ReliefView.
  */
-class ReliefSandboxModule : public QWidget {
+class ReliefSandboxModule : public Module {
     Q_OBJECT
 
     // Struct constructors wire buttons directly to our private slots.
@@ -75,7 +76,7 @@ class ReliefSandboxModule : public QWidget {
     friend struct PixelPickControls;
 
    public:
-    explicit ReliefSandboxModule(QWidget *parent = nullptr);
+    explicit ReliefSandboxModule(GlobalContext *context, QWidget *parent = nullptr);
 
    private slots:
     /** Loads a mesh (OBJ/GLTF) via file dialog and rebuilds the view. */
