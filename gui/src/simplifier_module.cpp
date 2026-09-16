@@ -19,17 +19,13 @@
 #include <tuple>
 #include <cmath>
 
-using namespace mesh;
-using namespace mesh::io;
-using namespace simplification;
-
 // ─── Constructor ─────────────────────────────────────────────────────────────
 
 SimplifierModule::SimplifierModule(QWidget *parent)
     : QWidget(parent)
 {
-    originalMesh_ = std::make_unique<Mesh>();
-    simplifiedMesh_ = std::make_unique<Mesh>();
+    originalMesh_ = std::make_unique<mesh::Mesh>();
+    simplifiedMesh_ = std::make_unique<mesh::Mesh>();
     buildUI();
 }
 
@@ -141,9 +137,9 @@ void SimplifierModule::buildUI()
     QHBoxLayout *boundaryRow = new QHBoxLayout();
     boundaryRow->addWidget(new QLabel("Boundary:"));
     boundaryModeCombo_ = new QComboBox();
-    boundaryModeCombo_->addItem("No constraint", (int)BoundaryMode::None);
-    boundaryModeCombo_->addItem("Constraint", (int)BoundaryMode::Constraint);
-    boundaryModeCombo_->addItem("Lock seam edges", (int)BoundaryMode::LockSeamVertices);
+    boundaryModeCombo_->addItem("No constraint", (int)simplification::BoundaryMode::None);
+    boundaryModeCombo_->addItem("Constraint", (int)simplification::BoundaryMode::Constraint);
+    boundaryModeCombo_->addItem("Lock seam edges", (int)simplification::BoundaryMode::LockSeamVertices);
     boundaryModeCombo_->setCurrentIndex(1);
     boundaryRow->addWidget(boundaryModeCombo_, 1);
     controlsRows->addLayout(boundaryRow);
@@ -294,10 +290,10 @@ void SimplifierModule::buildUI()
 
 bool SimplifierModule::loadModel(const QString &path)
 {
-    originalMesh_ = std::make_unique<Mesh>();
-    simplifiedMesh_ = std::make_unique<Mesh>();
+    originalMesh_ = std::make_unique<mesh::Mesh>();
+    simplifiedMesh_ = std::make_unique<mesh::Mesh>();
 
-    bool success = loadMesh(*originalMesh_, path.toStdString());
+    bool success = mesh::io::loadMesh(*originalMesh_, path.toStdString());
 
     if (!success)
         return false;
@@ -349,7 +345,7 @@ bool SimplifierModule::saveSimplified(const QString &path)
     if (!simplifiedMesh_ || simplifiedMesh_->faceCount() == 0)
         return false;
 
-    bool success = saveMesh(*simplifiedMesh_, path.toStdString());
+    bool success = mesh::io::saveMesh(*simplifiedMesh_, path.toStdString());
 
     return success;
 }
@@ -367,8 +363,8 @@ void SimplifierModule::onSimplify()
     int targetFaces = targetFacesSpinBox_->value();
     *simplifiedMesh_ = *originalMesh_;
 
-    Simplifier simplifier(*simplifiedMesh_);
-    simplifier.boundaryMode = (BoundaryMode)boundaryModeCombo_->currentData().toInt();
+    simplification::Simplifier simplifier(*simplifiedMesh_);
+    simplifier.boundaryMode = (simplification::BoundaryMode)boundaryModeCombo_->currentData().toInt();
     simplifier.useOptimalCandidate = useOptimalCandidateCheck_->isChecked();
     simplifier.setUserLockedEdges(glWidgetOriginal_->selectedEdges());
 
@@ -398,8 +394,8 @@ void SimplifierModule::onSimplifyInflated()
 
     // No reset from originalMesh_: keep simplifiedMesh_'s current (possibly
     // inflated) vertex positions as the base for this decimation pass.
-    Simplifier simplifier(*simplifiedMesh_);
-    simplifier.boundaryMode = (BoundaryMode)boundaryModeCombo_->currentData().toInt();
+    simplification::Simplifier simplifier(*simplifiedMesh_);
+    simplifier.boundaryMode = (simplification::BoundaryMode)boundaryModeCombo_->currentData().toInt();
     simplifier.useOptimalCandidate = useOptimalCandidateCheck_->isChecked();
     simplifier.setUserLockedEdges(glWidgetOriginal_->selectedEdges());
 
