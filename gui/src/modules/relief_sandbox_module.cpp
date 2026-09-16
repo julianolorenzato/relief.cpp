@@ -5,7 +5,7 @@
  * into mip0 buffers, and bakes/previews the relief maps synchronously.
  */
 
-#include "gui/relief_sandbox_module.h"
+#include "gui/modules/relief_sandbox_module.h"
 
 #include <QCheckBox>
 #include <QComboBox>

@@ -3,7 +3,7 @@
  * @brief HeightmapModule implementation: UI for baking a displacement map on
  *        a background QThread and previewing/saving the result.
  */
-#include "gui/heightmap_module.h"
+#include "gui/modules/heightmap_module.h"
 #include "relief/heightmap.h"
 
 using namespace mesh;

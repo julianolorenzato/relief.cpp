@@ -12,25 +12,25 @@ endif()
 add_executable(gui
     include/gui/mainwindow.h
     include/gui/orbital3dview.h
-    include/gui/simplifier_module.h
-    include/gui/heightmap_module.h
-    include/gui/texture_prep_module.h
-    include/gui/relief_module.h
+    include/gui/modules/simplifier_module.h
+    include/gui/modules/heightmap_module.h
+    include/gui/modules/texture_prep_module.h
+    include/gui/modules/relief_module.h
     include/gui/relief_view.h
-    include/gui/relief_sandbox_module.h
+    include/gui/modules/relief_sandbox_module.h
     include/gui/texture_inspector_widget.h
-    include/gui/normal_map_module.h
+    include/gui/modules/normal_map_module.h
     src/main.cpp
     src/mainwindow.cpp
     src/orbital3dview.cpp
-    src/simplifier_module.cpp
-    src/heightmap_module.cpp
-    src/texture_prep_module.cpp
-    src/relief_module.cpp
+    src/modules/simplifier_module.cpp
+    src/modules/heightmap_module.cpp
+    src/modules/texture_prep_module.cpp
+    src/modules/relief_module.cpp
     src/relief_view.cpp
-    src/relief_sandbox_module.cpp
+    src/modules/relief_sandbox_module.cpp
     src/texture_inspector_widget.cpp
-    src/normal_map_module.cpp
+    src/modules/normal_map_module.cpp
     src/shaders/shaders.qrc
 )
 

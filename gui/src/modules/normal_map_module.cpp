@@ -3,7 +3,7 @@
  * @brief NormalMapModule implementation: loads a height image, derives a
  *        normal-map mip pyramid from it, and previews/saves the result.
  */
-#include "gui/normal_map_module.h"
+#include "gui/modules/normal_map_module.h"
 
 #include <QFileDialog>
 #include <QFileInfo>

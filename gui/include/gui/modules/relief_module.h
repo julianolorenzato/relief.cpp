@@ -13,7 +13,7 @@
 #include "relief/mesh.h"
 #include "gui/orbital3dview.h"
 #include "gui/relief_view.h"
-#include "gui/texture_prep_module.h"
+#include "gui/modules/texture_prep_module.h"
 #include "relief/textures.h"
 
 /// @brief Widget hosting the relief-mapped preview, a textured comparison of

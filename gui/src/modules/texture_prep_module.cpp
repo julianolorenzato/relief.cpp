@@ -3,7 +3,7 @@
  * @brief TexturePrepModule implementation: bakes and previews the
  *        color/relief/normal mip pyramids and the Offset_Map.
  */
-#include "gui/texture_prep_module.h"
+#include "gui/modules/texture_prep_module.h"
 #include "relief/textures.h"
 #include <QVBoxLayout>
 #include <QHBoxLayout>

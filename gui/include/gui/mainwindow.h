@@ -8,12 +8,12 @@
 #include <QLabel>
 #include <QToolBar>
 #include <QStackedWidget>
-#include "gui/simplifier_module.h"
-#include "gui/heightmap_module.h"
-#include "gui/texture_prep_module.h"
-#include "gui/relief_module.h"
-#include "gui/relief_sandbox_module.h"
-#include "gui/normal_map_module.h"
+#include "gui/modules/simplifier_module.h"
+#include "gui/modules/heightmap_module.h"
+#include "gui/modules/texture_prep_module.h"
+#include "gui/modules/relief_module.h"
+#include "gui/modules/relief_sandbox_module.h"
+#include "gui/modules/normal_map_module.h"
 
 /// @brief Main application window; wires the pipeline modules (simplifier,
 ///        heightmap baker, texture prep, relief viewer, relief sandbox) together

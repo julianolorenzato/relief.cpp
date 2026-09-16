@@ -3,7 +3,7 @@
  * @brief SimplifierModule implementation: mesh loading, driving
  *        Mesh, and the inflate/deflate preview.
  */
-#include "gui/simplifier_module.h"
+#include "gui/modules/simplifier_module.h"
 
 #include <QCheckBox>
 #include <QGroupBox>
