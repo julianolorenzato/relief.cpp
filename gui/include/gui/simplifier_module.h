@@ -69,47 +69,47 @@ private:
     void updateStats();
 
     // ── Mesh data ─────────────────────────────────────────────────────────────
-    std::unique_ptr<mesh::Mesh> originalMesh_;
-    std::unique_ptr<mesh::Mesh> simplifiedMesh_;
+    std::unique_ptr<mesh::Mesh> originalMesh;
+    std::unique_ptr<mesh::Mesh> simplifiedMesh;
 
     // ── Viewports ─────────────────────────────────────────────────────────────
-    Orbital3DView* glWidgetOriginal_   = nullptr;
-    Orbital3DView* glWidgetSimplified_ = nullptr;
-    Orbital3DView* glWidgetOverlay_    = nullptr;
+    Orbital3DView* glWidgetOriginal   = nullptr;
+    Orbital3DView* glWidgetSimplified = nullptr;
+    Orbital3DView* glWidgetOverlay    = nullptr;
 
     // ── Simplification controls ───────────────────────────────────────────────
-    QSlider*  simplificationSlider_  = nullptr;
-    QSpinBox* targetFacesSpinBox_    = nullptr;
+    QSlider*  simplificationSlider  = nullptr;
+    QSpinBox* targetFacesSpinBox    = nullptr;
 
-    QCheckBox* wireframeCheck_            = nullptr;
-    QCheckBox* cullFaceCheck_             = nullptr;
-    QCheckBox* texturedCheck_             = nullptr;
-    QCheckBox* uvViewCheck_               = nullptr;
-    QComboBox* boundaryModeCombo_         = nullptr;
-    QCheckBox* useOptimalCandidateCheck_  = nullptr;
-    QCheckBox* showInternalEdgesCheck_    = nullptr;
-    QCheckBox* showSeamEdgesCheck_        = nullptr;
+    QCheckBox* wireframeCheck            = nullptr;
+    QCheckBox* cullFaceCheck             = nullptr;
+    QCheckBox* texturedCheck             = nullptr;
+    QCheckBox* uvViewCheck               = nullptr;
+    QComboBox* boundaryModeCombo         = nullptr;
+    QCheckBox* useOptimalCandidateCheck  = nullptr;
+    QCheckBox* showInternalEdgesCheck    = nullptr;
+    QCheckBox* showSeamEdgesCheck        = nullptr;
 
-    QSlider*        inflateSlider_ = nullptr;
-    QDoubleSpinBox* inflateSpin_   = nullptr;
-    QPushButton*    simplifyInflatedBtn_ = nullptr;
+    QSlider*        inflateSlider = nullptr;
+    QDoubleSpinBox* inflateSpin   = nullptr;
+    QPushButton*    simplifyInflatedBtn = nullptr;
 
     // ── Feature edge lock (brush selection) controls ─────────────────────────
-    QPushButton*    brushModeToggleBtn_  = nullptr;
-    QDoubleSpinBox* brushRadiusSpin_     = nullptr;
-    QDoubleSpinBox* brushAngleSpin_      = nullptr;
-    QComboBox*      brushPropagationCombo_ = nullptr;
-    QPushButton*    clearSelectionBtn_   = nullptr;
-    QLabel*         selectedEdgeCountLabel_ = nullptr;
+    QPushButton*    brushModeToggleBtn  = nullptr;
+    QDoubleSpinBox* brushRadiusSpin     = nullptr;
+    QDoubleSpinBox* brushAngleSpin      = nullptr;
+    QComboBox*      brushPropagationCombo = nullptr;
+    QPushButton*    clearSelectionBtn   = nullptr;
+    QLabel*         selectedEdgeCountLabel = nullptr;
 
     // ── Inflate state ─────────────────────────────────────────────────────────
-    std::vector<Eigen::Vector3d> baseSimplifiedPositions_;
-    std::vector<Eigen::Vector3d> simplifiedVertexNormals_;
-    std::vector<int>             simplifiedVertexGroup_;
-    int    simplifiedVertexGroupCount_ = 0;
-    double inflateScale_               = 1.0;
+    std::vector<Eigen::Vector3d> baseSimplifiedPositions;
+    std::vector<Eigen::Vector3d> simplifiedVertexNormals;
+    std::vector<int>             simplifiedVertexGroup;
+    int    simplifiedVertexGroupCount = 0;
+    double inflateScale               = 1.0;
 
     // ── Face counts ───────────────────────────────────────────────────────────
-    int originalFaceCount_ = 0;
-    int targetFaceCount_   = 0;
+    int originalFaceCount = 0;
+    int targetFaceCount   = 0;
 };
