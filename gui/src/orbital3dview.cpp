@@ -182,6 +182,7 @@ void Orbital3DView::setMode(RenderMode mode) {
 void Orbital3DView::setMesh(const Mesh* mesh) {
     primaryMesh_       = mesh;
     primaryMeshDirty_  = true;
+    updateStatsLabel();
     update();
     resetCamera();
 }
@@ -191,6 +192,7 @@ void Orbital3DView::setMeshes(const Mesh* primary, const Mesh* secondary) {
     secondaryMesh_       = secondary;
     primaryMeshDirty_    = true;
     secondaryMeshDirty_  = true;
+    updateStatsLabel();
     update();
     resetCamera();
 }
@@ -330,7 +332,9 @@ void Orbital3DView::createColorRow() {
     colorRow_->show();
 }
 
-void Orbital3DView::setStats(int faces, int vertices) {
+void Orbital3DView::updateStatsLabel() {
+    if (!primaryMesh_) return;
+
     if (!statsLabel_) {
         statsLabel_ = new QLabel(this);
         statsLabel_->setAlignment(Qt::AlignCenter);
@@ -345,7 +349,9 @@ void Orbital3DView::setStats(int faces, int vertices) {
             "}"
         );
     }
-    statsLabel_->setText(QString("%1 faces  ·  %2 vertices").arg(faces).arg(vertices));
+    statsLabel_->setText(QString("%1 faces  ·  %2 vertices")
+                              .arg(primaryMesh_->faceCount())
+                              .arg(primaryMesh_->vertexCount()));
     int bottomY = height() - (colorRow_ ? colorRow_->height() : 0);
     statsLabel_->setGeometry(0, bottomY - statsLabel_->height(), width(), statsLabel_->height());
     statsLabel_->raise();

@@ -51,8 +51,9 @@ private slots:
     /// Runs Simplifier again directly on the (possibly inflated) simplified mesh, keeping its
     /// current vertex positions as the new base instead of resetting from the original mesh.
     void onSimplifyInflated();
-    /// Keeps the target-faces slider and spin box in sync.
-    void onTargetFacesChanged(int value);
+    /// Called when the reduction-percentage slider moves: updates simplificationPercent
+    /// and the "Reduction: N%" label.
+    void onReductionPercentageChanged(int sliderValue);
     /// Resets the camera on all three viewports.
     void onResetCameras();
     /// Updates the "Locked edges: N" label when the brush selection changes.
@@ -68,8 +69,6 @@ private:
     /// @brief Recomputes the inflate baseline (base positions, per-group vertex normals) from
     ///        the current simplifiedMesh_ geometry and resets/enables the inflate controls.
     void captureInflateBaseline();
-    /// Refreshes the face-count labels for original/simplified meshes.
-    void updateStats();
 
     // ── Viewports ─────────────────────────────────────────────────────────────
     Orbital3DView* glWidgetOriginal   = nullptr;
@@ -77,8 +76,8 @@ private:
     Orbital3DView* glWidgetOverlay    = nullptr;
 
     // ── Simplification controls ───────────────────────────────────────────────
-    QSlider*  simplificationSlider  = nullptr;
-    QSpinBox* targetFacesSpinBox    = nullptr;
+    QSlider* simplificationSlider      = nullptr;
+    QLabel*  simplificationPercentLabel = nullptr;
 
     QCheckBox* wireframeCheck            = nullptr;
     QCheckBox* cullFaceCheck             = nullptr;
@@ -114,6 +113,6 @@ private:
     double inflateScale               = 1.0;
 
     // ── Face counts ───────────────────────────────────────────────────────────
-    int originalFaceCount = 0;
-    int targetFaceCount   = 0;
+    int    originalFaceCount     = 0;
+    double simplificationPercent = 50.0;
 };

@@ -54,9 +54,6 @@ public:
     /// Sets the title label shown above the viewport.
     void setTitle(const QString &title);
 
-    /// Updates the "N faces / N vertices" stats label.
-    void setStats(int faces, int vertices);
-
     /// Sets the mesh for single-mesh modes (Solid, Textured).
     void setMesh(const mesh::Mesh *mesh);
 
@@ -137,6 +134,9 @@ private:
 
     void createColorRow();
     void applyColorBtnStyle(QPushButton *btn, const QColor &c);
+    /// Refreshes the "N faces / N vertices" stats label from primaryMesh_. Called
+    /// whenever the primary mesh pointer changes (setMesh()/setMeshes()).
+    void updateStatsLabel();
 
     // Render options
     bool wireframe_ = false;

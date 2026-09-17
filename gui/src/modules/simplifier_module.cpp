@@ -84,14 +84,8 @@ void SimplifierModule::buildUI() {
     QVBoxLayout *controlsRows = new QVBoxLayout(controlsGroup);
     controlsRows->setSpacing(4);
 
-    QHBoxLayout *facesRow = new QHBoxLayout();
-    facesRow->addWidget(new QLabel("Target Faces:"));
-    this->targetFacesSpinBox = new QSpinBox();
-    this->targetFacesSpinBox->setMinimum(4);
-    this->targetFacesSpinBox->setMaximum(1000000);
-    this->targetFacesSpinBox->setValue(1000);
-    facesRow->addWidget(this->targetFacesSpinBox, 1);
-    controlsRows->addLayout(facesRow);
+    this->simplificationPercentLabel = new QLabel("Reduction: 50%");
+    controlsRows->addWidget(this->simplificationPercentLabel);
 
     this->simplificationSlider = new QSlider(Qt::Horizontal);
     this->simplificationSlider->setMinimum(1);
@@ -320,14 +314,8 @@ void SimplifierModule::buildUI() {
     layout->addWidget(smoothGroup);
 
     // ── Signals ───────────────────────────────────────────────────────────
-    connect(this->targetFacesSpinBox, QOverload<int>::of(&QSpinBox::valueChanged), this,
-            &SimplifierModule::onTargetFacesChanged);
-    connect(this->simplificationSlider, &QSlider::valueChanged, this, [this](int val) {
-        int targetFaces = std::max(4, (int)(this->originalFaceCount * val / 100.0));
-        this->targetFacesSpinBox->blockSignals(true);
-        this->targetFacesSpinBox->setValue(targetFaces);
-        this->targetFacesSpinBox->blockSignals(false);
-    });
+    connect(this->simplificationSlider, &QSlider::valueChanged, this,
+            &SimplifierModule::onReductionPercentageChanged);
 
     layout->addStretch();
 
@@ -347,13 +335,6 @@ void SimplifierModule::onMeshLoaded(mesh::Mesh *original, mesh::Mesh *simplified
     Module::onMeshLoaded(original, simplified);
 
     this->originalFaceCount = this->originalMesh_->faceCount();
-    this->targetFaceCount = std::max(4, this->originalFaceCount / 4);
-
-    this->targetFacesSpinBox->blockSignals(true);
-    this->targetFacesSpinBox->setMaximum(this->originalFaceCount);
-    this->targetFacesSpinBox->setValue(this->targetFaceCount);
-    this->simplificationSlider->setValue(75);
-    this->targetFacesSpinBox->blockSignals(false);
 
     this->glWidgetOriginal->setMesh(this->originalMesh_);
     this->glWidgetSimplified->setMesh(this->simplifiedMesh_);
@@ -376,8 +357,6 @@ void SimplifierModule::onMeshLoaded(mesh::Mesh *original, mesh::Mesh *simplified
     // copy of originalMesh_ at this point) so the user can inflate before ever running
     // Simplify.
     captureInflateBaseline();
-
-    updateStats();
 }
 
 void SimplifierModule::onMeshUpdated() {
@@ -385,7 +364,6 @@ void SimplifierModule::onMeshUpdated() {
 
     this->glWidgetSimplified->setMesh(this->simplifiedMesh_);
     this->glWidgetOverlay->setMeshes(this->originalMesh_, this->simplifiedMesh_);
-    updateStats();
 }
 
 bool SimplifierModule::saveSimplified(const QString &path) {
@@ -412,7 +390,8 @@ void SimplifierModule::onSimplify() {
         return;
     }
 
-    int targetFaces = this->targetFacesSpinBox->value();
+    int targetFaces =
+        std::max(4, (int)(this->originalFaceCount * this->simplificationPercent / 100.0));
     *this->simplifiedMesh_ = *this->originalMesh_;
 
     simplification::Simplifier simplifier(*this->simplifiedMesh_);
@@ -426,6 +405,7 @@ void SimplifierModule::onSimplify() {
     simplifier.run(targetFaces);
 
     emit this->notifyMeshUpdate();
+    emit this->statusMessage("Simplification finished!");
 }
 
 /**
@@ -435,7 +415,8 @@ void SimplifierModule::onSimplify() {
 void SimplifierModule::onSimplifyInflated() {
     if (!this->simplifiedMesh_ || this->simplifiedMesh_->faceCount() == 0) return;
 
-    int targetFaces = this->targetFacesSpinBox->value();
+    int targetFaces =
+        std::max(4, (int)(this->originalFaceCount * this->simplificationPercent / 100.0));
 
     // No reset from originalMesh_: keep simplifiedMesh_'s current (possibly
     // inflated) vertex positions as the base for this decimation pass.
@@ -452,7 +433,11 @@ void SimplifierModule::onSimplifyInflated() {
     emit this->notifyMeshUpdate();
 }
 
-void SimplifierModule::onTargetFacesChanged(int value) { this->targetFaceCount = value; }
+void SimplifierModule::onReductionPercentageChanged(int sliderValue) {
+    this->simplificationPercent = (double)sliderValue;
+    this->simplificationPercentLabel->setText(
+        QString("Reduction: %1%").arg(this->simplificationPercent, 0, 'f', 0));
+}
 
 void SimplifierModule::onResetCameras() {
     if (this->glWidgetOriginal) this->glWidgetOriginal->resetCamera();
@@ -589,21 +574,4 @@ void SimplifierModule::applyInflate(double offset) {
     }
     this->glWidgetSimplified->updateMeshData();
     this->glWidgetOverlay->updateSecondaryMesh();
-}
-
-void SimplifierModule::updateStats() {
-    if (!this->originalMesh_ || !this->simplifiedMesh_) return;
-
-    this->glWidgetOriginal->setStats(this->originalMesh_->faceCount(),
-                                     this->originalMesh_->vertexCount());
-    this->glWidgetSimplified->setStats(this->simplifiedMesh_->faceCount(),
-                                       this->simplifiedMesh_->vertexCount());
-
-    if (this->simplifiedMesh_->faceCount() > 0 && this->originalMesh_->faceCount() > 0) {
-        double reduction = 100.0 * (1.0 - (double)this->simplifiedMesh_->faceCount() /
-                                              this->originalMesh_->faceCount());
-        emit statusMessage(QString("Reduction: %1%").arg(reduction, 0, 'f', 1));
-    } else {
-        emit statusMessage("Ready");
-    }
 }
