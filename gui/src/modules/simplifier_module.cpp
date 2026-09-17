@@ -21,13 +21,6 @@
 
 #include "relief/edge_selection.h"
 
-// ─── Constructor ─────────────────────────────────────────────────────────────
-
-SimplifierModule::SimplifierModule(GlobalContext *context, QWidget *parent) : Module(context, parent) {
-    this->simplifiedMesh = std::make_unique<mesh::Mesh>();
-    buildUI();
-}
-
 // ─── buildUI ─────────────────────────────────────────────────────────────────
 
 void SimplifierModule::buildUI() {
@@ -107,6 +100,9 @@ void SimplifierModule::buildUI() {
     controlsRows->addWidget(this->simplificationSlider);
 
     QHBoxLayout *btnRow = new QHBoxLayout();
+    QPushButton *resetBtn = new QPushButton("Reset");
+    connect(resetBtn, &QPushButton::clicked, this, &SimplifierModule::onReset);
+    btnRow->addWidget(resetBtn);
     QPushButton *simplifyBtn = new QPushButton("Simplify");
     connect(simplifyBtn, &QPushButton::clicked, this, &SimplifierModule::onSimplify);
     btnRow->addWidget(simplifyBtn);
@@ -347,14 +343,10 @@ void SimplifierModule::buildUI() {
 
 // ─── Public methods ───────────────────────────────────────────────────────────
 
-void SimplifierModule::onModelLoaded(mesh::Mesh *original) {
-    this->originalMesh = original;
+void SimplifierModule::onMeshLoaded(mesh::Mesh *original, mesh::Mesh *simplified) {
+    Module::onMeshLoaded(original, simplified);
 
-    // Start "simplified" as a copy of the original so Textures Preparation /
-    // Relief Mapping work even before the user runs Simplify.
-    this->simplifiedMesh = std::make_unique<mesh::Mesh>(*this->originalMesh);
-
-    this->originalFaceCount = this->originalMesh->faceCount();
+    this->originalFaceCount = this->originalMesh_->faceCount();
     this->targetFaceCount = std::max(4, this->originalFaceCount / 4);
 
     this->targetFacesSpinBox->blockSignals(true);
@@ -363,16 +355,16 @@ void SimplifierModule::onModelLoaded(mesh::Mesh *original) {
     this->simplificationSlider->setValue(75);
     this->targetFacesSpinBox->blockSignals(false);
 
-    this->glWidgetOriginal->setMesh(this->originalMesh);
-    this->glWidgetSimplified->setMesh(this->simplifiedMesh.get());
-    this->glWidgetOverlay->setMeshes(this->originalMesh, this->simplifiedMesh.get());
+    this->glWidgetOriginal->setMesh(this->originalMesh_);
+    this->glWidgetSimplified->setMesh(this->simplifiedMesh_);
+    this->glWidgetOverlay->setMeshes(this->originalMesh_, this->simplifiedMesh_);
 
-    bool hasTexture = !this->originalMesh->textureData.empty();
+    bool hasTexture = !this->originalMesh_->textureData.empty();
     this->texturedCheck->setEnabled(hasTexture);
     if (!hasTexture) this->texturedCheck->setChecked(false);
 
     bool hasUVs = false;
-    for (const auto &wg : this->originalMesh->wedges)
+    for (const auto &wg : this->originalMesh_->wedges)
         if (wg.uv.squaredNorm() > 1e-12) {
             hasUVs = true;
             break;
@@ -381,34 +373,49 @@ void SimplifierModule::onModelLoaded(mesh::Mesh *original) {
     if (!hasUVs) this->uvViewCheck->setChecked(false);
 
     // Baseline the inflate/deflate controls on the freshly loaded mesh (still a full-resolution
-    // copy of originalMesh at this point) so the user can inflate before ever running
+    // copy of originalMesh_ at this point) so the user can inflate before ever running
     // Simplify.
     captureInflateBaseline();
 
     updateStats();
-    emit modelLoaded(this->originalMesh, this->simplifiedMesh.get());
+}
+
+void SimplifierModule::onMeshUpdated() {
+    captureInflateBaseline();
+
+    this->glWidgetSimplified->setMesh(this->simplifiedMesh_);
+    this->glWidgetOverlay->setMeshes(this->originalMesh_, this->simplifiedMesh_);
+    updateStats();
 }
 
 bool SimplifierModule::saveSimplified(const QString &path) {
-    if (!this->simplifiedMesh || this->simplifiedMesh->faceCount() == 0) return false;
+    if (!this->simplifiedMesh_ || this->simplifiedMesh_->faceCount() == 0) return false;
 
-    bool success = mesh::io::saveMesh(*this->simplifiedMesh, path.toStdString());
+    bool success = mesh::io::saveMesh(*this->simplifiedMesh_, path.toStdString());
 
     return success;
 }
 
 // ─── Private slots ────────────────────────────────────────────────────────────
 
+void SimplifierModule::onReset() {
+    if (!this->originalMesh_ || this->originalMesh_->faceCount() == 0) return;
+
+    *this->simplifiedMesh_ = *this->originalMesh_;
+
+    emit notifyMeshUpdate();
+}
+
 void SimplifierModule::onSimplify() {
-    if (!this->originalMesh || this->originalMesh->faceCount() == 0) {
+    if (!this->originalMesh_ || this->originalMesh_->faceCount() == 0) {
         QMessageBox::warning(this, "Warning", "No mesh loaded!");
         return;
     }
 
     int targetFaces = this->targetFacesSpinBox->value();
-    *this->simplifiedMesh = *this->originalMesh;
+    *this->simplifiedMesh_ = *this->originalMesh_;
 
-    simplification::Simplifier simplifier(*this->simplifiedMesh);
+    simplification::Simplifier simplifier(*this->simplifiedMesh_);
     simplifier.boundaryMode =
         (simplification::BoundaryMode)this->boundaryModeCombo->currentData().toInt();
     simplifier.useOptimalCandidate = this->useOptimalCandidateCheck->isChecked();
@@ -418,27 +425,21 @@ void SimplifierModule::onSimplify() {
 
     simplifier.run(targetFaces);
 
-    captureInflateBaseline();
-
-    this->glWidgetSimplified->setMesh(this->simplifiedMesh.get());
-    this->glWidgetOverlay->setMeshes(this->originalMesh, this->simplifiedMesh.get());
-    updateStats();
-
-    emit simplificationDone(this->originalMesh, this->simplifiedMesh.get());
+    emit this->notifyMeshUpdate();
 }
 
 /**
- * @brief Runs Simplifier again directly on simplifiedMesh, keeping its current (possibly
- *        inflated) vertex positions as the base instead of resetting from originalMesh.
+ * @brief Runs Simplifier again directly on simplifiedMesh_, keeping its current (possibly
+ *        inflated) vertex positions as the base instead of resetting from originalMesh_.
  */
 void SimplifierModule::onSimplifyInflated() {
-    if (!this->simplifiedMesh || this->simplifiedMesh->faceCount() == 0) return;
+    if (!this->simplifiedMesh_ || this->simplifiedMesh_->faceCount() == 0) return;
 
     int targetFaces = this->targetFacesSpinBox->value();
 
-    // No reset from originalMesh: keep simplifiedMesh's current (possibly
+    // No reset from originalMesh_: keep simplifiedMesh_'s current (possibly
     // inflated) vertex positions as the base for this decimation pass.
-    simplification::Simplifier simplifier(*this->simplifiedMesh);
+    simplification::Simplifier simplifier(*this->simplifiedMesh_);
     simplifier.boundaryMode =
         (simplification::BoundaryMode)this->boundaryModeCombo->currentData().toInt();
     simplifier.useOptimalCandidate = this->useOptimalCandidateCheck->isChecked();
@@ -448,13 +449,7 @@ void SimplifierModule::onSimplifyInflated() {
 
     simplifier.run(targetFaces);
 
-    captureInflateBaseline();
-
-    this->glWidgetSimplified->setMesh(this->simplifiedMesh.get());
-    this->glWidgetOverlay->setMeshes(this->originalMesh, this->simplifiedMesh.get());
-    updateStats();
-
-    emit simplificationDone(this->originalMesh, this->simplifiedMesh.get());
+    emit this->notifyMeshUpdate();
 }
 
 void SimplifierModule::onTargetFacesChanged(int value) { this->targetFaceCount = value; }
@@ -471,10 +466,10 @@ void SimplifierModule::onSelectionChanged(int count) {
 }
 
 void SimplifierModule::onSmooth() {
-    if (!this->simplifiedMesh || this->simplifiedMesh->faceCount() == 0) return;
+    if (!this->simplifiedMesh_ || this->simplifiedMesh_->faceCount() == 0) return;
 
-    this->simplifiedMesh->smooth(this->smoothIterationsSpin->value(),
-                                 this->smoothStrengthSpin->value());
+    this->simplifiedMesh_->smooth(this->smoothIterationsSpin->value(),
+                                  this->smoothStrengthSpin->value());
 
     // Positions changed; rebase inflate offsets/normals so a later Inflate
     // doesn't jump back to the pre-smooth shape.
@@ -487,22 +482,22 @@ void SimplifierModule::onSmooth() {
 // ─── Private methods ──────────────────────────────────────────────────────────
 
 /**
- * @brief Recomputes the inflate baseline from simplifiedMesh's current geometry and
+ * @brief Recomputes the inflate baseline from simplifiedMesh_'s current geometry and
  *        (re)enables the inflate/deflate and "Simplify Inflated Mesh" controls.
  */
 void SimplifierModule::captureInflateBaseline() {
     // Capture base positions and compute vertex normals for inflate/deflate
-    this->baseSimplifiedPositions.resize(this->simplifiedMesh->vertices.size());
-    for (size_t i = 0; i < this->simplifiedMesh->vertices.size(); i++)
-        this->baseSimplifiedPositions[i] = this->simplifiedMesh->vertices[i].pos;
+    this->baseSimplifiedPositions.resize(this->simplifiedMesh_->vertices.size());
+    for (size_t i = 0; i < this->simplifiedMesh_->vertices.size(); i++)
+        this->baseSimplifiedPositions[i] = this->simplifiedMesh_->vertices[i].pos;
 
-    this->simplifiedVertexNormals.assign(this->simplifiedMesh->vertices.size(),
+    this->simplifiedVertexNormals.assign(this->simplifiedMesh_->vertices.size(),
                                          Eigen::Vector3d::Zero());
-    for (const auto &f : this->simplifiedMesh->faces) {
+    for (const auto &f : this->simplifiedMesh_->faces) {
         if (f.removed) continue;
-        int v0 = this->simplifiedMesh->wedges[f.w[0]].vertex;
-        int v1 = this->simplifiedMesh->wedges[f.w[1]].vertex;
-        int v2 = this->simplifiedMesh->wedges[f.w[2]].vertex;
+        int v0 = this->simplifiedMesh_->wedges[f.w[0]].vertex;
+        int v1 = this->simplifiedMesh_->wedges[f.w[1]].vertex;
+        int v2 = this->simplifiedMesh_->wedges[f.w[2]].vertex;
         const auto &p0 = this->baseSimplifiedPositions[v0];
         const auto &p1 = this->baseSimplifiedPositions[v1];
         const auto &p2 = this->baseSimplifiedPositions[v2];
@@ -532,9 +527,9 @@ void SimplifierModule::captureInflateBaseline() {
         };
 
         std::map<std::tuple<long long, long long, long long>, int> groupId;
-        this->simplifiedVertexGroup.assign(this->simplifiedMesh->vertices.size(), -1);
-        for (size_t i = 0; i < this->simplifiedMesh->vertices.size(); i++) {
-            if (this->simplifiedMesh->vertices[i].removed) continue;
+        this->simplifiedVertexGroup.assign(this->simplifiedMesh_->vertices.size(), -1);
+        for (size_t i = 0; i < this->simplifiedMesh_->vertices.size(); i++) {
+            if (this->simplifiedMesh_->vertices[i].removed) continue;
             auto key = quantize(this->baseSimplifiedPositions[i]);
             auto [it, inserted] = groupId.try_emplace(key, (int)groupId.size());
             this->simplifiedVertexGroup[i] = it->second;
@@ -543,17 +538,17 @@ void SimplifierModule::captureInflateBaseline() {
 
         std::vector<Eigen::Vector3d> groupNormal(this->simplifiedVertexGroupCount,
                                                  Eigen::Vector3d::Zero());
-        for (size_t i = 0; i < this->simplifiedMesh->vertices.size(); i++) {
-            if (this->simplifiedMesh->vertices[i].removed) continue;
+        for (size_t i = 0; i < this->simplifiedMesh_->vertices.size(); i++) {
+            if (this->simplifiedMesh_->vertices[i].removed) continue;
             groupNormal[this->simplifiedVertexGroup[i]] += this->simplifiedVertexNormals[i];
         }
-        for (size_t i = 0; i < this->simplifiedMesh->vertices.size(); i++) {
-            if (this->simplifiedMesh->vertices[i].removed) continue;
+        for (size_t i = 0; i < this->simplifiedMesh_->vertices.size(); i++) {
+            if (this->simplifiedMesh_->vertices[i].removed) continue;
             this->simplifiedVertexNormals[i] = groupNormal[this->simplifiedVertexGroup[i]];
         }
     }
 
-    for (size_t i = 0; i < this->simplifiedMesh->vertices.size(); i++) {
+    for (size_t i = 0; i < this->simplifiedMesh_->vertices.size(); i++) {
         double len = this->simplifiedVertexNormals[i].norm();
         if (len > 1e-10) this->simplifiedVertexNormals[i] /= len;
     }
@@ -562,7 +557,7 @@ void SimplifierModule::captureInflateBaseline() {
     {
         Eigen::Vector3d bmin = Eigen::Vector3d::Constant(1e18);
         Eigen::Vector3d bmax = Eigen::Vector3d::Constant(-1e18);
-        for (const auto &v : this->originalMesh->vertices) {
+        for (const auto &v : this->originalMesh_->vertices) {
             if (!v.removed) {
                 bmin = bmin.cwiseMin(v.pos);
                 bmax = bmax.cwiseMax(v.pos);
@@ -587,9 +582,9 @@ void SimplifierModule::captureInflateBaseline() {
 
 void SimplifierModule::applyInflate(double offset) {
     if (this->baseSimplifiedPositions.empty()) return;
-    for (size_t i = 0; i < this->simplifiedMesh->vertices.size(); i++) {
-        if (!this->simplifiedMesh->vertices[i].removed)
-            this->simplifiedMesh->vertices[i].pos =
+    for (size_t i = 0; i < this->simplifiedMesh_->vertices.size(); i++) {
+        if (!this->simplifiedMesh_->vertices[i].removed)
+            this->simplifiedMesh_->vertices[i].pos =
                 this->baseSimplifiedPositions[i] + offset * this->simplifiedVertexNormals[i];
     }
     this->glWidgetSimplified->updateMeshData();
@@ -597,16 +592,16 @@ void SimplifierModule::applyInflate(double offset) {
 }
 
 void SimplifierModule::updateStats() {
-    if (!this->originalMesh || !this->simplifiedMesh) return;
+    if (!this->originalMesh_ || !this->simplifiedMesh_) return;
 
-    this->glWidgetOriginal->setStats(this->originalMesh->faceCount(),
-                                     this->originalMesh->vertexCount());
-    this->glWidgetSimplified->setStats(this->simplifiedMesh->faceCount(),
-                                       this->simplifiedMesh->vertexCount());
+    this->glWidgetOriginal->setStats(this->originalMesh_->faceCount(),
+                                     this->originalMesh_->vertexCount());
+    this->glWidgetSimplified->setStats(this->simplifiedMesh_->faceCount(),
+                                       this->simplifiedMesh_->vertexCount());
 
-    if (this->simplifiedMesh->faceCount() > 0 && this->originalMesh->faceCount() > 0) {
-        double reduction = 100.0 * (1.0 - (double)this->simplifiedMesh->faceCount() /
-                                              this->originalMesh->faceCount());
+    if (this->simplifiedMesh_->faceCount() > 0 && this->originalMesh_->faceCount() > 0) {
+        double reduction = 100.0 * (1.0 - (double)this->simplifiedMesh_->faceCount() /
+                                              this->originalMesh_->faceCount());
         emit statusMessage(QString("Reduction: %1%").arg(reduction, 0, 'f', 1));
     } else {
         emit statusMessage("Ready");

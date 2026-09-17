@@ -27,13 +27,13 @@ class TexturePrepModule : public Module {
     Q_OBJECT
 
 public:
-    explicit TexturePrepModule(GlobalContext* context, QWidget* parent = nullptr);
+    using Module::Module;
 
 public slots:
     /// Called when a new model is loaded: sets the mesh pointer and does a full reset.
-    void onSimplifiedMeshLoaded(mesh::Mesh* simplified);
-    /// Called when the mesh is updated after simplification: sets mesh + refreshes thumbnails/button.
-    void onMeshUpdated(mesh::Mesh* simplified);
+    void onMeshLoaded(mesh::Mesh* original, mesh::Mesh* simplified) override;
+    /// Called when the simplified mesh's data changes in place: refreshes thumbnails/button.
+    void onMeshUpdated() override;
     /// Called when a heightmap bake finishes: stores the result and refreshes.
     void onHeightmapReady(const heightmap::HeightmapResult& result);
 
@@ -54,7 +54,6 @@ public slots:
 signals:
     /// Emitted once colorMap()/reliefMap()/normalMap()/offsetMap() are all freshly baked.
     void texturesReady();
-    void statusMessage(const QString& msg);
 
 private slots:
     /// Launches the (background-threaded) texture generation for the current mesh/settings.
@@ -67,7 +66,7 @@ private slots:
     void onTpSave(int idx);
 
 private:
-    void buildUI();
+    void buildUI() override;
     /// Refreshes the three input thumbnails (color/depth/normal) from the mesh and heightmap result.
     void updateThumbnails();
     /// Enables/disables the Generate button based on whether the required inputs are present.
@@ -111,7 +110,4 @@ private:
 
     // Stored heightmap result (copy)
     heightmap::HeightmapResult hmResult_;
-
-    // Non-owned mesh pointer
-    mesh::Mesh* simplifiedMesh_ = nullptr;
 };

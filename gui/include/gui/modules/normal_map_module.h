@@ -26,10 +26,7 @@ class NormalMapModule : public Module {
     Q_OBJECT
 
    public:
-    explicit NormalMapModule(GlobalContext *context, QWidget *parent = nullptr);
-
-   signals:
-    void statusMessage(const QString &msg);
+    using Module::Module;
 
    private slots:
     /** Loads the source height/depth image via file dialog. */
@@ -51,7 +48,7 @@ class NormalMapModule : public Module {
     /// slope into one-texel lines.
     static constexpr float kSmoothing = 2.0f;
 
-    void buildUI();
+    void buildUI() override;
 
     /** Redraws the generated-normal-map panel from `normalMap`. */
     void updatePreview();

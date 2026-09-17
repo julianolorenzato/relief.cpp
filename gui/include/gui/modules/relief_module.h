@@ -24,21 +24,23 @@ class ReliefModule : public Module {
     Q_OBJECT
 
 public:
-    explicit ReliefModule(GlobalContext* context, QWidget* parent = nullptr);
+    using Module::Module;
 
 public slots:
     /// Stores the mesh pointers and marks them pending for sync.
-    void setMeshes(mesh::Mesh* original, mesh::Mesh* simplified);
+    void onMeshLoaded(mesh::Mesh* original, mesh::Mesh* simplified) override;
+    /// Called when the simplified mesh's data changes in place: the mesh pointers are
+    /// unchanged, so re-mark them pending for sync.
+    void onMeshUpdated() override;
     /// Stores the texture-prep source and marks its maps pending for sync.
     void onTexturesReady(TexturePrepModule* source);
-    /// Called when this tab is activated — flushes any pending data.
-    void onActivated();
-
-signals:
-    void statusMessage(const QString& msg);
 
 private:
-    void buildUI();
+    void buildUI() override;
+    /// Flushes any pending mesh/texture data once the tab becomes visible — the GL
+    /// widgets below can only safely receive data once they have a valid context,
+    /// which Qt only guarantees once they're actually shown.
+    void showEvent(QShowEvent* event) override;
     /// Builds the "Lighting" group box (X/Y/Z sliders) and appends it to
     /// `outerControls`'s layout, driving the shared point light on all three viewports.
     void buildLightingGroup(QWidget* outerControls);
@@ -64,10 +66,6 @@ private:
     // ── Pending state ─────────────────────────────────────────────────────────
     bool meshPending_     = false;
     bool texturesPending_ = false;
-
-    // Non-owned mesh pointers
-    mesh::Mesh* originalMesh_   = nullptr;
-    mesh::Mesh* simplifiedMesh_ = nullptr;
 
     // Non-owned texture-prep source
     TexturePrepModule* texturePrepSource_ = nullptr;

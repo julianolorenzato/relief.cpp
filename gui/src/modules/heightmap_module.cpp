@@ -43,14 +43,6 @@ public slots:
 #include <QImage>
 #include <QPixmap>
 
-// ─── Constructor ─────────────────────────────────────────────────────────────
-
-HeightmapModule::HeightmapModule(GlobalContext* context, QWidget* parent)
-    : Module(context, parent)
-{
-    buildUI();
-}
-
 // ─── buildUI ─────────────────────────────────────────────────────────────────
 
 void HeightmapModule::buildUI()
@@ -141,17 +133,10 @@ void HeightmapModule::buildUI()
 
 // ─── Public slots ─────────────────────────────────────────────────────────────
 
-void HeightmapModule::onSimplifierModelLoaded(Mesh* original, Mesh* simplified)
+void HeightmapModule::onMeshLoaded(Mesh* original, Mesh* simplified)
 {
-    originalMesh_   = original;
-    simplifiedMesh_ = simplified;
+    Module::onMeshLoaded(original, simplified);
     reset();
-}
-
-void HeightmapModule::onMeshUpdated(Mesh* original, Mesh* simplified)
-{
-    originalMesh_   = original;
-    simplifiedMesh_ = simplified;
 }
 
 // ─── Private slots ────────────────────────────────────────────────────────────

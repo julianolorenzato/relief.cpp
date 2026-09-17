@@ -76,7 +76,7 @@ class ReliefSandboxModule : public Module {
     friend struct PixelPickControls;
 
    public:
-    explicit ReliefSandboxModule(GlobalContext *context, QWidget *parent = nullptr);
+    using Module::Module;
 
    private slots:
     /** Loads a mesh (OBJ/GLTF) via file dialog and rebuilds the view. */
@@ -101,6 +101,8 @@ class ReliefSandboxModule : public Module {
     void onPixelPicked(QPointF uv, bool hit);
 
    private:
+    void buildUI() override;
+
     QWidget *buildControls();
 
     /**

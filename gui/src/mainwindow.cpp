@@ -31,19 +31,17 @@ void MainWindow::setupUI() {
     this->globalContext = new GlobalContext(this);
 
     this->modules = {
-        {"Mesh", new SimplifierModule(this->globalContext, this)},
-        {"Heightmap", new HeightmapModule(this->globalContext, this)},
-        {"Textures", new TexturePrepModule(this->globalContext, this)},
-        {"Relief", new ReliefModule(this->globalContext, this)},
-        {"Relief Sandbox", new ReliefSandboxModule(this->globalContext, this)},
-        {"Normal Map", new NormalMapModule(this->globalContext, this)},
+        {"Mesh", createModule<SimplifierModule>(this->globalContext, this)},
+        {"Heightmap", createModule<HeightmapModule>(this->globalContext, this)},
+        {"Textures", createModule<TexturePrepModule>(this->globalContext, this)},
+        {"Relief", createModule<ReliefModule>(this->globalContext, this)},
+        {"Relief Sandbox", createModule<ReliefSandboxModule>(this->globalContext, this)},
+        {"Normal Map", createModule<NormalMapModule>(this->globalContext, this)},
     };
 
-    auto *simplifier = static_cast<SimplifierModule *>(this->modules[0].second);
     auto *heightmap = static_cast<HeightmapModule *>(this->modules[1].second);
     auto *texturePrep = static_cast<TexturePrepModule *>(this->modules[2].second);
     auto *relief = static_cast<ReliefModule *>(this->modules[3].second);
-    auto *normalMap = static_cast<NormalMapModule *>(this->modules[5].second);
 
     // ── Context toolbar ────────────────────────────────────────────────────
     this->contextToolBar = addToolBar("Contexts");
@@ -66,10 +64,8 @@ void MainWindow::setupUI() {
         act->setCheckable(true);
         group->addAction(act);
         this->contextToolBar->addAction(act);
-        connect(act, &QAction::triggered, this, [this, i, relief](bool) {
-            this->viewportStack->setCurrentIndex(i);
-            if (i == 3) relief->onActivated();
-        });
+        connect(act, &QAction::triggered, this,
+                [this, i](bool) { this->viewportStack->setCurrentIndex(i); });
 
         this->viewportStack->addWidget(module);
         ++i;
@@ -84,19 +80,9 @@ void MainWindow::setupUI() {
 
     // ── Signal wiring ────────────────────────────────────────────────────────
 
-    // simplifier → downstream
-    // (GlobalContext → SimplifierModule::onModelLoaded is wired by the Module
-    // base class itself.)
-    connect(simplifier, &SimplifierModule::modelLoaded, heightmap,
-            &HeightmapModule::onSimplifierModelLoaded);
-    connect(simplifier, &SimplifierModule::simplificationDone, heightmap,
-            &HeightmapModule::onMeshUpdated);
-    connect(simplifier, &SimplifierModule::modelLoaded, this,
-            [texturePrep](Mesh *, Mesh *s) { texturePrep->onSimplifiedMeshLoaded(s); });
-    connect(simplifier, &SimplifierModule::simplificationDone, this,
-            [texturePrep](Mesh *, Mesh *s) { texturePrep->onMeshUpdated(s); });
-    connect(simplifier, &SimplifierModule::modelLoaded, relief, &ReliefModule::setMeshes);
-    connect(simplifier, &SimplifierModule::simplificationDone, relief, &ReliefModule::setMeshes);
+    // GlobalContext → every module's onMeshLoaded(original, simplified)/onMeshUpdated() is
+    // wired by the Module base class itself, so no explicit connects are needed here for the
+    // initial load or for a re-simplify (SimplifierModule emits notifyMeshUpdate()).
 
     // heightmap → texture prep
     connect(heightmap, &HeightmapModule::bakeReady, texturePrep,
@@ -107,12 +93,9 @@ void MainWindow::setupUI() {
             [relief, texturePrep]() { relief->onTexturesReady(texturePrep); });
 
     // status messages
-    connect(simplifier, &SimplifierModule::statusMessage, this->statusLabel, &QLabel::setText);
-    connect(heightmap, &HeightmapModule::statusMessage, this->statusLabel, &QLabel::setText);
-    connect(texturePrep, &TexturePrepModule::statusMessage, this->statusLabel, &QLabel::setText);
-    connect(normalMap, &NormalMapModule::statusMessage, this->statusLabel, &QLabel::setText);
-    connect(this->globalContext, &GlobalContext::statusMessage, this->statusLabel,
-            &QLabel::setText);
+    for (auto &[label, module] : this->modules) {
+        connect(module, &Module::statusMessage, this->statusLabel, &QLabel::setText);
+    }
 }
 
 // ─── Menu

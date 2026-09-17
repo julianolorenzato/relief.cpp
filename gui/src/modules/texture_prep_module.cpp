@@ -32,14 +32,6 @@ static QImage rgbaTextureToQImage(const std::vector<uint8_t>& data, int w, int h
     return img.copy(); // detach from the mesh's buffer
 }
 
-// ─── Constructor ─────────────────────────────────────────────────────────────
-
-TexturePrepModule::TexturePrepModule(GlobalContext* context, QWidget* parent)
-    : Module(context, parent)
-{
-    buildUI();
-}
-
 // ─── buildUI ─────────────────────────────────────────────────────────────────
 
 void TexturePrepModule::buildUI()
@@ -229,9 +221,9 @@ void TexturePrepModule::buildUI()
 
 // ─── Public slots ─────────────────────────────────────────────────────────────
 
-void TexturePrepModule::onSimplifiedMeshLoaded(Mesh* simplified)
+void TexturePrepModule::onMeshLoaded(Mesh* original, Mesh* simplified)
 {
-    simplifiedMesh_ = simplified;
+    Module::onMeshLoaded(original, simplified);
     hmResult_ = HeightmapResult{};
     colorMapData_  = MipPyramid{};
     reliefMapData_ = MipPyramid{};
@@ -252,9 +244,8 @@ void TexturePrepModule::onSimplifiedMeshLoaded(Mesh* simplified)
     updateGenerateEnabled();
 }
 
-void TexturePrepModule::onMeshUpdated(Mesh* simplified)
+void TexturePrepModule::onMeshUpdated()
 {
-    simplifiedMesh_ = simplified;
     updateThumbnails();
     updateGenerateEnabled();
 }

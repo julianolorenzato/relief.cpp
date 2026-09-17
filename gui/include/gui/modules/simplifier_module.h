@@ -28,26 +28,24 @@ class SimplifierModule : public Module {
     Q_OBJECT
 
 public:
-    explicit SimplifierModule(GlobalContext* context, QWidget* parent = nullptr);
+    using Module::Module;
 
     /// @brief Saves the current simplified mesh to a file.
     /// @param path Destination path.
     /// @return true on success.
     bool saveSimplified(const QString& path);
 
-signals:
-    /// Emitted after onModelLoaded() runs, with pointers to the (yet unsimplified) meshes.
-    void modelLoaded(mesh::Mesh* original, mesh::Mesh* simplified);
-    /// Emitted after a simplification run completes.
-    void simplificationDone(mesh::Mesh* original, mesh::Mesh* simplified);
-    void statusMessage(const QString& msg);
-
 public slots:
-    /// Receives the original mesh loaded by the shared GlobalContext, starts the
-    /// simplified working copy from it, and refreshes the views/UI.
-    void onModelLoaded(mesh::Mesh* original) override;
+    /// Receives the original mesh and its simplified working copy from the shared
+    /// GlobalContext, and refreshes the views/UI.
+    void onMeshLoaded(mesh::Mesh* original, mesh::Mesh* simplified) override;
+    /// Called whenever the simplified mesh's data changes in place (reset, re-simplify,
+    /// smooth, ...): recomputes the inflate baseline and redraws the simplified/overlay views.
+    void onMeshUpdated() override;
 
 private slots:
+    /// Resets the simplified working mesh back to a full-resolution copy of the original mesh.
+    void onReset();
     /// Runs Simplifier on the original mesh with the current UI settings and refreshes the views.
     void onSimplify();
     /// Runs Simplifier again directly on the (possibly inflated) simplified mesh, keeping its
@@ -64,7 +62,7 @@ private slots:
     void onSmooth();
 
 private:
-    void buildUI();
+    void buildUI() override;
     /// Applies an inflate/deflate offset along cached per-group vertex normals to the simplified mesh preview.
     void applyInflate(double offset);
     /// @brief Recomputes the inflate baseline (base positions, per-group vertex normals) from
@@ -72,10 +70,6 @@ private:
     void captureInflateBaseline();
     /// Refreshes the face-count labels for original/simplified meshes.
     void updateStats();
-
-    // ── Mesh data ─────────────────────────────────────────────────────────────
-    mesh::Mesh* originalMesh = nullptr; // owned by GlobalContext
-    std::unique_ptr<mesh::Mesh> simplifiedMesh;
 
     // ── Viewports ─────────────────────────────────────────────────────────────
     Orbital3DView* glWidgetOriginal   = nullptr;

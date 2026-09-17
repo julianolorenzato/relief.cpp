@@ -13,17 +13,14 @@ class HeightmapModule : public Module {
     Q_OBJECT
 
 public:
-    explicit HeightmapModule(GlobalContext* context, QWidget* parent = nullptr);
+    using Module::Module;
 
 public slots:
     // Called when a new model is loaded: stores pointers and resets state.
-    void onSimplifierModelLoaded(mesh::Mesh* original, mesh::Mesh* simplified);
-    // Called when the mesh is updated after simplification: just stores ptrs.
-    void onMeshUpdated(mesh::Mesh* original, mesh::Mesh* simplified);
+    void onMeshLoaded(mesh::Mesh* original, mesh::Mesh* simplified) override;
 
 signals:
     void bakeReady(const heightmap::HeightmapResult& result);
-    void statusMessage(const QString& msg);
 
 private slots:
     void onBake();
@@ -32,7 +29,7 @@ private slots:
     void onBakeDone();
 
 private:
-    void buildUI();
+    void buildUI() override;
     void launchBake();
     void displayHeightmap(const heightmap::HeightmapResult& r);
     void setBakeButtonsEnabled(bool enabled);
@@ -53,8 +50,4 @@ private:
     heightmap::HeightmapResult  hmResult_;
     QObject*         hmWorker_ = nullptr;
     QThread*         hmThread_ = nullptr;
-
-    // Non-owned mesh pointers (set by onSimplifierModelLoaded / onMeshUpdated)
-    mesh::Mesh* originalMesh_   = nullptr;
-    mesh::Mesh* simplifiedMesh_ = nullptr;
 };

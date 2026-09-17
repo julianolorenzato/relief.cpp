@@ -95,7 +95,7 @@ void makeLightSliderRow(QVBoxLayout* layout, const char* label, int minHundredth
 
 }  // namespace
 
-ReliefSandboxModule::ReliefSandboxModule(GlobalContext* context, QWidget* parent) : Module(context, parent) {
+void ReliefSandboxModule::buildUI() {
     QHBoxLayout* outerLayout = new QHBoxLayout(this);
     outerLayout->setContentsMargins(0, 0, 0, 0);
 

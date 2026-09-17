@@ -15,14 +15,6 @@
 
 using namespace mesh;
 
-// ─── Constructor ─────────────────────────────────────────────────────────────
-
-ReliefModule::ReliefModule(GlobalContext* context, QWidget* parent)
-    : Module(context, parent)
-{
-    buildUI();
-}
-
 // ─── buildUI ─────────────────────────────────────────────────────────────────
 
 void ReliefModule::buildUI()
@@ -207,11 +199,16 @@ void ReliefModule::buildLightingGroup(QWidget* outerControls)
 
 // ─── Public slots ─────────────────────────────────────────────────────────────
 
-void ReliefModule::setMeshes(Mesh* original, Mesh* simplified)
+void ReliefModule::onMeshLoaded(Mesh* original, Mesh* simplified)
 {
-    originalMesh_   = original;
-    simplifiedMesh_ = simplified;
-    meshPending_    = true;
+    Module::onMeshLoaded(original, simplified);
+    meshPending_ = true;
+    syncIfReady();
+}
+
+void ReliefModule::onMeshUpdated()
+{
+    meshPending_ = true;
     syncIfReady();
 }
 
@@ -222,12 +219,13 @@ void ReliefModule::onTexturesReady(TexturePrepModule* source)
     syncIfReady();
 }
 
-void ReliefModule::onActivated()
+// ─── Private methods ──────────────────────────────────────────────────────────
+
+void ReliefModule::showEvent(QShowEvent* event)
 {
+    Module::showEvent(event);
     syncIfReady();
 }
-
-// ─── Private methods ──────────────────────────────────────────────────────────
 
 void ReliefModule::syncIfReady()
 {
