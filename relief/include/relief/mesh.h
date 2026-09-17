@@ -74,6 +74,13 @@ public:
     ///         by (small, large) position-vertex id.
     EdgeToFaces buildEdgeToFaces() const;
 
+    /// Applies `iterations` rounds of uniform Laplacian smoothing: each vertex
+    /// is moved toward the average position of its edge-adjacent neighbors,
+    /// scaled by `lambda` (0 = no movement, 1 = snap to neighbor average).
+    /// Operates only on `vertices[i].pos`; topology, UVs, and wedges are
+    /// unchanged.
+    void smooth(int iterations = 1, double lambda = 0.5);
+
     /// @return The UV used at the given corner (0..2) of the given face.
     Eigen::Vector2d cornerUV(int faceIdx, int corner) const {
         return wedges[faces[faceIdx].w[corner]].uv;

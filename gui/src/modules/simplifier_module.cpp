@@ -293,6 +293,36 @@ void SimplifierModule::buildUI() {
 
     layout->addWidget(inflateGroup);
 
+    // ── Smooth ──────────────────────────────────────────────────────────────
+    QGroupBox *smoothGroup = new QGroupBox("Smooth");
+    QVBoxLayout *smoothLayout = new QVBoxLayout(smoothGroup);
+    smoothLayout->setSpacing(4);
+
+    QHBoxLayout *smoothIterRow = new QHBoxLayout();
+    smoothIterRow->addWidget(new QLabel("Iterations:"));
+    this->smoothIterationsSpin = new QSpinBox();
+    this->smoothIterationsSpin->setMinimum(1);
+    this->smoothIterationsSpin->setMaximum(50);
+    this->smoothIterationsSpin->setValue(1);
+    smoothIterRow->addWidget(this->smoothIterationsSpin, 1);
+    smoothLayout->addLayout(smoothIterRow);
+
+    QHBoxLayout *smoothStrengthRow = new QHBoxLayout();
+    smoothStrengthRow->addWidget(new QLabel("Strength:"));
+    this->smoothStrengthSpin = new QDoubleSpinBox();
+    this->smoothStrengthSpin->setMinimum(0.0);
+    this->smoothStrengthSpin->setMaximum(1.0);
+    this->smoothStrengthSpin->setSingleStep(0.05);
+    this->smoothStrengthSpin->setValue(0.5);
+    smoothStrengthRow->addWidget(this->smoothStrengthSpin, 1);
+    smoothLayout->addLayout(smoothStrengthRow);
+
+    this->smoothBtn = new QPushButton("Smooth");
+    connect(this->smoothBtn, &QPushButton::clicked, this, &SimplifierModule::onSmooth);
+    smoothLayout->addWidget(this->smoothBtn);
+
+    layout->addWidget(smoothGroup);
+
     // ── Signals ───────────────────────────────────────────────────────────
     connect(this->targetFacesSpinBox, QOverload<int>::of(&QSpinBox::valueChanged), this,
             &SimplifierModule::onTargetFacesChanged);
@@ -438,6 +468,20 @@ void SimplifierModule::onResetCameras() {
 void SimplifierModule::onSelectionChanged(int count) {
     if (this->selectedEdgeCountLabel)
         this->selectedEdgeCountLabel->setText(QString("Locked edges: %1").arg(count));
+}
+
+void SimplifierModule::onSmooth() {
+    if (!this->simplifiedMesh || this->simplifiedMesh->faceCount() == 0) return;
+
+    this->simplifiedMesh->smooth(this->smoothIterationsSpin->value(),
+                                 this->smoothStrengthSpin->value());
+
+    // Positions changed; rebase inflate offsets/normals so a later Inflate
+    // doesn't jump back to the pre-smooth shape.
+    captureInflateBaseline();
+    this->glWidgetSimplified->updateMeshData();
+    this->glWidgetOverlay->updateSecondaryMesh();
+    emit statusMessage("Smoothed");
 }
 
 // ─── Private methods ──────────────────────────────────────────────────────────

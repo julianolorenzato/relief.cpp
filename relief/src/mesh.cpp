@@ -56,6 +56,33 @@ EdgeToFaces Mesh::buildEdgeToFaces() const {
     return edgeToFaces;
 }
 
+void Mesh::smooth(int iterations, double lambda) {
+    if (iterations <= 0 || vertices.empty()) return;
+
+    std::vector<std::vector<int>> neighbors(vertices.size());
+    for (const auto &entry : buildEdgeToFaces()) {
+        int a = entry.first.first, b = entry.first.second;
+        neighbors[a].push_back(b);
+        neighbors[b].push_back(a);
+    }
+
+    std::vector<Eigen::Vector3d> newPos(vertices.size());
+    for (int it = 0; it < iterations; it++) {
+        for (size_t i = 0; i < vertices.size(); i++) {
+            if (vertices[i].removed || neighbors[i].empty()) {
+                newPos[i] = vertices[i].pos;
+                continue;
+            }
+            Eigen::Vector3d avg = Eigen::Vector3d::Zero();
+            for (int n : neighbors[i]) avg += vertices[n].pos;
+            avg /= (double)neighbors[i].size();
+            newPos[i] = vertices[i].pos + lambda * (avg - vertices[i].pos);
+        }
+        for (size_t i = 0; i < vertices.size(); i++)
+            vertices[i].pos = newPos[i];
+    }
+}
+
 void Mesh::logSummary() const {
     std::cout << "Mesh: " << vertexCount() << " vertices, " << wedges.size()
               << " wedges, " << faceCount() << " faces\n";

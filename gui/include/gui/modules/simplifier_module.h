@@ -59,6 +59,9 @@ private slots:
     void onResetCameras();
     /// Updates the "Locked edges: N" label when the brush selection changes.
     void onSelectionChanged(int count);
+    /// Applies Laplacian smoothing to the simplified mesh using the current
+    /// iterations/strength controls.
+    void onSmooth();
 
 private:
     void buildUI();
@@ -95,6 +98,11 @@ private:
     QSlider*        inflateSlider = nullptr;
     QDoubleSpinBox* inflateSpin   = nullptr;
     QPushButton*    simplifyInflatedBtn = nullptr;
+
+    // ── Smooth controls ───────────────────────────────────────────────────────
+    QSpinBox*       smoothIterationsSpin = nullptr;
+    QDoubleSpinBox* smoothStrengthSpin   = nullptr;
+    QPushButton*    smoothBtn            = nullptr;
 
     // ── Feature edge lock (brush selection) controls ─────────────────────────
     QPushButton*    brushModeToggleBtn  = nullptr;
