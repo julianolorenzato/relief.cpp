@@ -19,6 +19,7 @@
 #include "gui/modules/relief_module.h"
 #include "gui/modules/relief_sandbox_module.h"
 #include "gui/modules/normal_map_module.h"
+#include "gui/modules/validation_module.h"
 
 /// @brief Main application window; wires the pipeline modules (simplifier,
 ///        heightmap baker, texture prep, relief viewer, relief sandbox) together

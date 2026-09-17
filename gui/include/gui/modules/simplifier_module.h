@@ -16,6 +16,7 @@
 #include "relief/mesh.h"
 #include "relief/mesh/io.h"
 #include "relief/simplification.h"
+#include "relief/inflate.h"
 #include "gui/orbital3dview.h"
 
 class QPushButton;
@@ -106,11 +107,8 @@ private:
     QLabel*         selectedEdgeCountLabel = nullptr;
 
     // ── Inflate state ─────────────────────────────────────────────────────────
-    std::vector<Eigen::Vector3d> baseSimplifiedPositions;
-    std::vector<Eigen::Vector3d> simplifiedVertexNormals;
-    std::vector<int>             simplifiedVertexGroup;
-    int    simplifiedVertexGroupCount = 0;
-    double inflateScale               = 1.0;
+    inflate::Baseline inflateBaseline;
+    double inflateScale = 1.0;
 
     // ── Face counts ───────────────────────────────────────────────────────────
     int    originalFaceCount     = 0;

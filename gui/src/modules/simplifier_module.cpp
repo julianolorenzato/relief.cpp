@@ -471,72 +471,7 @@ void SimplifierModule::onSmooth() {
  *        (re)enables the inflate/deflate and "Simplify Inflated Mesh" controls.
  */
 void SimplifierModule::captureInflateBaseline() {
-    // Capture base positions and compute vertex normals for inflate/deflate
-    this->baseSimplifiedPositions.resize(this->simplifiedMesh_->vertices.size());
-    for (size_t i = 0; i < this->simplifiedMesh_->vertices.size(); i++)
-        this->baseSimplifiedPositions[i] = this->simplifiedMesh_->vertices[i].pos;
-
-    this->simplifiedVertexNormals.assign(this->simplifiedMesh_->vertices.size(),
-                                         Eigen::Vector3d::Zero());
-    for (const auto &f : this->simplifiedMesh_->faces) {
-        if (f.removed) continue;
-        int v0 = this->simplifiedMesh_->wedges[f.w[0]].vertex;
-        int v1 = this->simplifiedMesh_->wedges[f.w[1]].vertex;
-        int v2 = this->simplifiedMesh_->wedges[f.w[2]].vertex;
-        const auto &p0 = this->baseSimplifiedPositions[v0];
-        const auto &p1 = this->baseSimplifiedPositions[v1];
-        const auto &p2 = this->baseSimplifiedPositions[v2];
-        Eigen::Vector3d n = (p1 - p0).cross(p2 - p0);
-        this->simplifiedVertexNormals[v0] += n;
-        this->simplifiedVertexNormals[v1] += n;
-        this->simplifiedVertexNormals[v2] += n;
-    }
-
-    // Vértices duplicados na mesma posição 3D (ex.: costuras de UV, separadas
-    // em vertices distintos no loadOBJ) devem inflar juntos. Caso contrário,
-    // cada cópia usa só suas próprias faces incidentes, as normais divergem,
-    // e a costura abre um buraco ao inflar mesmo com seam vertices travados.
-    {
-        Eigen::Vector3d bmin = Eigen::Vector3d::Constant(1e18);
-        Eigen::Vector3d bmax = Eigen::Vector3d::Constant(-1e18);
-        for (const auto &p : this->baseSimplifiedPositions) {
-            bmin = bmin.cwiseMin(p);
-            bmax = bmax.cwiseMax(p);
-        }
-        double cell = std::max((bmax - bmin).norm() * 1e-7, 1e-9);
-
-        auto quantize = [cell](const Eigen::Vector3d &p) {
-            return std::make_tuple((long long)std::llround(p.x() / cell),
-                                   (long long)std::llround(p.y() / cell),
-                                   (long long)std::llround(p.z() / cell));
-        };
-
-        std::map<std::tuple<long long, long long, long long>, int> groupId;
-        this->simplifiedVertexGroup.assign(this->simplifiedMesh_->vertices.size(), -1);
-        for (size_t i = 0; i < this->simplifiedMesh_->vertices.size(); i++) {
-            if (this->simplifiedMesh_->vertices[i].removed) continue;
-            auto key = quantize(this->baseSimplifiedPositions[i]);
-            auto [it, inserted] = groupId.try_emplace(key, (int)groupId.size());
-            this->simplifiedVertexGroup[i] = it->second;
-        }
-        this->simplifiedVertexGroupCount = (int)groupId.size();
-
-        std::vector<Eigen::Vector3d> groupNormal(this->simplifiedVertexGroupCount,
-                                                 Eigen::Vector3d::Zero());
-        for (size_t i = 0; i < this->simplifiedMesh_->vertices.size(); i++) {
-            if (this->simplifiedMesh_->vertices[i].removed) continue;
-            groupNormal[this->simplifiedVertexGroup[i]] += this->simplifiedVertexNormals[i];
-        }
-        for (size_t i = 0; i < this->simplifiedMesh_->vertices.size(); i++) {
-            if (this->simplifiedMesh_->vertices[i].removed) continue;
-            this->simplifiedVertexNormals[i] = groupNormal[this->simplifiedVertexGroup[i]];
-        }
-    }
-
-    for (size_t i = 0; i < this->simplifiedMesh_->vertices.size(); i++) {
-        double len = this->simplifiedVertexNormals[i].norm();
-        if (len > 1e-10) this->simplifiedVertexNormals[i] /= len;
-    }
+    this->inflateBaseline = inflate::computeBaseline(*this->simplifiedMesh_);
 
     // Set inflate range based on original mesh bounding box diagonal
     {
@@ -566,12 +501,7 @@ void SimplifierModule::captureInflateBaseline() {
 }
 
 void SimplifierModule::applyInflate(double offset) {
-    if (this->baseSimplifiedPositions.empty()) return;
-    for (size_t i = 0; i < this->simplifiedMesh_->vertices.size(); i++) {
-        if (!this->simplifiedMesh_->vertices[i].removed)
-            this->simplifiedMesh_->vertices[i].pos =
-                this->baseSimplifiedPositions[i] + offset * this->simplifiedVertexNormals[i];
-    }
+    inflate::apply(*this->simplifiedMesh_, this->inflateBaseline, offset);
     this->glWidgetSimplified->updateMeshData();
     this->glWidgetOverlay->updateSecondaryMesh();
 }
