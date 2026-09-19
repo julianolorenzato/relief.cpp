@@ -1,21 +1,13 @@
 /**
  * @file metrics_diag.cpp
  * @brief Diagnostic tool: sanity-checks metrics::imagePSNR on synthetic
- *        buffers (no GPU needed), then loads a mesh and prints face counts
- *        before/after a couple of hand-picked pipeline::Pipeline runs.
+ *        buffers (no GPU needed).
  */
 #include <cmath>
 #include <iostream>
-#include <string>
 #include <vector>
 
-#include "relief/mesh.h"
-#include "relief/mesh/io.h"
 #include "relief/metrics.h"
-#include "relief/pipeline.h"
-
-using namespace mesh;
-using namespace mesh::io;
 
 namespace {
 
@@ -36,46 +28,9 @@ void checkPSNR() {
     std::cout << "offset-red-channel PSNR: " << offsetPSNR << " dB (expect ~" << expected << " dB)\n";
 }
 
-void checkPipeline(const std::string& path) {
-    Mesh original;
-    if (!loadMesh(original, path)) {
-        std::cerr << "failed to load " << path << "\n";
-        return;
-    }
-    std::cout << "original: " << original.faceCount() << " faces, " << original.vertexCount()
-               << " vertices\n";
-
-    {
-        Mesh copy = original;
-        pipeline::OpParams simplifyOnlyParams;
-        simplifyOnlyParams.targetFaces = original.faceCount() / 3;
-        pipeline::Pipeline p = {
-            {pipeline::OpType::Simplify, simplifyOnlyParams},
-        };
-        pipeline::applyPipeline(copy, p);
-        std::cout << pipeline::describe(p) << " -> " << copy.faceCount() << " faces\n";
-    }
-    {
-        Mesh copy = original;
-        pipeline::OpParams simplifyParams;
-        simplifyParams.targetFaces = original.faceCount() / 3;
-        pipeline::OpParams smoothParams;
-        smoothParams.smoothIterations = 2;
-        smoothParams.smoothLambda = 0.5;
-        pipeline::Pipeline p = {
-            {pipeline::OpType::Simplify, simplifyParams},
-            {pipeline::OpType::Smooth, smoothParams},
-        };
-        pipeline::applyPipeline(copy, p);
-        std::cout << pipeline::describe(p) << " -> " << copy.faceCount() << " faces\n";
-    }
-}
-
 } // namespace
 
-int main(int argc, char** argv) {
+int main() {
     checkPSNR();
-    if (argc >= 2) checkPipeline(argv[1]);
-    else std::cout << "(pass a mesh path to also exercise pipeline::applyPipeline)\n";
     return 0;
 }

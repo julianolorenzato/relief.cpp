@@ -27,7 +27,6 @@ add_executable(gui
     include/gui/texture_inspector_widget.h
     include/gui/modules/normal_map_module.h
     include/gui/offscreen_mesh_renderer.h
-    include/gui/modules/validation_module.h
     src/main.cpp
     src/mainwindow.cpp
     src/global_context.cpp
@@ -42,7 +41,6 @@ add_executable(gui
     src/texture_inspector_widget.cpp
     src/modules/normal_map_module.cpp
     src/offscreen_mesh_renderer.cpp
-    src/modules/validation_module.cpp
     shaders/shaders.qrc
 )
 

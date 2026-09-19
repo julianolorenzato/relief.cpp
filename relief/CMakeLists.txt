@@ -37,9 +37,7 @@ add_library(relief STATIC
     src/uv_atlas.cpp
     src/textures.cpp
     src/inflate.cpp
-    src/pipeline.cpp
     src/metrics.cpp
-    src/pipeline_search.cpp
 )
 
 target_include_directories(relief
@@ -77,8 +75,8 @@ target_link_libraries(load_summary PRIVATE relief)
 add_executable(edge_selection_diag tools/edge_selection_diag.cpp)
 target_link_libraries(edge_selection_diag PRIVATE relief)
 
-# Sanity-checks metrics::imagePSNR on synthetic buffers and exercises
-# pipeline::applyPipeline on a real mesh, without needing a GPU/Qt.
+# Sanity-checks metrics::imagePSNR on synthetic buffers, without needing a
+# GPU/Qt.
 add_executable(metrics_diag tools/metrics_diag.cpp)
 target_link_libraries(metrics_diag PRIVATE relief)
 
