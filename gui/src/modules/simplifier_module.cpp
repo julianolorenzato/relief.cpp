@@ -141,6 +141,8 @@ void SimplifierModule::buildUI() {
     this->boundaryModeCombo = new QComboBox();
     this->boundaryModeCombo->addItem("No constraint", (int)simplification::BoundaryMode::None);
     this->boundaryModeCombo->addItem("Constraint", (int)simplification::BoundaryMode::Constraint);
+    this->boundaryModeCombo->addItem("Constrain seams",
+                                     (int)simplification::BoundaryMode::ConstrainSeams);
     this->boundaryModeCombo->addItem("Lock seam edges",
                                      (int)simplification::BoundaryMode::LockSeamVertices);
     this->boundaryModeCombo->setCurrentIndex(1);

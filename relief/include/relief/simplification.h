@@ -104,6 +104,7 @@ struct EdgeCollapse {
 enum class BoundaryMode {
     None,              ///< No boundary constraint at all.
     Constraint,        ///< Soft penalty (perpendicular-plane quadric).
+    ConstrainSeams,    ///< Soft penalty on boundary edges AND UV-seam edges (no locking).
     LockSeamVertices,  ///< Hard lock: never collapses an edge touching a boundary or UV-seam vertex.
 };
 

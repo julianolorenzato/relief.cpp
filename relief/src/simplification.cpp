@@ -333,12 +333,9 @@ void Simplifier::mergeVertexPair(
 void Simplifier::addBoundaryConstraints(double weight) {
     auto edgeToFaces = mesh_.buildEdgeToFaces();
 
-    int count = 0;
-    for (auto &[edge, faceIds] : edgeToFaces) {
-        if (faceIds.size() != 1) continue;
-        int a = edge.first, b = edge.second;
-        int fi = faceIds[0];
-
+    // Adiciona ao par (a,b) a quádrica de plano perpendicular à face `fi`
+    // passando pela aresta (Seção 4 do paper), ponderada por `weight`.
+    auto applyEdgeConstraint = [&](int a, int b, int fi) {
         const Eigen::Vector3d &p0 = mesh_.vertices[mesh_.wedges[mesh_.faces[fi].w[0]].vertex].pos;
         const Eigen::Vector3d &p1 = mesh_.vertices[mesh_.wedges[mesh_.faces[fi].w[1]].vertex].pos;
         const Eigen::Vector3d &p2 = mesh_.vertices[mesh_.wedges[mesh_.faces[fi].w[2]].vertex].pos;
@@ -346,18 +343,33 @@ void Simplifier::addBoundaryConstraints(double weight) {
         Eigen::Vector3d faceNormal = (p1 - p0).cross(p2 - p0).normalized();
         Eigen::Vector3d edgeDir = (mesh_.vertices[b].pos - mesh_.vertices[a].pos).normalized();
 
-        // Plano perpendicular à face passando pela aresta (Seção 4 do paper)
         Eigen::Vector3d cn = faceNormal.cross(edgeDir);
-        if (cn.norm() < 1e-10) continue;
+        if (cn.norm() < 1e-10) return false;
         cn.normalize();
         double d = -cn.dot(mesh_.vertices[a].pos);
 
         Eigen::Matrix4d Kc = quadricFromPlane(cn.x(), cn.y(), cn.z(), d) * weight;
         mesh_.vertices[a].Q += Kc;
         mesh_.vertices[b].Q += Kc;
-        ++count;
+        return true;
+    };
+
+    int boundaryCount = 0;
+    for (auto &[edge, faceIds] : edgeToFaces) {
+        if (faceIds.size() != 1) continue;
+        if (applyEdgeConstraint(edge.first, edge.second, faceIds[0])) ++boundaryCount;
     }
-    std::cout << "Boundary constraints: " << count << " arestas de fronteira\n";
+    std::cout << "Boundary constraints: " << boundaryCount << " arestas de fronteira\n";
+
+    if (boundaryMode == BoundaryMode::ConstrainSeams) {
+        int seamCount = 0;
+        for (const auto &[a, b] : uv_atlas::findSeamEdges(mesh_)) {
+            auto it = edgeToFaces.find(std::make_pair(a, b));
+            if (it == edgeToFaces.end() || it->second.empty()) continue;
+            if (applyEdgeConstraint(a, b, it->second[0])) ++seamCount;
+        }
+        std::cout << "Boundary constraints: " << seamCount << " arestas de seam\n";
+    }
 }
 
 // Recalcula e reenfileira o custo de colapso de toda aresta que toca `keep`
@@ -400,8 +412,9 @@ void Simplifier::run(int targetFaces) {
     // Deriva o flag de comportamento a partir do modo de boundary escolhido.
     lockSeamEdges = (boundaryMode == BoundaryMode::LockSeamVertices);
 
-    if (boundaryMode == BoundaryMode::Constraint)
-        addBoundaryConstraints();  // penaliza mover arestas de borda para fora do plano original.
+    if (boundaryMode == BoundaryMode::Constraint || boundaryMode == BoundaryMode::ConstrainSeams)
+        addBoundaryConstraints();  // penaliza mover arestas de borda (e, no modo ConstrainSeams,
+                                    // de seam) para fora do plano original.
     if (lockSeamEdges)
         markBoundaryVertices();  // marca vértices de borda para travar suas arestas em
                                  // buildCandidate/edgeLocked.
