@@ -91,11 +91,6 @@ public:
     /// unchanged.
     void smooth(int iterations = 1, double lambda = 0.5);
 
-    /// @return The UV used at the given corner (0..2) of the given face.
-    Eigen::Vector2d cornerUV(int faceIdx, int corner) const {
-        return wedges[faces[faceIdx].w[corner]].uv;
-    }
-
     /// Flattened, GPU-friendly form of the mesh: one entry per distinct
     /// (vertex, uv-slot) pair actually used by a face corner, and one index
     /// triple per face into those entries. Needed anywhere a single UV per

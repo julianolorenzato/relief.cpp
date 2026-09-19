@@ -4,11 +4,12 @@
  *        mesh and multi-threaded signed-distance sampling against the original.
  */
 #include "relief/heightmap.h"
+
 #include <algorithm>
 #include <atomic>
 #include <cmath>
-#include <limits>
 #include <iostream>
+#include <limits>
 #include <thread>
 
 namespace heightmap {
@@ -26,15 +27,10 @@ using V3 = Eigen::Vector3d;
  * @param[out] w0,w1,w2 Barycentric weights on success.
  * @return false if the triangle is degenerate (near-zero area).
  */
-static bool bary2D(double px, double py,
-                   double ax, double ay,
-                   double bx, double by,
-                   double cx, double cy,
-                   double &w0, double &w1, double &w2)
-{
+static bool bary2D(double px, double py, double ax, double ay, double bx, double by, double cx,
+                   double cy, double &w0, double &w1, double &w2) {
     double denom = (by - cy) * (ax - cx) + (cx - bx) * (ay - cy);
-    if (std::abs(denom) < 1e-10)
-        return false;
+    if (std::abs(denom) < 1e-10) return false;
     w0 = ((by - cy) * (px - cx) + (cx - bx) * (py - cy)) / denom;
     w1 = ((cy - ay) * (px - cx) + (ax - cx) * (py - cy)) / denom;
     w2 = 1.0 - w0 - w1;
@@ -43,29 +39,25 @@ static bool bary2D(double px, double py,
 
 // Rastereização
 
-std::vector<HeightmapBaker::TexelSample>
-HeightmapBaker::rasterizeUV(const Mesh &mesh, int W, int H)
-{
+std::vector<HeightmapBaker::TexelSample> HeightmapBaker::rasterizeUV(const Mesh &mesh, int W,
+                                                                     int H) {
     std::vector<TexelSample> samples(W * H);
 
-    for (int fi = 0; fi < (int)mesh.faces.size(); fi++)
-    {
+    for (int fi = 0; fi < (int)mesh.faces.size(); fi++) {
         const auto &fc = mesh.faces[fi];
-        if (fc.removed)
-            continue;
+        if (fc.removed) continue;
 
         const V3 &p0 = mesh.vertices[mesh.wedges[fc.w[0]].vertex].pos;
         const V3 &p1 = mesh.vertices[mesh.wedges[fc.w[1]].vertex].pos;
         const V3 &p2 = mesh.vertices[mesh.wedges[fc.w[2]].vertex].pos;
 
         V3 n = (p1 - p0).cross(p2 - p0);
-        if (n.norm() < 1e-10)
-            continue;
+        if (n.norm() < 1e-10) continue;
         n.normalize();
 
-        Eigen::Vector2d uv0 = mesh.cornerUV(fi, 0);
-        Eigen::Vector2d uv1 = mesh.cornerUV(fi, 1);
-        Eigen::Vector2d uv2 = mesh.cornerUV(fi, 2);
+        Eigen::Vector2d uv0 = mesh.wedges[fc.w[0]].uv;
+        Eigen::Vector2d uv1 = mesh.wedges[fc.w[1]].uv;
+        Eigen::Vector2d uv2 = mesh.wedges[fc.w[2]].uv;
 
         double u0 = uv0.x() * W, v0 = uv0.y() * H;
         double u1 = uv1.x() * W, v1 = uv1.y() * H;
@@ -76,24 +68,17 @@ HeightmapBaker::rasterizeUV(const Mesh &mesh, int W, int H)
         int minY = std::max(0, (int)std::floor(std::min({v0, v1, v2})));
         int maxY = std::min(H - 1, (int)std::ceil(std::max({v0, v1, v2})));
 
-        for (int py = minY; py <= maxY; py++)
-        {
-            for (int px = minX; px <= maxX; px++)
-            {
+        for (int py = minY; py <= maxY; py++) {
+            for (int px = minX; px <= maxX; px++) {
                 double w0, w1, w2;
-                if (!bary2D(px + 0.5, py + 0.5,
-                            u0, v0, u1, v1, u2, v2,
-                            w0, w1, w2))
-                    continue;
-                if (w0 < -1e-4 || w1 < -1e-4 || w2 < -1e-4)
-                    continue;
+                if (!bary2D(px + 0.5, py + 0.5, u0, v0, u1, v1, u2, v2, w0, w1, w2)) continue;
+                if (w0 < -1e-4 || w1 < -1e-4 || w2 < -1e-4) continue;
 
                 w0 = std::max(0.0, w0);
                 w1 = std::max(0.0, w1);
                 w2 = std::max(0.0, w2);
                 double s = w0 + w1 + w2;
-                if (s < 1e-10)
-                    continue;
+                if (s < 1e-10) continue;
                 w0 /= s;
                 w1 /= s;
                 w2 /= s;
@@ -110,16 +95,13 @@ HeightmapBaker::rasterizeUV(const Mesh &mesh, int W, int H)
 
 // 0, 255
 
-void HeightmapBaker::normalize(HeightmapResult &r)
-{
+void HeightmapBaker::normalize(HeightmapResult &r) {
     std::vector<float> valid;
     valid.reserve(r.heights.size());
     for (float h : r.heights)
-        if (!std::isnan(h) && !std::isinf(h))
-            valid.push_back(h);
+        if (!std::isnan(h) && !std::isinf(h)) valid.push_back(h);
 
-    if (valid.empty())
-    {
+    if (valid.empty()) {
         r.minH = r.maxH = 0.0f;
         r.image.assign(r.width * r.height, 0);
         return;
@@ -135,14 +117,11 @@ void HeightmapBaker::normalize(HeightmapResult &r)
 
     r.image.assign(r.width * r.height, 0);
     float range = r.maxH - r.minH;
-    if (range < 1e-10f)
-        range = 1.0f;
+    if (range < 1e-10f) range = 1.0f;
 
-    for (int i = 0; i < (int)r.heights.size(); i++)
-    {
+    for (int i = 0; i < (int)r.heights.size(); i++) {
         float h = r.heights[i];
-        if (std::isnan(h) || std::isinf(h))
-        {
+        if (std::isnan(h) || std::isinf(h)) {
             r.image[i] = 0;
             continue;
         }
@@ -150,12 +129,8 @@ void HeightmapBaker::normalize(HeightmapResult &r)
     }
 }
 
-HeightmapResult HeightmapBaker::bakeUVDistance(
-    const Mesh &simplified,
-    const Mesh &original,
-    int W, int H,
-    ProgressCb cb)
-{
+HeightmapResult HeightmapBaker::bakeUVDistance(const Mesh &simplified, const Mesh &original, int W,
+                                               int H, ProgressCb cb) {
     HeightmapResult result;
     result.width = W;
     result.height = H;
@@ -172,14 +147,11 @@ HeightmapResult HeightmapBaker::bakeUVDistance(
     // Each texel is independent and writes only its own slot in result.heights,
     // so threads need no locking only the hit/progress counters are shared,
     // via atomics.
-    auto worker = [&](int begin, int end)
-    {
-        for (int i = begin; i < end; i++)
-        {
+    auto worker = [&](int begin, int end) {
+        for (int i = begin; i < end; i++) {
             const auto &s = simSamples[i];
             const auto &o = orgSamples[i];
-            if (s.valid && o.valid)
-            {
+            if (s.valid && o.valid) {
                 // Signed distance along the simplified surface's normal, not raw
                 // magnitude, so the sign still tells "above"/"below" for relief mapping.
                 result.heights[i] = (float)(o.pos - s.pos).dot(s.normal);
@@ -187,27 +159,22 @@ HeightmapResult HeightmapBaker::bakeUVDistance(
             }
 
             int done = processed.fetch_add(1, std::memory_order_relaxed) + 1;
-            if (cb && done % step == 0)
-                cb(done * 100 / total);
+            if (cb && done % step == 0) cb(done * 100 / total);
         }
     };
 
     unsigned nThreads = std::max(1u, std::thread::hardware_concurrency());
     int chunk = (total + (int)nThreads - 1) / (int)nThreads;
     std::vector<std::thread> pool;
-    for (unsigned t = 0; t < nThreads; t++)
-    {
+    for (unsigned t = 0; t < nThreads; t++) {
         int begin = (int)t * chunk;
         int end = std::min(total, begin + chunk);
-        if (begin >= end)
-            break;
+        if (begin >= end) break;
         pool.emplace_back(worker, begin, end);
     }
-    for (auto &th : pool)
-        th.join();
+    for (auto &th : pool) th.join();
 
-    if (cb)
-        cb(100);
+    if (cb) cb(100);
 
     std::cout << "UVDistance: " << hits.load() << " texels matched\n";
     normalize(result);
@@ -215,4 +182,4 @@ HeightmapResult HeightmapBaker::bakeUVDistance(
     return result;
 }
 
-} // namespace heightmap
+}  // namespace heightmap

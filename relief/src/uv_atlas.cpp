@@ -4,18 +4,19 @@
  *        faces) and Offset_Map baking (per-texel cross-seam leap transforms).
  */
 #include "relief/uv_atlas.h"
+
+#include <algorithm>
+#include <cmath>
+#include <functional>
+#include <limits>
 #include <map>
 #include <tuple>
-#include <cmath>
-#include <algorithm>
-#include <limits>
-#include <functional>
 
 namespace uv_atlas {
 
-using mesh::Mesh;
-using mesh::Face;
 using mesh::Edge;
+using mesh::Face;
+using mesh::Mesh;
 using textures::MipPyramid;
 
 namespace {
@@ -27,12 +28,17 @@ constexpr double kPi = 3.14159265358979323846;
 /// @return The UV at the corner of `face` whose vertex is `vertexId`.
 Eigen::Vector2d vertexUV(const Mesh& mesh, int face, int vertexId) {
     const Face& f = mesh.faces[face];
-    for (int k = 0; k < 3; k++) if (mesh.wedges[f.w[k]].vertex == vertexId) return mesh.cornerUV(face, k);
+    for (int k = 0; k < 3; k++) {
+        if (mesh.wedges[f.w[k]].vertex == vertexId) {
+            return mesh.wedges[f.w[k]].uv;
+        }
+    }
     return Eigen::Vector2d::Zero();
 }
 
 /// @return Shortest distance from point `p` to segment [a, b].
-double pointSegmentDistance(const Eigen::Vector2d& p, const Eigen::Vector2d& a, const Eigen::Vector2d& b) {
+double pointSegmentDistance(const Eigen::Vector2d& p, const Eigen::Vector2d& a,
+                            const Eigen::Vector2d& b) {
     Eigen::Vector2d ab = b - a;
     double len2 = ab.squaredNorm();
     double t = len2 > 1e-18 ? (p - a).dot(ab) / len2 : 0.0;
@@ -48,8 +54,7 @@ double pointSegmentDistance(const Eigen::Vector2d& p, const Eigen::Vector2d& a, 
  * @param[out] w0,w1,w2 Barycentric weights on success.
  * @return false if the triangle is degenerate (near-zero area).
  */
-bool bary2D(double px, double py,
-            double ax, double ay, double bx, double by, double cx, double cy,
+bool bary2D(double px, double py, double ax, double ay, double bx, double by, double cx, double cy,
             double& w0, double& w1, double& w2) {
     double denom = (by - cy) * (ax - cx) + (cx - bx) * (ay - cy);
     if (std::abs(denom) < 1e-10) return false;
@@ -80,18 +85,17 @@ bool bary2D(double px, double py,
  * @return Per-texel island id (whichever face's UV triangle covers that
  *         texel's center), or -1 if no face covers it.
  */
-std::vector<int> buildIslandTexelMap(
-    const Mesh& mesh, const std::vector<int>& faceIsland,
-    int width, int height) {
+std::vector<int> buildIslandTexelMap(const Mesh& mesh, const std::vector<int>& faceIsland,
+                                     int width, int height) {
     std::vector<int> islandAt((size_t)width * height, -1);
 
     for (int fi = 0; fi < (int)mesh.faces.size(); fi++) {
         const Face& f = mesh.faces[fi];
         if (f.removed || faceIsland[fi] < 0) continue;
 
-        Eigen::Vector2d uv0 = mesh.cornerUV(fi, 0);
-        Eigen::Vector2d uv1 = mesh.cornerUV(fi, 1);
-        Eigen::Vector2d uv2 = mesh.cornerUV(fi, 2);
+        Eigen::Vector2d uv0 = mesh.wedges[f.w[0]].uv;
+        Eigen::Vector2d uv1 = mesh.wedges[f.w[1]].uv;
+        Eigen::Vector2d uv2 = mesh.wedges[f.w[2]].uv;
         double u0 = uv0.x() * width, v0 = uv0.y() * height;
         double u1 = uv1.x() * width, v1 = uv1.y() * height;
         double u2 = uv2.x() * width, v2 = uv2.y() * height;
@@ -104,8 +108,7 @@ std::vector<int> buildIslandTexelMap(
         for (int py = minY; py <= maxY; py++) {
             for (int px = minX; px <= maxX; px++) {
                 double w0, w1, w2;
-                if (!bary2D(px + 0.5, py + 0.5, u0, v0, u1, v1, u2, v2, w0, w1, w2))
-                    continue;
+                if (!bary2D(px + 0.5, py + 0.5, u0, v0, u1, v1, u2, v2, w0, w1, w2)) continue;
                 if (w0 < -1e-4 || w1 < -1e-4 || w2 < -1e-4) continue;
                 islandAt[(size_t)py * width + px] = faceIsland[fi];
             }
@@ -134,12 +137,10 @@ std::vector<int> buildIslandTexelMap(
  * @param[out] outData Offset map RGBA buffer being written into.
  * @param[in,out] distBuf Per-texel nearest-seam distance, used for the nearest-seam-wins test.
  */
-void rasterizeBand(
-    const Eigen::Vector2d& p0, const Eigen::Vector2d& p1,
-    double theta, const Eigen::Matrix2d& R, const Eigen::Vector2d& t,
-    int islandId, const std::vector<int>& islandAt,
-    int width, int height, double bandWidthUV,
-    std::vector<float>& outData, std::vector<float>& distBuf) {
+void rasterizeBand(const Eigen::Vector2d& p0, const Eigen::Vector2d& p1, double theta,
+                   const Eigen::Matrix2d& R, const Eigen::Vector2d& t, int islandId,
+                   const std::vector<int>& islandAt, int width, int height, double bandWidthUV,
+                   std::vector<float>& outData, std::vector<float>& distBuf) {
     double minU = std::min(p0.x(), p1.x()) - bandWidthUV;
     double maxU = std::max(p0.x(), p1.x()) + bandWidthUV;
     double minV = std::min(p0.y(), p1.y()) - bandWidthUV;
@@ -183,7 +184,8 @@ void rasterizeBand(
  * @param edgeToFaces Edge-to-incident-faces adjacency, from mesh.buildEdgeToFaces().
  * @return One island id per face, in face order; removed faces get id -1.
  */
-std::vector<int> detectIslands(const Mesh& mesh, const std::map<Edge, std::vector<int>>& edgeToFaces) {
+std::vector<int> detectIslands(const Mesh& mesh,
+                               const std::map<Edge, std::vector<int>>& edgeToFaces) {
     int nf = (int)mesh.faces.size();
     std::vector<int> island(nf, -1);
     if (nf == 0) return island;
@@ -191,23 +193,29 @@ std::vector<int> detectIslands(const Mesh& mesh, const std::map<Edge, std::vecto
     std::vector<int> parent(nf);
     for (int i = 0; i < nf; i++) parent[i] = i;
     std::function<int(int)> find = [&](int x) {
-        while (parent[x] != x) { parent[x] = parent[parent[x]]; x = parent[x]; }
+        while (parent[x] != x) {
+            parent[x] = parent[parent[x]];
+            x = parent[x];
+        }
         return x;
     };
     auto unite = [&](int a, int b) {
-        a = find(a); b = find(b);
+        a = find(a);
+        b = find(b);
         if (a != b) parent[a] = b;
     };
 
     constexpr double kUVEps2 = 1e-10;
     for (const auto& [key, faceIds] : edgeToFaces) {
-        if (faceIds.size() != 2) continue; // boundary or non-manifold edge: no weld across it
+        if (faceIds.size() != 2) continue;  // boundary or non-manifold edge: no weld across it
         int f0 = faceIds[0], f1 = faceIds[1];
         if (mesh.faces[f0].removed || mesh.faces[f1].removed) continue;
 
         bool uvMatch =
-            (vertexUV(mesh, f0, key.first)  - vertexUV(mesh, f1, key.first) ).squaredNorm() < kUVEps2 &&
-            (vertexUV(mesh, f0, key.second) - vertexUV(mesh, f1, key.second)).squaredNorm() < kUVEps2;
+            (vertexUV(mesh, f0, key.first) - vertexUV(mesh, f1, key.first)).squaredNorm() <
+                kUVEps2 &&
+            (vertexUV(mesh, f0, key.second) - vertexUV(mesh, f1, key.second)).squaredNorm() <
+                kUVEps2;
 
         if (uvMatch) unite(f0, f1);
     }
@@ -228,12 +236,9 @@ std::vector<int> detectIslands(const Mesh& mesh, const std::map<Edge, std::vecto
     return island;
 }
 
-} // namespace
+}  // namespace
 
-MipPyramid buildOffsetMap(
-    const Mesh& mesh,
-    int width, int height,
-    int seamBandTexels) {
+MipPyramid buildOffsetMap(const Mesh& mesh, int width, int height, int seamBandTexels) {
     auto edgeToFaces = mesh.buildEdgeToFaces();
     std::vector<int> faceIsland = detectIslands(mesh, edgeToFaces);
 
@@ -241,7 +246,9 @@ MipPyramid buildOffsetMap(
 
     if (width <= 0 || height <= 0 || mesh.faces.empty()) {
         MipPyramid pyr;
-        pyr.width = width; pyr.height = height; pyr.channels = 4;
+        pyr.width = width;
+        pyr.height = height;
+        pyr.channels = 4;
         pyr.mips.push_back(std::move(data));
         return pyr;
     }
@@ -257,10 +264,10 @@ MipPyramid buildOffsetMap(
 
         int islandA = faceIsland[f0];
         int islandB = faceIsland[f1];
-        if (islandA < 0 || islandB < 0 || islandA == islandB) continue; // not a cross-island seam
+        if (islandA < 0 || islandB < 0 || islandA == islandB) continue;  // not a cross-island seam
 
-        Eigen::Vector2d uvA0 = vertexUV(mesh, f0, key.first),  uvA1 = vertexUV(mesh, f0, key.second);
-        Eigen::Vector2d uvB0 = vertexUV(mesh, f1, key.first),  uvB1 = vertexUV(mesh, f1, key.second);
+        Eigen::Vector2d uvA0 = vertexUV(mesh, f0, key.first), uvA1 = vertexUV(mesh, f0, key.second);
+        Eigen::Vector2d uvB0 = vertexUV(mesh, f1, key.first), uvB1 = vertexUV(mesh, f1, key.second);
 
         Eigen::Vector2d dirA = uvA1 - uvA0;
         Eigen::Vector2d dirB = uvB1 - uvB0;
@@ -272,9 +279,8 @@ MipPyramid buildOffsetMap(
         double theta = angB - angA;
 
         Eigen::Matrix2d Rot;
-        Rot << std::cos(theta), -std::sin(theta),
-               std::sin(theta),  std::cos(theta);
-        Eigen::Matrix2d RotInv = Rot.transpose(); // = Rot(-theta)
+        Rot << std::cos(theta), -std::sin(theta), std::sin(theta), std::cos(theta);
+        Eigen::Matrix2d RotInv = Rot.transpose();  // = Rot(-theta)
 
         // Islands aren't guaranteed to share the same UV texel density along
         // a seam edge (e.g. independently-scaled unwrap charts), so the
@@ -283,8 +289,8 @@ MipPyramid buildOffsetMap(
         // B's. Without it, only the anchor vertex (uvA0 -> uvB0) lands
         // exactly and the far vertex of the seam edge drifts by
         // |dirA| - |dirB|, leaving a thin gap/overlap along the leap.
-        double scaleAB = lenB / lenA; // A -> B
-        double scaleBA = lenA / lenB; // B -> A (inverse of scaleAB)
+        double scaleAB = lenB / lenA;  // A -> B
+        double scaleBA = lenA / lenB;  // B -> A (inverse of scaleAB)
 
         Eigen::Matrix2d R = scaleAB * Rot;
         Eigen::Vector2d t = uvB0 - R * uvA0;
@@ -295,16 +301,20 @@ MipPyramid buildOffsetMap(
         // mul(v, RotationMatrix) row-vector convention), while the position map
         // above needs the direction vector rotated by R(+theta) to stay consistent
         // with the position transform — so the encoded angle must be -theta.
-        rasterizeBand(uvA0, uvA1, -theta, R, t, islandA, islandAt, width, height, bandWidthUV, data, distBuf);
+        rasterizeBand(uvA0, uvA1, -theta, R, t, islandA, islandAt, width, height, bandWidthUV, data,
+                      distBuf);
 
         // Band on island B's side: jump B -> A (inverse transform, hence +theta).
         Eigen::Matrix2d Rinv = scaleBA * RotInv;
         Eigen::Vector2d tInv = uvA0 - Rinv * uvB0;
-        rasterizeBand(uvB0, uvB1, theta, Rinv, tInv, islandB, islandAt, width, height, bandWidthUV, data, distBuf);
+        rasterizeBand(uvB0, uvB1, theta, Rinv, tInv, islandB, islandAt, width, height, bandWidthUV,
+                      data, distBuf);
     }
 
     MipPyramid pyr;
-    pyr.width = width; pyr.height = height; pyr.channels = 4;
+    pyr.width = width;
+    pyr.height = height;
+    pyr.channels = 4;
     pyr.mips.push_back(std::move(data));
     return pyr;
 }
@@ -315,7 +325,7 @@ std::vector<Edge> findSeamEdges(const Mesh& mesh) {
 
     std::vector<Edge> seams;
     for (const auto& [key, faceIds] : edgeToFaces) {
-        if (faceIds.size() != 2) continue; // boundary or non-manifold: not a seam between islands.
+        if (faceIds.size() != 2) continue;  // boundary or non-manifold: not a seam between islands.
         int f0 = faceIds[0], f1 = faceIds[1];
         if (mesh.faces[f0].removed || mesh.faces[f1].removed) continue;
 
@@ -328,4 +338,4 @@ std::vector<Edge> findSeamEdges(const Mesh& mesh) {
     return seams;
 }
 
-} // namespace uv_atlas
+}  // namespace uv_atlas
