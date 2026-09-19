@@ -60,31 +60,6 @@ inline bool solveQuadric(const Eigen::Matrix4d& Q, double& ox, double& oy, doubl
     return true;
 }
 
-/**
- * @brief Solves the quadric minimum subject to the linear equality
- *        constraint n·(x,y,z) + d = 0, via a Lagrange multiplier.
- * @param Q Quadric matrix (v1's + v2's).
- * @param n Constraint plane normal.
- * @param d Constraint plane offset.
- * @param[out] ox Output position x coordinate, valid only if this returns true.
- * @param[out] oy Output position y coordinate, valid only if this returns true.
- * @param[out] oz Output position z coordinate, valid only if this returns true.
- * @return false if the bordered system is singular.
- */
-inline bool solveQuadricConstrained(const Eigen::Matrix4d& Q, const Eigen::Vector3d& n, double d,
-                                     double& ox, double& oy, double& oz) {
-    Eigen::Matrix4d M = Eigen::Matrix4d::Zero();
-    M.block<3,3>(0,0) = Q.block<3,3>(0,0);
-    M.block<3,1>(0,3) = n;
-    M.block<1,3>(3,0) = n.transpose();
-    double det = M.determinant();
-    if (std::abs(det) < 1e-10) return false;
-    Eigen::Vector4d rhs(-Q(0,3), -Q(1,3), -Q(2,3), -d);
-    Eigen::Vector4d result = M.inverse() * rhs;
-    ox = result(0); oy = result(1); oz = result(2);
-    return true;
-}
-
 /// A candidate edge collapse: which vertices merge, where, at what cost.
 struct EdgeCollapse {
     int             v1, v2;
@@ -123,16 +98,6 @@ public:
     /// an extra position candidate, alongside v1, v2, and the midpoint.
     bool useOptimalCandidate = false;
 
-    /// When true, guarantees each collapse target stays outside every
-    /// original-mesh face plane already absorbed by v1 or v2: if the
-    /// otherwise-best candidate violates one, re-solves the quadric subject
-    /// to the worst-violated plane as an equality constraint
-    /// (solveQuadricConstrained). If that still isn't enough, the edge is
-    /// left uncollapsed this round (see envelopeLockedEdges_).
-    bool envelopeConstraint = false;
-    /// Tolerance for the envelope half-space violation test.
-    double envelopeEps = 1e-6;
-
     /// @brief Runs greedy edge-collapse simplification until the target face
     ///        count is reached or no further collapse is cheap enough.
     /// @param targetFaces Desired number of faces to stop at.
@@ -163,16 +128,9 @@ private:
 
     /// Computes the initial per-vertex quadric from adjacent face planes.
     void computeQ();
-    /// Builds each original face's outward-oriented plane and accumulates it
-    /// onto its 3 vertices' envelope lists. Called once before the collapse
-    /// loop when envelopeConstraint is enabled.
-    void computeEnvelope();
     /// Builds the collapse candidate between v1, v2, the midpoint, and (if
     /// useOptimalCandidate) the quadric's unconstrained optimum, picking the
-    /// one with lowest quadric error. If envelopeConstraint is enabled and
-    /// that pick violates an accumulated envelope plane, re-solves subject to
-    /// the worst-violated plane (solveQuadricConstrained); returns false
-    /// (edge left uncollapsed) if even that can't satisfy the envelope.
+    /// one with lowest quadric error.
     bool computeCollapse(int v1, int v2, EdgeCollapse& out) const;
     /// @return The distinct (wedge at v1, wedge at v2) pairs actually
     ///         used together by some face incident to edge (v1,v2).
@@ -223,12 +181,6 @@ private:
     /// should be locked or handled normally.
     /// @return false if the edge can't be collapsed (locked).
     bool buildCandidate(int p, int q, EdgeCollapse& out) const;
-
-    /// Used when envelopeConstraint is set: edges currently un-collapsible
-    /// purely because no candidate (including the constrained re-solve)
-    /// satisfies the accumulated envelope planes. Reported at the end of
-    /// run(). Mutable because it's updated from computeCollapse() const.
-    mutable std::set<std::pair<int,int>> envelopeLockedEdges_;
 
     /// Backing storage for setUserLockedEdges()/userLockedEdges().
     std::set<std::pair<int,int>> userLockedEdges_;

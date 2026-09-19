@@ -19,11 +19,6 @@ struct Vertex {
     Eigen::Vector3d pos  = Eigen::Vector3d::Zero();
     Eigen::Matrix4d Q    = Eigen::Matrix4d::Zero();
     bool            removed = false;
-
-    /// Outward-oriented planes (n.x, n.y, n.z, d) of original faces already
-    /// absorbed by this vertex over the course of its collapses. Empty/unused
-    /// unless Simplifier::envelopeConstraint is enabled.
-    std::vector<Eigen::Vector4d> envelope;
 };
 
 /// A single face-corner's full attribute set: which vertex it uses, and the
