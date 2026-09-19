@@ -60,12 +60,6 @@ public:
     /// Sets both meshes for Overlay mode (primary = blue, secondary = orange).
     void setMeshes(const mesh::Mesh *primary, const mesh::Mesh *secondary);
 
-    /// Re-uploads the primary mesh's vertex data (e.g. after inflate/deflate) without resetting the camera.
-    void updateMeshData();
-
-    /// Re-uploads the secondary mesh's vertex data only (Overlay mode).
-    void updateSecondaryMesh();
-
     /// Resets the orbit camera to its default position.
     void resetCamera();
 

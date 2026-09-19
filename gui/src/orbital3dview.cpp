@@ -197,16 +197,6 @@ void Orbital3DView::setMeshes(const Mesh* primary, const Mesh* secondary) {
     resetCamera();
 }
 
-void Orbital3DView::updateMeshData() {
-    primaryMeshDirty_ = true;
-    update();
-}
-
-void Orbital3DView::updateSecondaryMesh() {
-    secondaryMeshDirty_ = true;
-    update();
-}
-
 void Orbital3DView::resetCamera() {
     rotX_ = 0.f; rotY_ = 0.f; zoom_ = 3.f;
     update();

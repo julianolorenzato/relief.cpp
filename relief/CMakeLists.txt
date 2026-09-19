@@ -36,8 +36,10 @@ add_library(relief STATIC
     src/heightmap.cpp
     src/uv_atlas.cpp
     src/textures.cpp
-    src/inflate.cpp
     src/metrics.cpp
+    src/op/simplification.cpp
+    src/op/smoothing.cpp
+    src/op/inflation.cpp
 )
 
 target_include_directories(relief

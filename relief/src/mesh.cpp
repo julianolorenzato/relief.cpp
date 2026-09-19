@@ -65,6 +65,10 @@ std::vector<std::set<int>> Mesh::buildVertexToVertices() const {
     return vertexToVertices;
 }
 
+void Mesh::moveVertex(int index, const Eigen::Vector3d& pos) {
+    if (!vertices[index].removed) vertices[index].pos = pos;
+}
+
 void Mesh::smooth(int iterations, double lambda) {
     if (iterations <= 0 || vertices.empty()) return;
 
@@ -83,7 +87,7 @@ void Mesh::smooth(int iterations, double lambda) {
             newPos[i] = vertices[i].pos + lambda * (avg - vertices[i].pos);
         }
         for (size_t i = 0; i < vertices.size(); i++)
-            vertices[i].pos = newPos[i];
+            moveVertex((int)i, newPos[i]);
     }
 }
 

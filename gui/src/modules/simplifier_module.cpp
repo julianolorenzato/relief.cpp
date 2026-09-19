@@ -249,39 +249,12 @@ void SimplifierModule::buildUI() {
     this->inflateSpin->setValue(0.0);
     this->inflateSpin->setDecimals(5);
     this->inflateSpin->setSingleStep(0.001);
-    this->inflateSpin->setEnabled(false);
     inflateValRow->addWidget(this->inflateSpin, 1);
     inflateLayout->addLayout(inflateValRow);
 
-    this->inflateSlider = new QSlider(Qt::Horizontal);
-    this->inflateSlider->setMinimum(-1000);
-    this->inflateSlider->setMaximum(1000);
-    this->inflateSlider->setValue(0);
-    this->inflateSlider->setEnabled(false);
-    inflateLayout->addWidget(this->inflateSlider);
-
-    this->simplifyInflatedBtn = new QPushButton("Simplify Inflated Mesh");
-    this->simplifyInflatedBtn->setEnabled(false);
-    connect(this->simplifyInflatedBtn, &QPushButton::clicked, this,
-            &SimplifierModule::onSimplifyInflated);
-    inflateLayout->addWidget(this->simplifyInflatedBtn);
-
-    connect(this->inflateSlider, &QSlider::valueChanged, this, [this](int val) {
-        double offset = (this->inflateScale > 1e-10) ? val / 1000.0 * this->inflateScale : 0.0;
-        this->inflateSpin->blockSignals(true);
-        this->inflateSpin->setValue(offset);
-        this->inflateSpin->blockSignals(false);
-        applyInflate(offset);
-    });
-    connect(this->inflateSpin, QOverload<double>::of(&QDoubleSpinBox::valueChanged), this,
-            [this](double val) {
-                int sliderVal =
-                    (this->inflateScale > 1e-10) ? (int)(val / this->inflateScale * 1000.0) : 0;
-                this->inflateSlider->blockSignals(true);
-                this->inflateSlider->setValue(std::max(-1000, std::min(1000, sliderVal)));
-                this->inflateSlider->blockSignals(false);
-                applyInflate(val);
-            });
+    this->applyInflateBtn = new QPushButton("Apply Inflate");
+    connect(this->applyInflateBtn, &QPushButton::clicked, this, &SimplifierModule::onApplyInflate);
+    inflateLayout->addWidget(this->applyInflateBtn);
 
     layout->addWidget(inflateGroup);
 
@@ -354,16 +327,9 @@ void SimplifierModule::onMeshLoaded(mesh::Mesh *original, mesh::Mesh *simplified
         }
     this->uvViewCheck->setEnabled(hasUVs);
     if (!hasUVs) this->uvViewCheck->setChecked(false);
-
-    // Baseline the inflate/deflate controls on the freshly loaded mesh (still a full-resolution
-    // copy of originalMesh_ at this point) so the user can inflate before ever running
-    // Simplify.
-    captureInflateBaseline();
 }
 
 void SimplifierModule::onMeshUpdated() {
-    captureInflateBaseline();
-
     this->glWidgetSimplified->setMesh(this->simplifiedMesh_);
     this->glWidgetOverlay->setMeshes(this->originalMesh_, this->simplifiedMesh_);
 }
@@ -394,7 +360,6 @@ void SimplifierModule::onSimplify() {
 
     int targetFaces =
         std::max(4, (int)(this->originalFaceCount * this->simplificationPercent / 100.0));
-    *this->simplifiedMesh_ = *this->originalMesh_;
 
     simplification::Simplifier simplifier(*this->simplifiedMesh_);
     simplifier.boundaryMode =
@@ -408,31 +373,6 @@ void SimplifierModule::onSimplify() {
 
     emit this->notifyMeshUpdate();
     emit this->statusMessage("Simplification finished!");
-}
-
-/**
- * @brief Runs Simplifier again directly on simplifiedMesh_, keeping its current (possibly
- *        inflated) vertex positions as the base instead of resetting from originalMesh_.
- */
-void SimplifierModule::onSimplifyInflated() {
-    if (!this->simplifiedMesh_ || this->simplifiedMesh_->faceCount() == 0) return;
-
-    int targetFaces =
-        std::max(4, (int)(this->originalFaceCount * this->simplificationPercent / 100.0));
-
-    // No reset from originalMesh_: keep simplifiedMesh_'s current (possibly
-    // inflated) vertex positions as the base for this decimation pass.
-    simplification::Simplifier simplifier(*this->simplifiedMesh_);
-    simplifier.boundaryMode =
-        (simplification::BoundaryMode)this->boundaryModeCombo->currentData().toInt();
-    simplifier.useOptimalCandidate = this->useOptimalCandidateCheck->isChecked();
-    simplifier.setUserLockedEdges(this->glWidgetOriginal->selectedEdges());
-
-    emit statusMessage("Simplifying inflated mesh...");
-
-    simplifier.run(targetFaces);
-
-    emit this->notifyMeshUpdate();
 }
 
 void SimplifierModule::onReductionPercentageChanged(int sliderValue) {
@@ -458,52 +398,17 @@ void SimplifierModule::onSmooth() {
     this->simplifiedMesh_->smooth(this->smoothIterationsSpin->value(),
                                   this->smoothStrengthSpin->value());
 
-    // Positions changed; rebase inflate offsets/normals so a later Inflate
-    // doesn't jump back to the pre-smooth shape.
-    captureInflateBaseline();
-    this->glWidgetSimplified->updateMeshData();
-    this->glWidgetOverlay->updateSecondaryMesh();
+    emit notifyMeshUpdate();
     emit statusMessage("Smoothed");
 }
 
+void SimplifierModule::onApplyInflate() {
+    if (!this->simplifiedMesh_ || this->simplifiedMesh_->faceCount() == 0) return;
+
+    op::inflation::InflateOp(this->inflateSpin->value()).apply(*this->simplifiedMesh_);
+
+    emit notifyMeshUpdate();
+    emit statusMessage("Inflated");
+}
+
 // ─── Private methods ──────────────────────────────────────────────────────────
-
-/**
- * @brief Recomputes the inflate baseline from simplifiedMesh_'s current geometry and
- *        (re)enables the inflate/deflate and "Simplify Inflated Mesh" controls.
- */
-void SimplifierModule::captureInflateBaseline() {
-    this->inflateBaseline = inflate::computeBaseline(*this->simplifiedMesh_);
-
-    // Set inflate range based on original mesh bounding box diagonal
-    {
-        Eigen::Vector3d bmin = Eigen::Vector3d::Constant(1e18);
-        Eigen::Vector3d bmax = Eigen::Vector3d::Constant(-1e18);
-        for (const auto &v : this->originalMesh_->vertices) {
-            if (!v.removed) {
-                bmin = bmin.cwiseMin(v.pos);
-                bmax = bmax.cwiseMax(v.pos);
-            }
-        }
-        this->inflateScale = std::max((bmax - bmin).norm() * 0.5, 1e-6);
-    }
-
-    this->inflateSpin->blockSignals(true);
-    this->inflateSpin->setMinimum(-this->inflateScale);
-    this->inflateSpin->setMaximum(this->inflateScale);
-    this->inflateSpin->setSingleStep(this->inflateScale / 1000.0);
-    this->inflateSpin->setValue(0.0);
-    this->inflateSpin->blockSignals(false);
-    this->inflateSlider->blockSignals(true);
-    this->inflateSlider->setValue(0);
-    this->inflateSlider->blockSignals(false);
-    this->inflateSlider->setEnabled(true);
-    this->inflateSpin->setEnabled(true);
-    this->simplifyInflatedBtn->setEnabled(true);
-}
-
-void SimplifierModule::applyInflate(double offset) {
-    inflate::apply(*this->simplifiedMesh_, this->inflateBaseline, offset);
-    this->glWidgetSimplified->updateMeshData();
-    this->glWidgetOverlay->updateSecondaryMesh();
-}

@@ -16,7 +16,7 @@
 #include "relief/mesh.h"
 #include "relief/mesh/io.h"
 #include "relief/simplification.h"
-#include "relief/inflate.h"
+#include "relief/op/inflation.h"
 #include "gui/orbital3dview.h"
 
 class QPushButton;
@@ -24,7 +24,7 @@ class QLabel;
 
 /// @brief Widget that loads a mesh, runs Simplifier with the configured
 ///        boundary options, and shows the original, simplified, and
-///        overlay views alongside an inflate/deflate preview control.
+///        overlay views alongside an inflate/deflate control.
 class SimplifierModule : public Module {
     Q_OBJECT
 
@@ -41,17 +41,15 @@ public slots:
     /// GlobalContext, and refreshes the views/UI.
     void onMeshLoaded(mesh::Mesh* original, mesh::Mesh* simplified) override;
     /// Called whenever the simplified mesh's data changes in place (reset, re-simplify,
-    /// smooth, ...): recomputes the inflate baseline and redraws the simplified/overlay views.
+    /// smooth, ...): redraws the simplified/overlay views.
     void onMeshUpdated() override;
 
 private slots:
     /// Resets the simplified working mesh back to a full-resolution copy of the original mesh.
     void onReset();
-    /// Runs Simplifier on the original mesh with the current UI settings and refreshes the views.
+    /// Runs Simplifier directly on the simplified mesh's current vertex positions with the
+    /// current UI settings and refreshes the views.
     void onSimplify();
-    /// Runs Simplifier again directly on the (possibly inflated) simplified mesh, keeping its
-    /// current vertex positions as the new base instead of resetting from the original mesh.
-    void onSimplifyInflated();
     /// Called when the reduction-percentage slider moves: updates simplificationPercent
     /// and the "Reduction: N%" label.
     void onReductionPercentageChanged(int sliderValue);
@@ -62,14 +60,12 @@ private slots:
     /// Applies Laplacian smoothing to the simplified mesh using the current
     /// iterations/strength controls.
     void onSmooth();
+    /// Runs op::inflation::InflateOp with the current offset field's value on the
+    /// simplified mesh.
+    void onApplyInflate();
 
 private:
     void buildUI() override;
-    /// Applies an inflate/deflate offset along cached per-group vertex normals to the simplified mesh preview.
-    void applyInflate(double offset);
-    /// @brief Recomputes the inflate baseline (base positions, per-group vertex normals) from
-    ///        the current simplifiedMesh_ geometry and resets/enables the inflate controls.
-    void captureInflateBaseline();
 
     // ── Viewports ─────────────────────────────────────────────────────────────
     Orbital3DView* glWidgetOriginal   = nullptr;
@@ -89,9 +85,8 @@ private:
     QCheckBox* showInternalEdgesCheck    = nullptr;
     QCheckBox* showSeamEdgesCheck        = nullptr;
 
-    QSlider*        inflateSlider = nullptr;
-    QDoubleSpinBox* inflateSpin   = nullptr;
-    QPushButton*    simplifyInflatedBtn = nullptr;
+    QDoubleSpinBox* inflateSpin     = nullptr;
+    QPushButton*    applyInflateBtn = nullptr;
 
     // ── Smooth controls ───────────────────────────────────────────────────────
     QSpinBox*       smoothIterationsSpin = nullptr;
@@ -105,10 +100,6 @@ private:
     QComboBox*      brushPropagationCombo = nullptr;
     QPushButton*    clearSelectionBtn   = nullptr;
     QLabel*         selectedEdgeCountLabel = nullptr;
-
-    // ── Inflate state ─────────────────────────────────────────────────────────
-    inflate::Baseline inflateBaseline;
-    double inflateScale = 1.0;
 
     // ── Face counts ───────────────────────────────────────────────────────────
     int    originalFaceCount     = 0;

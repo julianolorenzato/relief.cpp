@@ -84,6 +84,10 @@ public:
     ///         directly edge-connected to vertex i, derived from buildEdgeToFaces().
     std::vector<std::set<int>> buildVertexToVertices() const;
 
+    /// Moves vertex `index` to `pos`, unless it has been removed (e.g. by
+    /// simplification), in which case this is a no-op.
+    void moveVertex(int index, const Eigen::Vector3d& pos);
+
     /// Applies `iterations` rounds of uniform Laplacian smoothing: each vertex
     /// is moved toward the average position of its edge-adjacent neighbors,
     /// scaled by `lambda` (0 = no movement, 1 = snap to neighbor average).
