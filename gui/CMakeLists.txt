@@ -18,7 +18,7 @@ add_executable(gui
     include/gui/global_context.h
     include/gui/module.h
     include/gui/orbital3dview.h
-    include/gui/modules/simplifier_module.h
+    include/gui/modules/editor_module.h
     include/gui/modules/heightmap_module.h
     include/gui/modules/texture_prep_module.h
     include/gui/modules/relief_module.h
@@ -32,7 +32,7 @@ add_executable(gui
     src/global_context.cpp
     src/module.cpp
     src/orbital3dview.cpp
-    src/modules/simplifier_module.cpp
+    src/modules/editor_module.cpp
     src/modules/heightmap_module.cpp
     src/modules/texture_prep_module.cpp
     src/modules/relief_module.cpp

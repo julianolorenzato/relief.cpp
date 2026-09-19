@@ -1,5 +1,5 @@
 /**
- * @file simplifier_module.h
+ * @file editor_module.h
  * @brief Pipeline entry stage: loads a mesh, drives Simplifier, and
  *        previews original/simplified/overlay side by side.
  */
@@ -25,7 +25,7 @@ class QLabel;
 /// @brief Widget that loads a mesh, runs Simplifier with the configured
 ///        boundary options, and shows the original, simplified, and
 ///        overlay views alongside an inflate/deflate control.
-class SimplifierModule : public Module {
+class EditorModule : public Module {
     Q_OBJECT
 
 public:

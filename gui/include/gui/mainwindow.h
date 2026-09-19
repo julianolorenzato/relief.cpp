@@ -13,7 +13,7 @@
 #include <vector>
 #include "gui/global_context.h"
 #include "gui/module.h"
-#include "gui/modules/simplifier_module.h"
+#include "gui/modules/editor_module.h"
 #include "gui/modules/heightmap_module.h"
 #include "gui/modules/texture_prep_module.h"
 #include "gui/modules/relief_module.h"

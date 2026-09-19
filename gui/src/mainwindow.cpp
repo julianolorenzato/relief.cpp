@@ -31,9 +31,9 @@ void MainWindow::setupUI() {
     this->globalContext = new GlobalContext(this);
 
     this->modules = {
-        {"Mesh", createModule<SimplifierModule>(this->globalContext, this)},
+        {"Editor", createModule<EditorModule>(this->globalContext, this)},
         {"Heightmap", createModule<HeightmapModule>(this->globalContext, this)},
-        {"Textures", createModule<TexturePrepModule>(this->globalContext, this)},
+        {"Texture Prep", createModule<TexturePrepModule>(this->globalContext, this)},
         {"Relief", createModule<ReliefModule>(this->globalContext, this)},
         {"Relief Sandbox", createModule<ReliefSandboxModule>(this->globalContext, this)},
         {"Normal Map", createModule<NormalMapModule>(this->globalContext, this)},
@@ -82,7 +82,7 @@ void MainWindow::setupUI() {
 
     // GlobalContext → every module's onMeshLoaded(original, simplified)/onMeshUpdated() is
     // wired by the Module base class itself, so no explicit connects are needed here for the
-    // initial load or for a re-simplify (SimplifierModule emits notifyMeshUpdate()).
+    // initial load or for a re-simplify (EditorModule emits notifyMeshUpdate()).
 
     // heightmap → texture prep
     connect(heightmap, &HeightmapModule::bakeReady, texturePrep,
@@ -152,8 +152,8 @@ void MainWindow::onSaveSimplified() {
 
     if (fileName.isEmpty()) return;
 
-    auto *simplifier = static_cast<SimplifierModule *>(modules[0].second);
-    if (!simplifier->saveSimplified(fileName))
+    auto *editor = static_cast<EditorModule *>(modules[0].second);
+    if (!editor->saveSimplified(fileName))
         QMessageBox::critical(this, "Error", "Failed to save mesh!");
     else {
         statusLabel->setText("Saved: " + fileName);

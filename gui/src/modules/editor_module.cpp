@@ -1,9 +1,9 @@
 /**
- * @file simplifier_module.cpp
- * @brief SimplifierModule implementation: mesh loading, driving
+ * @file editor_module.cpp
+ * @brief EditorModule implementation: mesh loading, driving
  *        Mesh, and the inflate/deflate preview.
  */
-#include "gui/modules/simplifier_module.h"
+#include "gui/modules/editor_module.h"
 
 #include <QCheckBox>
 #include <QGroupBox>
@@ -23,7 +23,7 @@
 
 // ─── buildUI ─────────────────────────────────────────────────────────────────
 
-void SimplifierModule::buildUI() {
+void EditorModule::buildUI() {
     QHBoxLayout *outerLayout = new QHBoxLayout(this);
     outerLayout->setContentsMargins(0, 0, 0, 0);
 
@@ -95,13 +95,13 @@ void SimplifierModule::buildUI() {
 
     QHBoxLayout *btnRow = new QHBoxLayout();
     QPushButton *resetBtn = new QPushButton("Reset");
-    connect(resetBtn, &QPushButton::clicked, this, &SimplifierModule::onReset);
+    connect(resetBtn, &QPushButton::clicked, this, &EditorModule::onReset);
     btnRow->addWidget(resetBtn);
     QPushButton *simplifyBtn = new QPushButton("Simplify");
-    connect(simplifyBtn, &QPushButton::clicked, this, &SimplifierModule::onSimplify);
+    connect(simplifyBtn, &QPushButton::clicked, this, &EditorModule::onSimplify);
     btnRow->addWidget(simplifyBtn);
     QPushButton *resetCamBtn = new QPushButton("Reset Cameras");
-    connect(resetCamBtn, &QPushButton::clicked, this, &SimplifierModule::onResetCameras);
+    connect(resetCamBtn, &QPushButton::clicked, this, &EditorModule::onResetCameras);
     btnRow->addWidget(resetCamBtn);
     controlsRows->addLayout(btnRow);
 
@@ -232,7 +232,7 @@ void SimplifierModule::buildUI() {
     brushRows->addWidget(this->selectedEdgeCountLabel);
 
     connect(this->glWidgetOriginal, &Orbital3DView::selectionChanged, this,
-            &SimplifierModule::onSelectionChanged);
+            &EditorModule::onSelectionChanged);
 
     layout->addWidget(brushGroup);
 
@@ -253,7 +253,7 @@ void SimplifierModule::buildUI() {
     inflateLayout->addLayout(inflateValRow);
 
     this->applyInflateBtn = new QPushButton("Apply Inflate");
-    connect(this->applyInflateBtn, &QPushButton::clicked, this, &SimplifierModule::onApplyInflate);
+    connect(this->applyInflateBtn, &QPushButton::clicked, this, &EditorModule::onApplyInflate);
     inflateLayout->addWidget(this->applyInflateBtn);
 
     layout->addWidget(inflateGroup);
@@ -283,14 +283,14 @@ void SimplifierModule::buildUI() {
     smoothLayout->addLayout(smoothStrengthRow);
 
     this->smoothBtn = new QPushButton("Smooth");
-    connect(this->smoothBtn, &QPushButton::clicked, this, &SimplifierModule::onSmooth);
+    connect(this->smoothBtn, &QPushButton::clicked, this, &EditorModule::onSmooth);
     smoothLayout->addWidget(this->smoothBtn);
 
     layout->addWidget(smoothGroup);
 
     // ── Signals ───────────────────────────────────────────────────────────
     connect(this->simplificationSlider, &QSlider::valueChanged, this,
-            &SimplifierModule::onReductionPercentageChanged);
+            &EditorModule::onReductionPercentageChanged);
 
     layout->addStretch();
 
@@ -306,7 +306,7 @@ void SimplifierModule::buildUI() {
 
 // ─── Public methods ───────────────────────────────────────────────────────────
 
-void SimplifierModule::onMeshLoaded(mesh::Mesh *original, mesh::Mesh *simplified) {
+void EditorModule::onMeshLoaded(mesh::Mesh *original, mesh::Mesh *simplified) {
     Module::onMeshLoaded(original, simplified);
 
     this->originalFaceCount = this->originalMesh_->faceCount();
@@ -329,12 +329,12 @@ void SimplifierModule::onMeshLoaded(mesh::Mesh *original, mesh::Mesh *simplified
     if (!hasUVs) this->uvViewCheck->setChecked(false);
 }
 
-void SimplifierModule::onMeshUpdated() {
+void EditorModule::onMeshUpdated() {
     this->glWidgetSimplified->setMesh(this->simplifiedMesh_);
     this->glWidgetOverlay->setMeshes(this->originalMesh_, this->simplifiedMesh_);
 }
 
-bool SimplifierModule::saveSimplified(const QString &path) {
+bool EditorModule::saveSimplified(const QString &path) {
     if (!this->simplifiedMesh_ || this->simplifiedMesh_->faceCount() == 0) return false;
 
     bool success = mesh::io::saveMesh(*this->simplifiedMesh_, path.toStdString());
@@ -344,7 +344,7 @@ bool SimplifierModule::saveSimplified(const QString &path) {
 
 // ─── Private slots ────────────────────────────────────────────────────────────
 
-void SimplifierModule::onReset() {
+void EditorModule::onReset() {
     if (!this->originalMesh_ || this->originalMesh_->faceCount() == 0) return;
 
     *this->simplifiedMesh_ = *this->originalMesh_;
@@ -352,7 +352,7 @@ void SimplifierModule::onReset() {
     emit notifyMeshUpdate();
 }
 
-void SimplifierModule::onSimplify() {
+void EditorModule::onSimplify() {
     if (!this->originalMesh_ || this->originalMesh_->faceCount() == 0) {
         QMessageBox::warning(this, "Warning", "No mesh loaded!");
         return;
@@ -375,24 +375,24 @@ void SimplifierModule::onSimplify() {
     emit this->statusMessage("Simplification finished!");
 }
 
-void SimplifierModule::onReductionPercentageChanged(int sliderValue) {
+void EditorModule::onReductionPercentageChanged(int sliderValue) {
     this->simplificationPercent = (double)sliderValue;
     this->simplificationPercentLabel->setText(
         QString("Reduction: %1%").arg(this->simplificationPercent, 0, 'f', 0));
 }
 
-void SimplifierModule::onResetCameras() {
+void EditorModule::onResetCameras() {
     if (this->glWidgetOriginal) this->glWidgetOriginal->resetCamera();
     if (this->glWidgetSimplified) this->glWidgetSimplified->resetCamera();
     if (this->glWidgetOverlay) this->glWidgetOverlay->resetCamera();
 }
 
-void SimplifierModule::onSelectionChanged(int count) {
+void EditorModule::onSelectionChanged(int count) {
     if (this->selectedEdgeCountLabel)
         this->selectedEdgeCountLabel->setText(QString("Locked edges: %1").arg(count));
 }
 
-void SimplifierModule::onSmooth() {
+void EditorModule::onSmooth() {
     if (!this->simplifiedMesh_ || this->simplifiedMesh_->faceCount() == 0) return;
 
     this->simplifiedMesh_->smooth(this->smoothIterationsSpin->value(),
@@ -402,7 +402,7 @@ void SimplifierModule::onSmooth() {
     emit statusMessage("Smoothed");
 }
 
-void SimplifierModule::onApplyInflate() {
+void EditorModule::onApplyInflate() {
     if (!this->simplifiedMesh_ || this->simplifiedMesh_->faceCount() == 0) return;
 
     op::inflation::InflateOp(this->inflateSpin->value()).apply(*this->simplifiedMesh_);
