@@ -139,12 +139,12 @@ void EditorModule::buildUI() {
     QHBoxLayout *boundaryRow = new QHBoxLayout();
     boundaryRow->addWidget(new QLabel("Boundary:"));
     this->boundaryModeCombo = new QComboBox();
-    this->boundaryModeCombo->addItem("No constraint", (int)simplification::BoundaryMode::None);
-    this->boundaryModeCombo->addItem("Constraint", (int)simplification::BoundaryMode::Constraint);
+    this->boundaryModeCombo->addItem("No constraint", (int)op::simplification::BoundaryMode::None);
+    this->boundaryModeCombo->addItem("Constraint", (int)op::simplification::BoundaryMode::Constraint);
     this->boundaryModeCombo->addItem("Constrain seams",
-                                     (int)simplification::BoundaryMode::ConstrainSeams);
+                                     (int)op::simplification::BoundaryMode::ConstrainSeams);
     this->boundaryModeCombo->addItem("Lock seam edges",
-                                     (int)simplification::BoundaryMode::LockSeamVertices);
+                                     (int)op::simplification::BoundaryMode::LockSeamVertices);
     this->boundaryModeCombo->setCurrentIndex(1);
     boundaryRow->addWidget(this->boundaryModeCombo, 1);
     controlsRows->addLayout(boundaryRow);
@@ -361,15 +361,14 @@ void EditorModule::onSimplify() {
     int targetFaces =
         std::max(4, (int)(this->originalFaceCount * this->simplificationPercent / 100.0));
 
-    simplification::Simplifier simplifier(*this->simplifiedMesh_);
-    simplifier.boundaryMode =
-        (simplification::BoundaryMode)this->boundaryModeCombo->currentData().toInt();
-    simplifier.useOptimalCandidate = this->useOptimalCandidateCheck->isChecked();
-    simplifier.setUserLockedEdges(this->glWidgetOriginal->selectedEdges());
+    this->simplifyOp = op::simplification::SimplifyOp(
+        targetFaces,
+        (op::simplification::BoundaryMode)this->boundaryModeCombo->currentData().toInt(),
+        this->useOptimalCandidateCheck->isChecked(), this->glWidgetOriginal->selectedEdges());
 
     emit statusMessage("Simplifying...");
 
-    simplifier.run(targetFaces);
+    this->simplifyOp.apply(*this->simplifiedMesh_);
 
     emit this->notifyMeshUpdate();
     emit this->statusMessage("Simplification finished!");
@@ -395,8 +394,9 @@ void EditorModule::onSelectionChanged(int count) {
 void EditorModule::onSmooth() {
     if (!this->simplifiedMesh_ || this->simplifiedMesh_->faceCount() == 0) return;
 
-    this->simplifiedMesh_->smooth(this->smoothIterationsSpin->value(),
-                                  this->smoothStrengthSpin->value());
+    this->smoothOp = op::smoothing::SmoothOp(this->smoothIterationsSpin->value(),
+                                             this->smoothStrengthSpin->value());
+    this->smoothOp.apply(*this->simplifiedMesh_);
 
     emit notifyMeshUpdate();
     emit statusMessage("Smoothed");
@@ -405,7 +405,8 @@ void EditorModule::onSmooth() {
 void EditorModule::onApplyInflate() {
     if (!this->simplifiedMesh_ || this->simplifiedMesh_->faceCount() == 0) return;
 
-    op::inflation::InflateOp(this->inflateSpin->value()).apply(*this->simplifiedMesh_);
+    this->inflateOp = op::inflation::InflateOp(this->inflateSpin->value());
+    this->inflateOp.apply(*this->simplifiedMesh_);
 
     emit notifyMeshUpdate();
     emit statusMessage("Inflated");

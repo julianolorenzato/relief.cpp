@@ -76,8 +76,8 @@ public:
 
     /// @return Edge-to-incident-faces adjacency for the current mesh, keyed
     ///         by (small, large) position-vertex id. A boundary edge (same
-    ///         criterion used by simplification::Simplifier::addBoundaryConstraints)
-    ///         is one referenced by exactly 1 face.
+    ///         criterion used by op::simplification::SimplifyOp's boundary
+    ///         constraints) is one referenced by exactly 1 face.
     std::map<Edge, std::vector<int>> buildEdgeToFaces() const;
 
     /// @return Vertex adjacency: vertexToVertices[i] is the set of vertex ids
@@ -87,13 +87,6 @@ public:
     /// Moves vertex `index` to `pos`, unless it has been removed (e.g. by
     /// simplification), in which case this is a no-op.
     void moveVertex(int index, const Eigen::Vector3d& pos);
-
-    /// Applies `iterations` rounds of uniform Laplacian smoothing: each vertex
-    /// is moved toward the average position of its edge-adjacent neighbors,
-    /// scaled by `lambda` (0 = no movement, 1 = snap to neighbor average).
-    /// Operates only on `vertices[i].pos`; topology, UVs, and wedges are
-    /// unchanged.
-    void smooth(int iterations = 1, double lambda = 0.5);
 
     /// Flattened, GPU-friendly form of the mesh: one entry per distinct
     /// (vertex, uv-slot) pair actually used by a face corner, and one index

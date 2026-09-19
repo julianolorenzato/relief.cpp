@@ -21,6 +21,13 @@ public:
     void apply(mesh::Mesh& mesh) const override;
 
 private:
+    /// Per-vertex unit outward normal, with duplicate-position (UV-seam)
+    /// vertices grouped so seams don't open when inflating: each copy would
+    /// otherwise use only its own incident faces, the normals would diverge,
+    /// and the seam would open a hole when inflating even with seam vertices
+    /// locked.
+    static std::vector<Eigen::Vector3d> computeVertexNormals(const mesh::Mesh& mesh);
+
     double offset_;
 };
 

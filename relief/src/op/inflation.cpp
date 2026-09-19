@@ -6,14 +6,13 @@
 
 namespace op::inflation {
 
-namespace {
+void InflateOp::apply(mesh::Mesh& mesh) const {
+    std::vector<Eigen::Vector3d> normals = computeVertexNormals(mesh);
+    for (size_t i = 0; i < mesh.vertices.size(); i++)
+        mesh.moveVertex((int)i, mesh.vertices[i].pos + offset_ * normals[i]);
+}
 
-/// Per-vertex unit outward normal, with duplicate-position (UV-seam)
-/// vertices grouped so seams don't open when inflating: each copy would
-/// otherwise use only its own incident faces, the normals would diverge,
-/// and the seam would open a hole when inflating even with seam vertices
-/// locked.
-std::vector<Eigen::Vector3d> computeVertexNormals(const mesh::Mesh& mesh) {
+std::vector<Eigen::Vector3d> InflateOp::computeVertexNormals(const mesh::Mesh& mesh) {
     std::vector<Eigen::Vector3d> normals(mesh.vertices.size(), Eigen::Vector3d::Zero());
     for (const auto& f : mesh.faces) {
         if (f.removed) continue;
@@ -40,8 +39,8 @@ std::vector<Eigen::Vector3d> computeVertexNormals(const mesh::Mesh& mesh) {
 
     auto quantize = [cell](const Eigen::Vector3d& p) {
         return std::make_tuple((long long)std::llround(p.x() / cell),
-                                (long long)std::llround(p.y() / cell),
-                                (long long)std::llround(p.z() / cell));
+                               (long long)std::llround(p.y() / cell),
+                               (long long)std::llround(p.z() / cell));
     };
 
     std::map<std::tuple<long long, long long, long long>, int> groupId;
@@ -70,12 +69,4 @@ std::vector<Eigen::Vector3d> computeVertexNormals(const mesh::Mesh& mesh) {
     return normals;
 }
 
-} // namespace
-
-void InflateOp::apply(mesh::Mesh& mesh) const {
-    std::vector<Eigen::Vector3d> normals = computeVertexNormals(mesh);
-    for (size_t i = 0; i < mesh.vertices.size(); i++)
-        mesh.moveVertex((int)i, mesh.vertices[i].pos + offset_ * normals[i]);
-}
-
-} // namespace op::inflation
+}  // namespace op::inflation

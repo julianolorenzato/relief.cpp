@@ -15,8 +15,9 @@
 #include "gui/module.h"
 #include "relief/mesh.h"
 #include "relief/mesh/io.h"
-#include "relief/simplification.h"
+#include "relief/op/simplification.h"
 #include "relief/op/inflation.h"
+#include "relief/op/smoothing.h"
 #include "gui/orbital3dview.h"
 
 class QPushButton;
@@ -104,4 +105,9 @@ private:
     // ── Face counts ───────────────────────────────────────────────────────────
     int    originalFaceCount     = 0;
     double simplificationPercent = 50.0;
+
+    // ── Ops ───────────────────────────────────────────────────────────────────
+    op::simplification::SimplifyOp simplifyOp{4};
+    op::smoothing::SmoothOp        smoothOp;
+    op::inflation::InflateOp       inflateOp{0.0};
 };

@@ -31,7 +31,6 @@ add_library(relief STATIC
     src/mesh/io.cpp
     src/mesh/io/obj.cpp
     src/mesh/io/gltf.cpp
-    src/simplification.cpp
     src/mesh/edgesel.cpp
     src/heightmap.cpp
     src/uv_atlas.cpp

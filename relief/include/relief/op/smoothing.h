@@ -1,6 +1,6 @@
 /**
  * @file smoothing.h
- * @brief op::Op wrapping mesh::Mesh::smooth.
+ * @brief op::Op that runs uniform Laplacian smoothing on a mesh.
  */
 #pragma once
 #include "relief/op.h"
