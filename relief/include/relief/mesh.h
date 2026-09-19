@@ -7,6 +7,7 @@
 #include <vector>
 #include <cstdint>
 #include <map>
+#include <set>
 #include <utility>
 #include <Eigen/Dense>
 
@@ -36,11 +37,19 @@ struct Face {
     bool removed = false;
 };
 
-/// Maps a (small vertex id, large vertex id) edge key to every face
-/// (by index) that has that edge as one of its 3 sides. A boundary edge
-/// (same criterion used by simplification::Simplifier::addBoundaryConstraints)
-/// is one referenced by exactly 1 face.
-using EdgeToFaces = std::map<std::pair<int, int>, std::vector<int>>;
+/// Canonical (small vertex id, large vertex id) edge key. The constructor
+/// orders the two vertex ids, so any two edges between the same pair of
+/// vertices compare equal regardless of which id was passed first.
+struct Edge {
+    int first, second;
+
+    Edge(int a, int b) : first(a < b ? a : b), second(a < b ? b : a) {}
+
+    bool operator<(const Edge& o) const {
+        return first != o.first ? first < o.first : second < o.second;
+    }
+    bool operator==(const Edge& o) const { return first == o.first && second == o.second; }
+};
 
 /**
  * @brief Triangle mesh with position/UV/texture data.
@@ -66,8 +75,14 @@ public:
     int vertexCount() const;
 
     /// @return Edge-to-incident-faces adjacency for the current mesh, keyed
-    ///         by (small, large) position-vertex id.
-    EdgeToFaces buildEdgeToFaces() const;
+    ///         by (small, large) position-vertex id. A boundary edge (same
+    ///         criterion used by simplification::Simplifier::addBoundaryConstraints)
+    ///         is one referenced by exactly 1 face.
+    std::map<Edge, std::vector<int>> buildEdgeToFaces() const;
+
+    /// @return Vertex adjacency: vertexToVertices[i] is the set of vertex ids
+    ///         directly edge-connected to vertex i, derived from buildEdgeToFaces().
+    std::vector<std::set<int>> buildVertexToVertices() const;
 
     /// Applies `iterations` rounds of uniform Laplacian smoothing: each vertex
     /// is moved toward the average position of its edge-adjacent neighbors,

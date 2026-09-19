@@ -249,7 +249,7 @@ void Orbital3DView::setLightZ(double v) { lightPos_.z = (float)v; update(); }
 
 void Orbital3DView::setBrushRadius(double normalizedRadius) { brushRadius_ = normalizedRadius; }
 void Orbital3DView::setBrushAngleThresholdDeg(double degrees) { brushAngleThresholdDeg_ = degrees; }
-void Orbital3DView::setBrushPropagationMode(edgesel::PropagationMode mode) { brushPropagationMode_ = mode; }
+void Orbital3DView::setBrushPropagationMode(mesh::edgesel::PropagationMode mode) { brushPropagationMode_ = mode; }
 
 void Orbital3DView::clearBrushSelection() {
     brushSelection_.clear();
@@ -571,8 +571,8 @@ void Orbital3DView::buildPrimaryBuffers() {
     uploadNormalFromMesh();
 
     // Brush-selection topology is only valid for the mesh it was built from.
-    brushAdjacency_ = edgesel::FaceAdjacency::build(*primaryMesh_);
-    brushFaceNormals_ = edgesel::computeFaceNormals(*primaryMesh_);
+    brushAdjacency_ = mesh::edgesel::FaceAdjacency::build(*primaryMesh_);
+    brushFaceNormals_ = mesh::edgesel::computeFaceNormals(*primaryMesh_);
     brushSelection_.clear();
     highlightDirty_ = true;
 }
@@ -593,7 +593,7 @@ void Orbital3DView::buildEdgeBuffers() {
 
     auto edgeToFaces = primaryMesh_->buildEdgeToFaces();
     auto seamPairs = uv_atlas::findSeamEdges(*primaryMesh_);
-    std::set<std::pair<int, int>> seamSet(seamPairs.begin(), seamPairs.end());
+    std::set<mesh::Edge> seamSet(seamPairs.begin(), seamPairs.end());
 
     std::vector<float> lineVerts;
     lineVerts.reserve(edgeToFaces.size() * 2 * 6);
@@ -941,7 +941,7 @@ void Orbital3DView::paintUV() {
 Orbital3DView::Ray Orbital3DView::screenRay(const QPoint& p) const {
     // Unprojecting through inverse(proj*view*model) lands the ray directly in
     // raw (unnormalized) mesh space, matching mesh::Mesh vertex positions —
-    // the same space edgesel::raycastMesh operates in.
+    // the same space mesh::edgesel::raycastMesh operates in.
     glm::mat4 invMVP = glm::inverse(projMatrix() * viewMatrix() * modelMatrix());
 
     float ndcX = (2.0f * (float)p.x()) / std::max(1, width()) - 1.0f;
@@ -963,7 +963,7 @@ void Orbital3DView::brushTouchAt(const QPoint& p, bool erase) {
     if (!primaryMesh_ || brushFaceNormals_.empty()) return;
 
     Ray ray = screenRay(p);
-    edgesel::RayHit hit = edgesel::raycastMesh(*primaryMesh_, ray.origin, ray.dir);
+    mesh::edgesel::RayHit hit = mesh::edgesel::raycastMesh(*primaryMesh_, ray.origin, ray.dir);
     if (!hit.found) return;
 
     double rawRadius = brushRadius_ / std::max(1e-6f, meshNormScale_);

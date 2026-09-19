@@ -52,6 +52,6 @@ textures::MipPyramid buildOffsetMap(
  * @return One (v1, v2) position-vertex-index pair per seam edge, each
  *         sorted (v1 <= v2).
  */
-std::vector<std::pair<int, int>> findSeamEdges(const mesh::Mesh& mesh);
+std::vector<mesh::Edge> findSeamEdges(const mesh::Mesh& mesh);
 
 } // namespace uv_atlas

@@ -15,7 +15,7 @@ namespace uv_atlas {
 
 using mesh::Mesh;
 using mesh::Face;
-using mesh::EdgeToFaces;
+using mesh::Edge;
 using textures::MipPyramid;
 
 namespace {
@@ -183,7 +183,7 @@ void rasterizeBand(
  * @param edgeToFaces Edge-to-incident-faces adjacency, from mesh.buildEdgeToFaces().
  * @return One island id per face, in face order; removed faces get id -1.
  */
-std::vector<int> detectIslands(const Mesh& mesh, const EdgeToFaces& edgeToFaces) {
+std::vector<int> detectIslands(const Mesh& mesh, const std::map<Edge, std::vector<int>>& edgeToFaces) {
     int nf = (int)mesh.faces.size();
     std::vector<int> island(nf, -1);
     if (nf == 0) return island;
@@ -234,7 +234,7 @@ MipPyramid buildOffsetMap(
     const Mesh& mesh,
     int width, int height,
     int seamBandTexels) {
-    EdgeToFaces edgeToFaces = mesh.buildEdgeToFaces();
+    auto edgeToFaces = mesh.buildEdgeToFaces();
     std::vector<int> faceIsland = detectIslands(mesh, edgeToFaces);
 
     std::vector<float> data((size_t)width * height * 4, 0.0f);
@@ -309,11 +309,11 @@ MipPyramid buildOffsetMap(
     return pyr;
 }
 
-std::vector<std::pair<int, int>> findSeamEdges(const Mesh& mesh) {
-    EdgeToFaces edgeToFaces = mesh.buildEdgeToFaces();
+std::vector<Edge> findSeamEdges(const Mesh& mesh) {
+    auto edgeToFaces = mesh.buildEdgeToFaces();
     std::vector<int> faceIsland = detectIslands(mesh, edgeToFaces);
 
-    std::vector<std::pair<int, int>> seams;
+    std::vector<Edge> seams;
     for (const auto& [key, faceIds] : edgeToFaces) {
         if (faceIds.size() != 2) continue; // boundary or non-manifold: not a seam between islands.
         int f0 = faceIds[0], f1 = faceIds[1];

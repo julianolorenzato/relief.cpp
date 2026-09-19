@@ -17,7 +17,7 @@
 #include <glm/glm.hpp>
 #include <set>
 #include "relief/mesh.h"
-#include "relief/edge_selection.h"
+#include "relief/mesh/edgesel.h"
 
 /// Selects what Orbital3DView renders and which shader/buffers it uses.
 enum class RenderMode
@@ -77,7 +77,7 @@ public:
     InteractionMode interactionMode() const { return interactionMode_; }
 
     /// @return The current brush-selected edge set (vertex-id pairs, small-first).
-    const std::set<edgesel::EdgeKey> &selectedEdges() const { return brushSelection_.edges(); }
+    const std::set<mesh::Edge> &selectedEdges() const { return brushSelection_.edges(); }
 
 signals:
     /// Emitted after a mouse-driven camera change, so linked viewports can call syncCamera().
@@ -105,7 +105,7 @@ public slots:
     /// Sets the max normal angle (degrees) the brush's flood fill may cross between faces.
     void setBrushAngleThresholdDeg(double degrees);
     /// Sets how the brush's flood fill decides normal similarity across faces.
-    void setBrushPropagationMode(edgesel::PropagationMode mode);
+    void setBrushPropagationMode(mesh::edgesel::PropagationMode mode);
     /// Clears the current brush edge selection.
     void clearBrushSelection();
 
@@ -156,10 +156,10 @@ private:
     InteractionMode interactionMode_ = InteractionMode::Orbit;
     double brushRadius_ = 0.05;
     double brushAngleThresholdDeg_ = 35.0;
-    edgesel::PropagationMode brushPropagationMode_ = edgesel::PropagationMode::Chained;
-    edgesel::FaceAdjacency brushAdjacency_;
+    mesh::edgesel::PropagationMode brushPropagationMode_ = mesh::edgesel::PropagationMode::Chained;
+    mesh::edgesel::FaceAdjacency brushAdjacency_;
     std::vector<Eigen::Vector3d> brushFaceNormals_;
-    edgesel::BrushSelection brushSelection_;
+    mesh::edgesel::BrushSelection brushSelection_;
     /// Set whenever the selection changes; the highlight VBO is only ever
     /// rebuilt (GL calls) from inside paintGL, where the context is current.
     bool highlightDirty_ = false;

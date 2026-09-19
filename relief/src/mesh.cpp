@@ -43,28 +43,32 @@ int Mesh::vertexCount() const {
     return n;
 }
 
-EdgeToFaces Mesh::buildEdgeToFaces() const {
-    EdgeToFaces edgeToFaces;
+std::map<Edge, std::vector<int>> Mesh::buildEdgeToFaces() const {
+    std::map<Edge, std::vector<int>> edgeToFaces;
     for (int fi = 0; fi < (int)faces.size(); fi++) {
         if (faces[fi].removed) continue;
         for (int i = 0; i < 3; i++) {
             int a = wedges[faces[fi].w[i]].vertex, b = wedges[faces[fi].w[(i + 1) % 3]].vertex;
-            if (a > b) std::swap(a, b);
-            edgeToFaces[{a, b}].push_back(fi);
+            edgeToFaces[Edge(a, b)].push_back(fi);
         }
     }
     return edgeToFaces;
 }
 
+std::vector<std::set<int>> Mesh::buildVertexToVertices() const {
+    std::vector<std::set<int>> vertexToVertices(vertices.size());
+    for (const auto &entry : buildEdgeToFaces()) {
+        const auto &edge = entry.first;
+        vertexToVertices[edge.first].insert(edge.second);
+        vertexToVertices[edge.second].insert(edge.first);
+    }
+    return vertexToVertices;
+}
+
 void Mesh::smooth(int iterations, double lambda) {
     if (iterations <= 0 || vertices.empty()) return;
 
-    std::vector<std::vector<int>> neighbors(vertices.size());
-    for (const auto &entry : buildEdgeToFaces()) {
-        int a = entry.first.first, b = entry.first.second;
-        neighbors[a].push_back(b);
-        neighbors[b].push_back(a);
-    }
+    auto neighbors = buildVertexToVertices();
 
     std::vector<Eigen::Vector3d> newPos(vertices.size());
     for (int it = 0; it < iterations; it++) {

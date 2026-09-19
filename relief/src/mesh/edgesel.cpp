@@ -1,33 +1,28 @@
 /**
- * @file edge_selection.cpp
+ * @file edgesel.cpp
  * @brief Implementation of brush-based edge selection: raycasting, face
  *        adjacency, and normal-gated flood fill.
  */
-#include "relief/edge_selection.h"
+#include "relief/mesh/edgesel.h"
 
 #include <algorithm>
 #include <cmath>
 #include <limits>
 #include <queue>
 
-namespace edgesel {
+namespace mesh::edgesel {
 
 namespace {
 
 /// Vertex ids of face `fi`'s 3 corners, in order.
-std::array<int, 3> faceVerts(const mesh::Mesh& mesh, int fi) {
-    const mesh::Face& f = mesh.faces[fi];
+std::array<int, 3> faceVerts(const Mesh& mesh, int fi) {
+    const Face& f = mesh.faces[fi];
     return {mesh.wedges[f.w[0]].vertex, mesh.wedges[f.w[1]].vertex, mesh.wedges[f.w[2]].vertex};
-}
-
-EdgeKey canon(int a, int b) {
-    if (a > b) std::swap(a, b);
-    return {a, b};
 }
 
 } // namespace
 
-FaceAdjacency FaceAdjacency::build(const mesh::Mesh& mesh) {
+FaceAdjacency FaceAdjacency::build(const Mesh& mesh) {
     FaceAdjacency adj;
     adj.neighborFace.assign(mesh.faces.size(), {-1, -1, -1});
 
@@ -36,7 +31,7 @@ FaceAdjacency FaceAdjacency::build(const mesh::Mesh& mesh) {
         if (mesh.faces[fi].removed) continue;
         auto vs = faceVerts(mesh, fi);
         for (int k = 0; k < 3; k++) {
-            auto key = canon(vs[k], vs[(k + 1) % 3]);
+            Edge key(vs[k], vs[(k + 1) % 3]);
             const auto& faces = edgeToFaces[key];
             if (faces.size() != 2) continue; // boundary edge: no neighbor to cross
             int other = (faces[0] == fi) ? faces[1] : faces[0];
@@ -46,7 +41,7 @@ FaceAdjacency FaceAdjacency::build(const mesh::Mesh& mesh) {
     return adj;
 }
 
-std::vector<Eigen::Vector3d> computeFaceNormals(const mesh::Mesh& mesh) {
+std::vector<Eigen::Vector3d> computeFaceNormals(const Mesh& mesh) {
     std::vector<Eigen::Vector3d> normals(mesh.faces.size(), Eigen::Vector3d::Zero());
     for (int fi = 0; fi < (int)mesh.faces.size(); fi++) {
         if (mesh.faces[fi].removed) continue;
@@ -61,7 +56,7 @@ std::vector<Eigen::Vector3d> computeFaceNormals(const mesh::Mesh& mesh) {
     return normals;
 }
 
-RayHit raycastMesh(const mesh::Mesh& mesh, const Eigen::Vector3d& origin, const Eigen::Vector3d& dir) {
+RayHit raycastMesh(const Mesh& mesh, const Eigen::Vector3d& origin, const Eigen::Vector3d& dir) {
     RayHit best;
     double bestT = std::numeric_limits<double>::infinity();
     constexpr double kEps = 1e-9;
@@ -100,7 +95,7 @@ RayHit raycastMesh(const mesh::Mesh& mesh, const Eigen::Vector3d& origin, const 
     return best;
 }
 
-bool touchesEdge(const mesh::Mesh& mesh, int v0, int v1, const Eigen::Vector3d& center, double radius) {
+bool touchesEdge(const Mesh& mesh, int v0, int v1, const Eigen::Vector3d& center, double radius) {
     const Eigen::Vector3d& a = mesh.vertices[v0].pos;
     const Eigen::Vector3d& b = mesh.vertices[v1].pos;
     Eigen::Vector3d ab = b - a;
@@ -111,7 +106,7 @@ bool touchesEdge(const mesh::Mesh& mesh, int v0, int v1, const Eigen::Vector3d& 
     return (closest - center).norm() <= radius;
 }
 
-void BrushSelection::applyBrush(const mesh::Mesh& mesh, const FaceAdjacency& adj,
+void BrushSelection::applyBrush(const Mesh& mesh, const FaceAdjacency& adj,
                                  const std::vector<Eigen::Vector3d>& faceNormals,
                                  int seedFace, const Eigen::Vector3d& hitPoint,
                                  double radius, double angleThresholdRad,
@@ -137,7 +132,7 @@ void BrushSelection::applyBrush(const mesh::Mesh& mesh, const FaceAdjacency& adj
         for (int k = 0; k < 3; k++) {
             int v0 = vs[k], v1 = vs[(k + 1) % 3];
             if (touchesEdge(mesh, v0, v1, hitPoint, radius)) {
-                auto key = canon(v0, v1);
+                Edge key(v0, v1);
                 if (erase) edges_.erase(key); else edges_.insert(key);
             }
         }
@@ -164,4 +159,4 @@ void BrushSelection::applyBrush(const mesh::Mesh& mesh, const FaceAdjacency& adj
     }
 }
 
-} // namespace edgesel
+} // namespace mesh::edgesel

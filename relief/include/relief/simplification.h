@@ -111,7 +111,7 @@ public:
     /// (see userLockedVertex_): otherwise a collapse of some other, unlocked
     /// edge sharing an endpoint would silently remove that vertex -- and the
     /// locked edge along with it -- without ever failing the lock check.
-    void setUserLockedEdges(std::set<std::pair<int,int>> edges) {
+    void setUserLockedEdges(std::set<mesh::Edge> edges) {
         userLockedEdges_ = std::move(edges);
         userLockedVertex_.assign(mesh_.vertices.size(), false);
         for (const auto& [a, b] : userLockedEdges_) {
@@ -119,12 +119,12 @@ public:
             userLockedVertex_[b] = true;
         }
     }
-    const std::set<std::pair<int,int>>& userLockedEdges() const { return userLockedEdges_; }
+    const std::set<mesh::Edge>& userLockedEdges() const { return userLockedEdges_; }
 
 private:
     mesh::Mesh& mesh_;
 
-    std::map<std::pair<int,int>, EdgeCollapse> edgeMap;
+    std::map<mesh::Edge, EdgeCollapse> edgeMap;
 
     /// Computes the initial per-vertex quadric from adjacent face planes.
     void computeQ();
@@ -151,11 +151,7 @@ private:
     /// Recomputes and re-enqueues the collapse cost of every edge touching
     /// `keep`, using `vertexToVertices[keep]` (called right after `keep` inherits
     /// the faces of a removed vertex).
-    void refreshAround(int keep, PQ& pq, std::set<std::pair<int,int>>& invalidEdges);
-    /// Orders (a, b) into a canonical (a < b) pair; returns the canonicalized first index.
-    int canonicalize(int& a, int& b) const;
-    /// @return The vertex adjacency sets built from the current face list.
-    std::vector<std::set<int>> buildVertexToVertices() const;
+    void refreshAround(int keep, PQ& pq, std::set<mesh::Edge>& invalidEdges);
     /// Adds perpendicular-plane quadrics along boundary edges so boundary
     /// vertices resist being pulled off the mesh silhouette.
     /// @param weight Relative strength of the boundary quadric.
@@ -180,10 +176,10 @@ private:
     /// Builds the collapse candidate for edge (p,q), deciding whether it
     /// should be locked or handled normally.
     /// @return false if the edge can't be collapsed (locked).
-    bool buildCandidate(int p, int q, EdgeCollapse& out) const;
+    bool buildCandidate(mesh::Edge edge, EdgeCollapse& out) const;
 
     /// Backing storage for setUserLockedEdges()/userLockedEdges().
-    std::set<std::pair<int,int>> userLockedEdges_;
+    std::set<mesh::Edge> userLockedEdges_;
     /// Per-vertex flag: true if the vertex is an endpoint of any edge in
     /// userLockedEdges_. Protects that vertex from being removed by *any*
     /// collapse, not just the specific locked edge -- see edgeLocked().

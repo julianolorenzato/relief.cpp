@@ -37,7 +37,7 @@ int main(int argc, char **argv)
     auto edgeToFaces = mesh.buildEdgeToFaces();
 
     int boundaryCount = 0;
-    std::vector<std::pair<int, int>> boundaryEdges;
+    std::vector<Edge> boundaryEdges;
     for (auto &[edge, faceIds] : edgeToFaces)
         if (faceIds.size() == 1)
         {

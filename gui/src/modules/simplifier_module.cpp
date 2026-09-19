@@ -19,7 +19,7 @@
 #include <map>
 #include <tuple>
 
-#include "relief/edge_selection.h"
+#include "relief/mesh/edgesel.h"
 
 // ─── buildUI ─────────────────────────────────────────────────────────────────
 
@@ -211,13 +211,13 @@ void SimplifierModule::buildUI() {
     propagationRow->addWidget(new QLabel("Propagation:"));
     this->brushPropagationCombo = new QComboBox();
     this->brushPropagationCombo->addItem("Chained (follow curvature)",
-                                         (int)edgesel::PropagationMode::Chained);
+                                         (int)mesh::edgesel::PropagationMode::Chained);
     this->brushPropagationCombo->addItem("Anchored to seed (strict)",
-                                         (int)edgesel::PropagationMode::AnchoredToSeed);
+                                         (int)mesh::edgesel::PropagationMode::AnchoredToSeed);
     connect(this->brushPropagationCombo, QOverload<int>::of(&QComboBox::currentIndexChanged), this,
             [this](int) {
                 auto mode =
-                    (edgesel::PropagationMode)this->brushPropagationCombo->currentData().toInt();
+                    (mesh::edgesel::PropagationMode)this->brushPropagationCombo->currentData().toInt();
                 this->glWidgetOriginal->setBrushPropagationMode(mode);
             });
     propagationRow->addWidget(this->brushPropagationCombo, 1);

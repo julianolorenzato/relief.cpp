@@ -1,5 +1,5 @@
 /**
- * @file edge_selection.h
+ * @file edgesel.h
  * @brief Interactive brush-based edge selection: raycasting, face
  *        adjacency, and normal-gated flood fill over a Mesh's edges. Used
  *        to let a user "paint" feature edges to lock during simplification.
@@ -12,7 +12,7 @@
 #include <Eigen/Dense>
 #include "relief/mesh.h"
 
-namespace edgesel {
+namespace mesh::edgesel {
 
 /// How the flood fill decides whether to cross from one face to its
 /// neighbor while propagating a brush touch.
@@ -28,11 +28,11 @@ struct FaceAdjacency {
     std::vector<std::array<int, 3>> neighborFace;
 
     /// @return Face adjacency derived from mesh.buildEdgeToFaces().
-    static FaceAdjacency build(const mesh::Mesh& mesh);
+    static FaceAdjacency build(const Mesh& mesh);
 };
 
 /// @return One outward unit normal per face (zero vector for degenerate/zero-area faces).
-std::vector<Eigen::Vector3d> computeFaceNormals(const mesh::Mesh& mesh);
+std::vector<Eigen::Vector3d> computeFaceNormals(const Mesh& mesh);
 
 /// Result of a CPU ray-mesh intersection.
 struct RayHit {
@@ -46,14 +46,11 @@ struct RayHit {
 ///        returns the closest hit.
 /// @param origin Ray origin, in the same space as mesh vertex positions.
 /// @param dir Ray direction (need not be normalized).
-RayHit raycastMesh(const mesh::Mesh& mesh, const Eigen::Vector3d& origin, const Eigen::Vector3d& dir);
-
-/// Canonical (small,large) vertex-id edge key — matches Mesh::buildEdgeToFaces().
-using EdgeKey = std::pair<int, int>;
+RayHit raycastMesh(const Mesh& mesh, const Eigen::Vector3d& origin, const Eigen::Vector3d& dir);
 
 /// @return true iff the 3D segment [mesh.vertices[v0].pos, mesh.vertices[v1].pos]
 ///         passes within `radius` of `center` (point-to-segment distance).
-bool touchesEdge(const mesh::Mesh& mesh, int v0, int v1, const Eigen::Vector3d& center, double radius);
+bool touchesEdge(const Mesh& mesh, int v0, int v1, const Eigen::Vector3d& center, double radius);
 
 /// Accumulating, persistent edge-selection state for one brush "owner"
 /// (e.g. one viewport). A brush stroke is a sequence of applyBrush() calls
@@ -72,18 +69,18 @@ public:
     /// @param radius Mesh-space brush radius.
     /// @param angleThresholdRad Max allowed normal angle (radians) to cross a face boundary.
     /// @param erase If true, touched edges are removed from the selection instead of added.
-    void applyBrush(const mesh::Mesh& mesh, const FaceAdjacency& adj,
+    void applyBrush(const Mesh& mesh, const FaceAdjacency& adj,
                      const std::vector<Eigen::Vector3d>& faceNormals,
                      int seedFace, const Eigen::Vector3d& hitPoint,
                      double radius, double angleThresholdRad,
                      PropagationMode mode, bool erase = false);
 
     void clear() { edges_.clear(); }
-    const std::set<EdgeKey>& edges() const { return edges_; }
+    const std::set<Edge>& edges() const { return edges_; }
     size_t size() const { return edges_.size(); }
 
 private:
-    std::set<EdgeKey> edges_;
+    std::set<Edge> edges_;
 };
 
-} // namespace edgesel
+} // namespace mesh::edgesel

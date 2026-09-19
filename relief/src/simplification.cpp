@@ -14,11 +14,6 @@
 
 namespace simplification {
 
-int Simplifier::canonicalize(int &a, int &b) const {
-    if (a > b) std::swap(a, b);
-    return 0;
-}
-
 // step 1
 void Simplifier::computeQ() {
     for (auto &vx : mesh_.vertices) vx.Q.setZero();
@@ -157,22 +152,10 @@ void Simplifier::markBoundaryVertices() {
     }
 }
 
-// Decide o tipo de candidato para a aresta (p,q)
-bool Simplifier::buildCandidate(int p, int q, EdgeCollapse &out) const {
-    canonicalize(p, q);
-
-    if (edgeLocked(p, q)) return false;
-    return computeCollapse(p, q, out);
-}
-
-std::vector<std::set<int>> Simplifier::buildVertexToVertices() const {
-    std::vector<std::set<int>> vertexToVertices(mesh_.vertices.size());
-    for (const auto &entry : mesh_.buildEdgeToFaces()) {
-        const auto &edge = entry.first;
-        vertexToVertices[edge.first].insert(edge.second);
-        vertexToVertices[edge.second].insert(edge.first);
-    }
-    return vertexToVertices;
+// Decide o tipo de candidato para a aresta `edge`
+bool Simplifier::buildCandidate(mesh::Edge edge, EdgeCollapse &out) const {
+    if (edgeLocked(edge.first, edge.second)) return false;
+    return computeCollapse(edge.first, edge.second, out);
 }
 
 void Simplifier::buildQueue(PQ &pq) {
@@ -182,7 +165,7 @@ void Simplifier::buildQueue(PQ &pq) {
     for (const auto &entry : mesh_.buildEdgeToFaces()) {
         const auto &edge = entry.first;
         EdgeCollapse ec;
-        if (!buildCandidate(edge.first, edge.second, ec)) continue;
+        if (!buildCandidate(edge, ec)) continue;
         edgeMap[edge] = ec;
         pq.push(ec);
     }
@@ -279,10 +262,10 @@ void Simplifier::addBoundaryConstraints(double weight) {
 
     if (boundaryMode == BoundaryMode::ConstrainSeams) {
         int seamCount = 0;
-        for (const auto &[a, b] : uv_atlas::findSeamEdges(mesh_)) {
-            auto it = edgeToFaces.find(std::make_pair(a, b));
+        for (const auto &edge : uv_atlas::findSeamEdges(mesh_)) {
+            auto it = edgeToFaces.find(edge);
             if (it == edgeToFaces.end() || it->second.empty()) continue;
-            if (applyEdgeConstraint(a, b, it->second[0])) ++seamCount;
+            if (applyEdgeConstraint(edge.first, edge.second, it->second[0])) ++seamCount;
         }
         std::cout << "Boundary constraints: " << seamCount << " arestas de seam\n";
     }
@@ -290,16 +273,14 @@ void Simplifier::addBoundaryConstraints(double weight) {
 
 // Recalcula e reenfileira o custo de colapso de toda aresta que toca `keep`
 // (chamado logo após `keep` "herdar" as faces de um vértice removido).
-void Simplifier::refreshAround(int keep, PQ &pq, std::set<std::pair<int, int>> &invalidEdges) {
+void Simplifier::refreshAround(int keep, PQ &pq, std::set<mesh::Edge> &invalidEdges) {
     for (int q : vertexToVertices[keep]) {
-        int p = keep;
-        canonicalize(p, q);
-        auto ekey = std::make_pair(p, q);
+        mesh::Edge ekey(keep, q);
         invalidEdges.erase(ekey);  // pode ter sido invalidada por um colapso anterior; volta a
                                    // ser válida.
 
         EdgeCollapse nec;
-        if (buildCandidate(p, q, nec)) {
+        if (buildCandidate(ekey, nec)) {
             edgeMap[ekey] = nec;  // novo custo "oficial"; cópias antigas na pq serão descartadas
                                   // por comparação de custo.
             pq.push(nec);
@@ -332,7 +313,7 @@ void Simplifier::run(int targetFaces) {
         markBoundaryVertices();  // marca vértices de borda para travar suas arestas em
                                  // buildCandidate/edgeLocked.
 
-    vertexToVertices = buildVertexToVertices();  // vizinhança vértice->vértice, usada por mergeVertexPair.
+    vertexToVertices = mesh_.buildVertexToVertices();  // vizinhança vértice->vértice, usada por mergeVertexPair.
 
     PQ pq;
     buildQueue(pq);  // popula pq e edgeMap com um candidato por aresta topológica da malha.
@@ -346,16 +327,14 @@ void Simplifier::run(int targetFaces) {
     // aresta como obsoleta aqui e a entrada correspondente na pq é ignorada
     // quando (se) chegar ao topo. edgeMap guarda o EdgeCollapse mais recente
     // e confiável de cada aresta; a pq pode conter várias cópias antigas dela.
-    std::set<std::pair<int, int>> invalidEdges;
+    std::set<mesh::Edge> invalidEdges;
 
     // Loop guloso: sempre colapsa a aresta de menor custo ainda válida.
     while (current > targetFaces && !pq.empty()) {
         EdgeCollapse ec = pq.top();
         pq.pop();
 
-        int a = ec.v1, b = ec.v2;
-        canonicalize(a, b);
-        auto key = std::make_pair(a, b);
+        mesh::Edge key(ec.v1, ec.v2);
 
         // As 3 checagens abaixo filtram entradas obsoletas da pq (lazy deletion):
         if (invalidEdges.count(key))

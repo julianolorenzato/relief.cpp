@@ -8,13 +8,13 @@
  */
 #include "relief/mesh.h"
 #include "relief/mesh/io.h"
-#include "relief/edge_selection.h"
+#include "relief/mesh/edgesel.h"
 #include <iostream>
 #include <string>
 
 using namespace mesh;
 using namespace mesh::io;
-using namespace edgesel;
+using namespace mesh::edgesel;
 
 int main(int argc, char **argv)
 {
