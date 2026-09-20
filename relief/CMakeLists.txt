@@ -39,6 +39,7 @@ add_library(relief STATIC
     src/op/simplification.cpp
     src/op/smoothing.cpp
     src/op/inflation.cpp
+    src/op/bvol.cpp
 )
 
 target_include_directories(relief

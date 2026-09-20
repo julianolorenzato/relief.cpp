@@ -18,6 +18,7 @@
 #include "relief/op/simplification.h"
 #include "relief/op/inflation.h"
 #include "relief/op/smoothing.h"
+#include "relief/op/bvol.h"
 #include "gui/orbital3dview.h"
 
 class QPushButton;
@@ -64,6 +65,9 @@ private slots:
     /// Runs op::inflation::InflateOp with the current offset field's value on the
     /// simplified mesh.
     void onApplyInflate();
+    /// Runs op::bvol::BoundingVolumeOp with the currently selected
+    /// volume type (AABB/OBB) on the simplified mesh, replacing it with a box.
+    void onApplyBoundingVolume();
 
 private:
     void buildUI() override;
@@ -94,6 +98,10 @@ private:
     QDoubleSpinBox* smoothStrengthSpin   = nullptr;
     QPushButton*    smoothBtn            = nullptr;
 
+    // ── Bounding volume controls ─────────────────────────────────────────────
+    QComboBox*   boundingVolumeTypeCombo = nullptr;
+    QPushButton* applyBoundingVolumeBtn  = nullptr;
+
     // ── Feature edge lock (brush selection) controls ─────────────────────────
     QPushButton*    brushModeToggleBtn  = nullptr;
     QDoubleSpinBox* brushRadiusSpin     = nullptr;
@@ -107,7 +115,8 @@ private:
     double simplificationPercent = 50.0;
 
     // ── Ops ───────────────────────────────────────────────────────────────────
-    op::simplification::SimplifyOp simplifyOp{4};
-    op::smoothing::SmoothOp        smoothOp;
-    op::inflation::InflateOp       inflateOp{0.0};
+    op::simplification::SimplifyOp   simplifyOp{4};
+    op::smoothing::SmoothOp          smoothOp;
+    op::inflation::InflateOp         inflateOp{0.0};
+    op::bvol::BoundingVolumeOp boundingVolumeOp;
 };

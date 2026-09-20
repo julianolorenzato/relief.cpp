@@ -288,6 +288,26 @@ void EditorModule::buildUI() {
 
     layout->addWidget(smoothGroup);
 
+    // ── Bounding Volume ────────────────────────────────────────────────────
+    QGroupBox *boundingVolumeGroup = new QGroupBox("Bounding Volume");
+    QVBoxLayout *boundingVolumeLayout = new QVBoxLayout(boundingVolumeGroup);
+    boundingVolumeLayout->setSpacing(4);
+
+    QHBoxLayout *boundingVolumeTypeRow = new QHBoxLayout();
+    boundingVolumeTypeRow->addWidget(new QLabel("Type:"));
+    this->boundingVolumeTypeCombo = new QComboBox();
+    this->boundingVolumeTypeCombo->addItem("AABB", (int)op::bvol::BoundingVolumeType::AABB);
+    this->boundingVolumeTypeCombo->addItem("OBB", (int)op::bvol::BoundingVolumeType::OBB);
+    boundingVolumeTypeRow->addWidget(this->boundingVolumeTypeCombo, 1);
+    boundingVolumeLayout->addLayout(boundingVolumeTypeRow);
+
+    this->applyBoundingVolumeBtn = new QPushButton("Replace with Bounding Volume");
+    connect(this->applyBoundingVolumeBtn, &QPushButton::clicked, this,
+            &EditorModule::onApplyBoundingVolume);
+    boundingVolumeLayout->addWidget(this->applyBoundingVolumeBtn);
+
+    layout->addWidget(boundingVolumeGroup);
+
     // ── Signals ───────────────────────────────────────────────────────────
     connect(this->simplificationSlider, &QSlider::valueChanged, this,
             &EditorModule::onReductionPercentageChanged);
@@ -410,6 +430,18 @@ void EditorModule::onApplyInflate() {
 
     emit notifyMeshUpdate();
     emit statusMessage("Inflated");
+}
+
+void EditorModule::onApplyBoundingVolume() {
+    if (!this->simplifiedMesh_ || this->simplifiedMesh_->faceCount() == 0) return;
+
+    auto type = (op::bvol::BoundingVolumeType)
+        this->boundingVolumeTypeCombo->currentData().toInt();
+    this->boundingVolumeOp = op::bvol::BoundingVolumeOp(type);
+    this->boundingVolumeOp.apply(*this->simplifiedMesh_);
+
+    emit notifyMeshUpdate();
+    emit statusMessage("Replaced with bounding volume");
 }
 
 // ─── Private methods ──────────────────────────────────────────────────────────
