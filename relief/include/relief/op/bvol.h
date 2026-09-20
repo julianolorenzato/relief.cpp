@@ -25,7 +25,7 @@ enum class BoundingVolumeType {
 class BoundingVolumeOp : public op::Op {
    public:
     /// @param type Which bounding volume to compute.
-    explicit BoundingVolumeOp(BoundingVolumeType type = BoundingVolumeType::AABB) : type_(type) {}
+    explicit BoundingVolumeOp(BoundingVolumeType type = BoundingVolumeType::AABB) : type(type) {}
 
     void apply(mesh::Mesh& mesh) const override;
 
