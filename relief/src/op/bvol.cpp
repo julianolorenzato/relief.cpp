@@ -6,7 +6,7 @@ namespace op::bvol {
 
 void BoundingVolumeOp::apply(mesh::Mesh& mesh) const {
     if (mesh.vertices.empty()) return;
-    switch (type_) {
+    switch (this->type) {
         case BoundingVolumeType::AABB:
             applyAABB(mesh);
             break;
