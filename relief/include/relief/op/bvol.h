@@ -105,13 +105,9 @@ class BoundingVolumeOp : public op::Op {
 
     /// Flattens `box.faces`' local 2D vertices/UVs/triangles back into 3D,
     /// overwriting mesh.vertices/wedges/faces. Texture data is left as-is.
-    /// Corners are welded by position into a shared Vertex, and further by
-    /// UV into a shared Wedge, both across a single face and across faces
-    /// (e.g. at shared box edges) -- so genuine UV discontinuities (most box
-    /// edges, since adjacent faces are independently parameterized) surface
-    /// as real seams per mesh::Wedge's contract, and buildEdgeToFaces can
-    /// see true face adjacency instead of a fully disconnected triangle
-    /// soup.
+    /// Each face's vertices/wedges are emitted independently (no welding
+    /// across faces), so the result is a disconnected triangle soup at box
+    /// edges/corners.
     static void flattenBoxFaces(const BoundingBox& box, mesh::Mesh& mesh);
 };
 

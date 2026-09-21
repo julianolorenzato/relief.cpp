@@ -1,14 +1,10 @@
 #include "relief/op/bvol.h"
 
+#include <Eigen/Eigenvalues>
 #include <algorithm>
-#include <cmath>
 #include <iostream>
-#include <map>
 #include <mutex>
 #include <thread>
-#include <tuple>
-
-#include <Eigen/Eigenvalues>
 
 namespace op::bvol {
 
@@ -47,66 +43,19 @@ bool pointInTriangle(const Eigen::Vector2d& p, const std::array<Eigen::Vector2d,
     return !(hasNeg && hasPos);
 }
 
-/// Absolute snapping tolerance used to quantize positions/UVs into map keys
-/// below, so coincident corners produced by identical box math (which should
-/// be bit-identical) still weld under ordinary floating-point noise.
-constexpr double kWeldEpsilon = 1e-9;
-
-/// @return `v` snapped to a `kWeldEpsilon`-sized grid, suitable as a
-///         float-safe map key component.
-int64_t quantize(double v) { return (int64_t)std::llround(v / kWeldEpsilon); }
-
-/// Incrementally welds mesh geometry by position and UV while it's built: a
-/// vertex is reused whenever its position was seen before, and a wedge is
-/// reused whenever both its vertex and UV were seen before (so two wedges
-/// sharing a vertex but not a UV remain distinct, which is exactly what
-/// marks that vertex as being on a UV seam per mesh::Wedge's contract).
-class MeshWelder {
-   public:
-    explicit MeshWelder(mesh::Mesh& mesh) : mesh_(mesh) {}
-
-    int addVertex(const Eigen::Vector3d& pos) {
-        auto key = std::make_tuple(quantize(pos.x()), quantize(pos.y()), quantize(pos.z()));
-        auto [it, inserted] = posToVertex_.try_emplace(key, (int)mesh_.vertices.size());
-        if (inserted) {
-            mesh::Vertex vertex;
-            vertex.pos = pos;
-            mesh_.vertices.push_back(vertex);
-        }
-        return it->second;
-    }
-
-    int addWedge(int vertexIdx, const Eigen::Vector2d& uv) {
-        auto key = std::make_tuple(vertexIdx, quantize(uv.x()), quantize(uv.y()));
-        auto [it, inserted] = vertUvToWedge_.try_emplace(key, (int)mesh_.wedges.size());
-        if (inserted) {
-            mesh::Wedge wedge;
-            wedge.vertex = vertexIdx;
-            wedge.uv = uv;
-            mesh_.wedges.push_back(wedge);
-        }
-        return it->second;
-    }
-
-   private:
-    mesh::Mesh& mesh_;
-    std::map<std::tuple<int64_t, int64_t, int64_t>, int> posToVertex_;
-    std::map<std::tuple<int, int64_t, int64_t>, int> vertUvToWedge_;
-};
-
 }  // namespace
 
 void BoundingVolumeOp::apply(mesh::Mesh& mesh) const {
     if (mesh.vertices.empty()) return;
     switch (this->type) {
         case BoundingVolumeType::AABB:
-            std::cout << "BoundingVolumeOp: computing AABB over " << mesh.faceCount()
-                      << " faces, " << mesh.vertexCount() << " vertices\n";
+            std::cout << "BoundingVolumeOp: computing AABB over " << mesh.faceCount() << " faces, "
+                      << mesh.vertexCount() << " vertices\n";
             applyAABB(mesh);
             break;
         case BoundingVolumeType::OBB:
-            std::cout << "BoundingVolumeOp: computing OBB over " << mesh.faceCount()
-                      << " faces, " << mesh.vertexCount() << " vertices\n";
+            std::cout << "BoundingVolumeOp: computing OBB over " << mesh.faceCount() << " faces, "
+                      << mesh.vertexCount() << " vertices\n";
             applyOBB(mesh);
             break;
     }
@@ -154,14 +103,14 @@ std::array<Eigen::Vector3d, 3> BoundingVolumeOp::computeOBBAxes(const mesh::Mesh
     Eigen::SelfAdjointEigenSolver<Eigen::Matrix3d> solver(cov);
     Eigen::Matrix3d evecs = solver.eigenvectors();
     std::array<Eigen::Vector3d, 3> axes = {evecs.col(0).normalized(), evecs.col(1).normalized(),
-                                            evecs.col(2).normalized()};
+                                           evecs.col(2).normalized()};
     if (axes[0].cross(axes[1]).dot(axes[2]) < 0.0) axes[2] = -axes[2];
     return axes;
 }
 
 void BoundingVolumeOp::computeBoxExtents(const mesh::Mesh& mesh,
-                                          const std::array<Eigen::Vector3d, 3>& axes,
-                                          Eigen::Vector3d& center, Eigen::Vector3d& halfExtents) {
+                                         const std::array<Eigen::Vector3d, 3>& axes,
+                                         Eigen::Vector3d& center, Eigen::Vector3d& halfExtents) {
     Eigen::Vector3d bmin = Eigen::Vector3d::Constant(1e18);
     Eigen::Vector3d bmax = Eigen::Vector3d::Constant(-1e18);
     for (const auto& v : mesh.vertices) {
@@ -192,10 +141,10 @@ void BoundingVolumeOp::projectMeshOntoBoxFaces(const mesh::Mesh& mesh, BoundingB
     for (const auto& f : mesh.faces) {
         if (f.removed) continue;
         Eigen::Vector3d p[3] = {mesh.vertices[mesh.wedges[f.w[0]].vertex].pos,
-                                 mesh.vertices[mesh.wedges[f.w[1]].vertex].pos,
-                                 mesh.vertices[mesh.wedges[f.w[2]].vertex].pos};
+                                mesh.vertices[mesh.wedges[f.w[1]].vertex].pos,
+                                mesh.vertices[mesh.wedges[f.w[2]].vertex].pos};
         Eigen::Vector2d texUV[3] = {mesh.wedges[f.w[0]].uv, mesh.wedges[f.w[1]].uv,
-                                     mesh.wedges[f.w[2]].uv};
+                                    mesh.wedges[f.w[2]].uv};
         Eigen::Vector3d normal = (p[1] - p[0]).cross(p[2] - p[0]);
         if (normal.squaredNorm() == 0.0) continue;
         normal.normalize();
@@ -273,7 +222,7 @@ void BoundingVolumeOp::projectMeshOntoBoxFaces(const mesh::Mesh& mesh, BoundingB
             // a synthetic unit-square UV (no source triangle to inherit UVs from),
             // so the box stays closed.
             patch.vertices = {Eigen::Vector2d(-hu, -hv), Eigen::Vector2d(hu, -hv),
-                               Eigen::Vector2d(hu, hv), Eigen::Vector2d(-hu, hv)};
+                              Eigen::Vector2d(hu, hv), Eigen::Vector2d(-hu, hv)};
             patch.uvs = {Eigen::Vector2d(0, 0), Eigen::Vector2d(1, 0), Eigen::Vector2d(1, 1),
                          Eigen::Vector2d(0, 1)};
             if (kFaceSign[face] > 0) {
@@ -300,7 +249,6 @@ void BoundingVolumeOp::flattenBoxFaces(const BoundingBox& box, mesh::Mesh& mesh)
     mesh.vertices.clear();
     mesh.wedges.clear();
     mesh.faces.clear();
-    MeshWelder welder(mesh);
     for (int face = 0; face < 6; face++) {
         int axis = kFaceAxis[face];
         int u = (axis + 1) % 3;
@@ -313,8 +261,17 @@ void BoundingVolumeOp::flattenBoxFaces(const BoundingBox& box, mesh::Mesh& mesh)
         for (size_t i = 0; i < patch.vertices.size(); i++) {
             const Eigen::Vector2d& local = patch.vertices[i];
             Eigen::Vector3d pos = faceOrigin + local.x() * box.axes[u] + local.y() * box.axes[v];
-            int vertexIdx = welder.addVertex(pos);
-            wedgeOf[i] = welder.addWedge(vertexIdx, patch.uvs[i]);
+
+            mesh::Vertex vertex;
+            vertex.pos = pos;
+            int vertexIdx = (int)mesh.vertices.size();
+            mesh.vertices.push_back(vertex);
+
+            mesh::Wedge wedge;
+            wedge.vertex = vertexIdx;
+            wedge.uv = patch.uvs[i];
+            wedgeOf[i] = (int)mesh.wedges.size();
+            mesh.wedges.push_back(wedge);
         }
         for (const BoundingBoxTriangle& tri : patch.triangles) {
             mesh::Face face3;
