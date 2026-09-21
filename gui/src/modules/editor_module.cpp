@@ -331,9 +331,9 @@ void EditorModule::onMeshLoaded(mesh::Mesh *original, mesh::Mesh *simplified) {
 
     this->originalFaceCount = this->originalMesh_->faceCount();
 
-    this->glWidgetOriginal->setMesh(this->originalMesh_);
-    this->glWidgetSimplified->setMesh(this->simplifiedMesh_);
-    this->glWidgetOverlay->setMeshes(this->originalMesh_, this->simplifiedMesh_);
+    this->glWidgetOriginal->setMesh(this->originalMesh_, this->originalMesh_);
+    this->glWidgetSimplified->setMesh(this->simplifiedMesh_, this->originalMesh_);
+    this->glWidgetOverlay->setMeshes(this->originalMesh_, this->simplifiedMesh_, this->originalMesh_);
 
     bool hasTexture = !this->originalMesh_->textureData.empty();
     this->texturedCheck->setEnabled(hasTexture);
@@ -350,8 +350,8 @@ void EditorModule::onMeshLoaded(mesh::Mesh *original, mesh::Mesh *simplified) {
 }
 
 void EditorModule::onMeshUpdated() {
-    this->glWidgetSimplified->setMesh(this->simplifiedMesh_);
-    this->glWidgetOverlay->setMeshes(this->originalMesh_, this->simplifiedMesh_);
+    this->glWidgetSimplified->setMesh(this->simplifiedMesh_, this->originalMesh_);
+    this->glWidgetOverlay->setMeshes(this->originalMesh_, this->simplifiedMesh_, this->originalMesh_);
 }
 
 bool EditorModule::saveSimplified(const QString &path) {

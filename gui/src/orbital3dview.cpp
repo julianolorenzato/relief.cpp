@@ -179,17 +179,19 @@ void Orbital3DView::setMode(RenderMode mode) {
     update();
 }
 
-void Orbital3DView::setMesh(const Mesh* mesh) {
+void Orbital3DView::setMesh(const Mesh* mesh, const Mesh* normalizationSource) {
     primaryMesh_       = mesh;
+    normalizationMesh_ = normalizationSource;
     primaryMeshDirty_  = true;
     updateStatsLabel();
     update();
     resetCamera();
 }
 
-void Orbital3DView::setMeshes(const Mesh* primary, const Mesh* secondary) {
+void Orbital3DView::setMeshes(const Mesh* primary, const Mesh* secondary, const Mesh* normalizationSource) {
     primaryMesh_         = primary;
     secondaryMesh_       = secondary;
+    normalizationMesh_   = normalizationSource;
     primaryMeshDirty_    = true;
     secondaryMeshDirty_  = true;
     updateStatsLabel();
@@ -536,10 +538,13 @@ void Orbital3DView::createShaders() {
 void Orbital3DView::buildPrimaryBuffers() {
     if (!primaryMesh_ || primaryMesh_->vertices.empty()) return;
 
-    // Compute bounding box for the model matrix normalization
+    // Compute bounding box for the model matrix normalization, from
+    // normalizationMesh_ when set so linked viewports share one scale.
+    const Mesh* normMesh = normalizationMesh_ ? normalizationMesh_ : primaryMesh_;
+    if (normMesh->vertices.empty()) normMesh = primaryMesh_;
     Eigen::Vector3d bmin( 1e18,  1e18,  1e18);
     Eigen::Vector3d bmax(-1e18, -1e18, -1e18);
-    for (const auto& v : primaryMesh_->vertices) {
+    for (const auto& v : normMesh->vertices) {
         if (v.removed) continue;
         bmin = bmin.cwiseMin(v.pos);
         bmax = bmax.cwiseMax(v.pos);

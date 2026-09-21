@@ -55,10 +55,18 @@ public:
     void setTitle(const QString &title);
 
     /// Sets the mesh for single-mesh modes (Solid, Textured).
-    void setMesh(const mesh::Mesh *mesh);
+    /// @param normalizationSource Mesh whose bounding sphere determines
+    ///        meshCenter_/meshNormScale_ instead of `mesh`'s own, so that
+    ///        multiple linked viewports stay at the same visual zoom even
+    ///        when their meshes' bounding volumes diverge (e.g. after an
+    ///        op that replaces one with a differently-sized bounding
+    ///        volume). Defaults to `mesh` itself when null.
+    void setMesh(const mesh::Mesh *mesh, const mesh::Mesh *normalizationSource = nullptr);
 
     /// Sets both meshes for Overlay mode (primary = blue, secondary = orange).
-    void setMeshes(const mesh::Mesh *primary, const mesh::Mesh *secondary);
+    /// @param normalizationSource See setMesh(); defaults to `primary` when null.
+    void setMeshes(const mesh::Mesh *primary, const mesh::Mesh *secondary,
+                    const mesh::Mesh *normalizationSource = nullptr);
 
     /// Resets the orbit camera to its default position.
     void resetCamera();
@@ -167,6 +175,9 @@ private:
     // Mesh pointers (not owned)
     const mesh::Mesh *primaryMesh_ = nullptr;
     const mesh::Mesh *secondaryMesh_ = nullptr;
+    /// Mesh whose bounding sphere drives meshCenter_/meshNormScale_; falls
+    /// back to primaryMesh_ when null. See setMesh()'s normalizationSource.
+    const mesh::Mesh *normalizationMesh_ = nullptr;
 
     // Deferred upload flags — all GL work happens at the start of paintGL()
     bool primaryMeshDirty_ = false;

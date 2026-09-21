@@ -65,8 +65,9 @@ private slots:
     /// Runs op::inflation::InflateOp with the current offset field's value on the
     /// simplified mesh.
     void onApplyInflate();
-    /// Runs op::bvol::BoundingVolumeOp with the currently selected
-    /// volume type (AABB/OBB) on the simplified mesh, replacing it with a box.
+    /// Runs op::bvol::BoundingVolumeOp with the currently selected volume
+    /// type (AABB/OBB) on the simplified mesh, replacing it with the
+    /// corresponding bounding volume.
     void onApplyBoundingVolume();
 
 private:

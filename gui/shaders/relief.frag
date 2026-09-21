@@ -268,6 +268,14 @@ void main() {
         // keeping the mip-marching step dynamics independent of the depth slider.
         vec3 tangentDir = vec3(-viewTS.xy / max(abs(viewTS.z), 1e-4), -1.0);
         finalUV = ReliefMapping(tangentDir, TexCoord, leapCounter, stepsTaken, totalRotation);
+
+        // The ray can wander outside the texture's [0,1] bounds (e.g. an
+        // island leap that never fires near a UV-atlas seam, or a mesh
+        // border). GL_REPEAT would otherwise silently wrap this into an
+        // unrelated, wrong part of the atlas, so discard instead of showing
+        // incorrect texture data.
+        if(any(lessThan(finalUV, vec2(0.0))) || any(greaterThan(finalUV, vec2(1.0))))
+            discard;
     }
 
     if(DebugView == 1) {
