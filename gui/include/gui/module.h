@@ -18,10 +18,17 @@ class Module : public QWidget {
 public:
     explicit Module(GlobalContext* context, QWidget* parent = nullptr);
 
-    /// Builds this module's UI. Called once, right after construction, by
-    /// createModule() below — not from Module's own constructor, since a
-    /// virtual call there can't dispatch to the subclass override yet.
-    virtual void buildUI() = 0;
+    /**
+     * @brief Assembles the standard module layout: a splitter with
+     *        buildContent() on the left and buildControls() wrapped in a
+     *        scroll area on the right. Called once, right after
+     *        construction, by createModule() below — not from Module's own
+     *        constructor, since a virtual call there can't dispatch to the
+     *        subclass overrides yet. Not virtual — derived modules
+     *        customize the layout via buildContent()/buildControls()
+     *        instead of overriding this.
+     */
+    void buildUI();
 
 signals:
     void statusMessage(const QString& msg);
@@ -46,6 +53,25 @@ public slots:
     virtual void onMeshUpdated() {}
 
 protected:
+    /**
+     * @brief Builds this module's primary content widget (viewports,
+     *        previews, etc.), placed in the splitter's left pane.
+     * @return A newly constructed widget; ownership passes to the caller,
+     *         which reparents it into the splitter. Must not be null.
+     */
+    virtual QWidget* buildContent() = 0;
+
+    /**
+     * @brief Builds this module's controls pane content: just the inner
+     *        widget (its own layout with group boxes etc., typically
+     *        ending in addStretch()). buildUI() wraps the returned widget
+     *        in the standard QScrollArea — do not create a QScrollArea
+     *        here.
+     * @return A newly constructed widget; ownership passes to the caller,
+     *         which reparents it into the scroll area. Must not be null.
+     */
+    virtual QWidget* buildControls() = 0;
+
     // Non-owned mesh pointers, kept in sync with GlobalContext by onMeshLoaded().
     mesh::Mesh* originalMesh_   = nullptr;
     mesh::Mesh* simplifiedMesh_ = nullptr;

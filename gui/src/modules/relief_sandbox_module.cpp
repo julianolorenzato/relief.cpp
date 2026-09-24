@@ -16,10 +16,8 @@
 #include <QMessageBox>
 #include <QPainter>
 #include <QPushButton>
-#include <QScrollArea>
 #include <QSlider>
 #include <QSpinBox>
-#include <QSplitter>
 #include <QStackedWidget>
 #include <QVBoxLayout>
 #include <algorithm>
@@ -95,20 +93,13 @@ void makeLightSliderRow(QVBoxLayout* layout, const char* label, int minHundredth
 
 }  // namespace
 
-void ReliefSandboxModule::buildUI() {
-    QHBoxLayout* outerLayout = new QHBoxLayout(this);
-    outerLayout->setContentsMargins(0, 0, 0, 0);
-
-    // Root container, horizontally divides the screen in two parts.
-    QSplitter* splitter = new QSplitter(Qt::Horizontal, this);
-    outerLayout->addWidget(splitter);
-
-    // Viewport widget (left)
+QWidget* ReliefSandboxModule::buildContent() {
+    // Viewport widget
     this->reliefView = new ReliefView();
     connect(this->reliefView, &ReliefView::pixelPicked, this,
             &ReliefSandboxModule::onPixelPicked);
 
-    // Alternate view (left), swapped in for reliefView via the "Show Texture
+    // Alternate view, swapped in for reliefView via the "Show Texture
     // Inspector" toggle.
     this->textureInspector = new TextureInspectorWidget(
         &this->colorMap, &this->reliefMap, &this->normalMap, &this->offsetMap);
@@ -117,12 +108,7 @@ void ReliefSandboxModule::buildUI() {
     this->viewStack->addWidget(this->reliefView);
     this->viewStack->addWidget(this->textureInspector);
 
-    // Controls widget (right)
-    QWidget* controls = buildControls();
-
-    // Add the two parts to the module
-    splitter->addWidget(this->viewStack);
-    splitter->addWidget(controls);
+    return this->viewStack;
 }
 
 MeshControls::MeshControls(QWidget* outerControls, ReliefSandboxModule* self) {
@@ -329,14 +315,7 @@ QWidget* ReliefSandboxModule::buildControls() {
 
     layout->addStretch();
 
-    QScrollArea* scrollArea = new QScrollArea();
-    scrollArea->setWidget(controls);
-    scrollArea->setWidgetResizable(true);
-    scrollArea->setMinimumWidth(220);
-    scrollArea->setMaximumWidth(360);
-    scrollArea->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
-
-    return scrollArea;
+    return controls;
 }
 
 // ------- Slots --------

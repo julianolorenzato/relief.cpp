@@ -7,25 +7,17 @@
 #include <QVBoxLayout>
 #include <QHBoxLayout>
 #include <QGroupBox>
-#include <QScrollArea>
-#include <QSplitter>
 #include <QLabel>
 #include <QSlider>
 #include <functional>
 
 using namespace mesh;
 
-// ─── buildUI ─────────────────────────────────────────────────────────────────
+// ─── buildContent / buildControls ──────────────────────────────────────────
 
-void ReliefModule::buildUI()
+QWidget* ReliefModule::buildContent()
 {
-    QHBoxLayout* outerLayout = new QHBoxLayout(this);
-    outerLayout->setContentsMargins(0, 0, 0, 0);
-
-    QSplitter* splitter = new QSplitter(Qt::Horizontal, this);
-    outerLayout->addWidget(splitter);
-
-    // ── Left: 3 Orbital3DViews side by side ───────────────────────────────────
+    // ── 3 Orbital3DViews side by side ─────────────────────────────────────
     QWidget* viewportsWidget = new QWidget();
     QHBoxLayout* viewportsLayout = new QHBoxLayout(viewportsWidget);
     viewportsLayout->setContentsMargins(0, 0, 0, 0);
@@ -49,10 +41,12 @@ void ReliefModule::buildUI()
     connect(reliefOriginalWidget_,&Orbital3DView::cameraChanged, reliefWidget_,         &ReliefView::syncCamera);
     connect(reliefOriginalWidget_,&Orbital3DView::cameraChanged, reliefCompareWidget_,  &Orbital3DView::syncCamera);
 
-    splitter->addWidget(viewportsWidget);
+    return viewportsWidget;
+}
 
-    // ── Right: controls in a QScrollArea ─────────────────────────────────────
-    // Called after viewports are set up, so reliefWidget_/Compare_/Original_ are valid.
+QWidget* ReliefModule::buildControls()
+{
+    // Called after buildContent(), so reliefWidget_/Compare_/Original_ are valid.
     QGroupBox* ctrlGroup = new QGroupBox("Relief Mapping Parameters");
     QVBoxLayout* ctrlLayout = new QVBoxLayout(ctrlGroup);
 
@@ -139,14 +133,7 @@ void ReliefModule::buildUI()
     buildLightingGroup(controlsContainer);
     containerLayout->addStretch();
 
-    QScrollArea* scrollArea = new QScrollArea();
-    scrollArea->setWidget(controlsContainer);
-    scrollArea->setWidgetResizable(true);
-    scrollArea->setMinimumWidth(220);
-    scrollArea->setMaximumWidth(360);
-    scrollArea->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
-
-    splitter->addWidget(scrollArea);
+    return controlsContainer;
 }
 
 // ─── buildLightingGroup ────────────────────────────────────────────────────────

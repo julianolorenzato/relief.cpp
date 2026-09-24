@@ -48,7 +48,8 @@ class NormalMapModule : public Module {
     /// slope into one-texel lines.
     static constexpr float kSmoothing = 2.0f;
 
-    void buildUI() override;
+    QWidget *buildContent() override;
+    QWidget *buildControls() override;
 
     /** Redraws the generated-normal-map panel from `normalMap`. */
     void updatePreview();

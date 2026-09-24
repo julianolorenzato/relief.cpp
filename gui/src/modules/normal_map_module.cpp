@@ -11,8 +11,6 @@
 #include <QHBoxLayout>
 #include <QMessageBox>
 #include <QPixmap>
-#include <QScrollArea>
-#include <QSplitter>
 #include <QVBoxLayout>
 #include <algorithm>
 
@@ -42,16 +40,10 @@ static QImage mipLevelToQImage(const std::vector<float> &data, int w, int h,
     return img;
 }
 
-// ─── buildUI ─────────────────────────────────────────────────────────────────
+// ─── buildContent / buildControls ──────────────────────────────────────────
 
-void NormalMapModule::buildUI() {
-    QHBoxLayout *outerLayout = new QHBoxLayout(this);
-    outerLayout->setContentsMargins(0, 0, 0, 0);
-
-    QSplitter *splitter = new QSplitter(Qt::Horizontal, this);
-    outerLayout->addWidget(splitter);
-
-    // ── Left: source + result preview panels ─────────────────────────────
+QWidget *NormalMapModule::buildContent() {
+    // ── Source + result preview panels ────────────────────────────────────
     QWidget *panelsWidget = new QWidget();
     QHBoxLayout *panelsLayout = new QHBoxLayout(panelsWidget);
     panelsLayout->setSpacing(12);
@@ -117,9 +109,10 @@ void NormalMapModule::buildUI() {
     panelsLayout->addWidget(outPanel);
 
     panelsWidget->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
-    splitter->addWidget(panelsWidget);
+    return panelsWidget;
+}
 
-    // ── Right: controls in a QScrollArea ─────────────────────────────────
+QWidget *NormalMapModule::buildControls() {
     QWidget *controlsWidget = new QWidget();
     QVBoxLayout *mainLayout = new QVBoxLayout(controlsWidget);
 
@@ -161,14 +154,7 @@ void NormalMapModule::buildUI() {
     mainLayout->addWidget(ctrlGroup);
     mainLayout->addStretch();
 
-    QScrollArea *scrollArea = new QScrollArea();
-    scrollArea->setWidget(controlsWidget);
-    scrollArea->setWidgetResizable(true);
-    scrollArea->setMinimumWidth(220);
-    scrollArea->setMaximumWidth(360);
-    scrollArea->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
-
-    splitter->addWidget(scrollArea);
+    return controlsWidget;
 }
 
 // ─── Private slots ───────────────────────────────────────────────────────────

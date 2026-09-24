@@ -71,7 +71,8 @@ private slots:
     void onApplyBoundingVolume();
 
 private:
-    void buildUI() override;
+    QWidget* buildContent() override;
+    QWidget* buildControls() override;
 
     // ── Viewports ─────────────────────────────────────────────────────────────
     Orbital3DView* glWidgetOriginal   = nullptr;

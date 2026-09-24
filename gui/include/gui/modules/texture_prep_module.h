@@ -66,7 +66,8 @@ private slots:
     void onTpSave(int idx);
 
 private:
-    void buildUI() override;
+    QWidget* buildContent() override;
+    QWidget* buildControls() override;
     /// Refreshes the three input thumbnails (color/depth/normal) from the mesh and heightmap result.
     void updateThumbnails();
     /// Enables/disables the Generate button based on whether the required inputs are present.

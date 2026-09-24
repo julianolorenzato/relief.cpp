@@ -11,8 +11,6 @@
 #include <QLabel>
 #include <QMessageBox>
 #include <QPushButton>
-#include <QScrollArea>
-#include <QSplitter>
 #include <QVBoxLayout>
 #include <algorithm>
 #include <cmath>
@@ -21,16 +19,10 @@
 
 #include "relief/mesh/edgesel.h"
 
-// ─── buildUI ─────────────────────────────────────────────────────────────────
+// ─── buildContent / buildControls ──────────────────────────────────────────
 
-void EditorModule::buildUI() {
-    QHBoxLayout *outerLayout = new QHBoxLayout(this);
-    outerLayout->setContentsMargins(0, 0, 0, 0);
-
-    QSplitter *splitter = new QSplitter(Qt::Horizontal, this);
-    outerLayout->addWidget(splitter);
-
-    // ── Left: viewport area (3 Orbital3DViews side by side) ──────────────────
+QWidget* EditorModule::buildContent() {
+    // ── Viewport area (3 Orbital3DViews side by side) ────────────────────────
     QWidget *viewportArea = new QWidget();
     QHBoxLayout *viewportsLayout = new QHBoxLayout(viewportArea);
     viewportsLayout->setContentsMargins(0, 0, 0, 0);
@@ -72,9 +64,10 @@ void EditorModule::buildUI() {
     connect(this->glWidgetOverlay, &Orbital3DView::cameraChanged, this->glWidgetSimplified,
             &Orbital3DView::syncCamera);
 
-    splitter->addWidget(viewportArea);
+    return viewportArea;
+}
 
-    // ── Right: controls in a QScrollArea ─────────────────────────────────────
+QWidget* EditorModule::buildControls() {
     QWidget *controlsWidget = new QWidget();
     QVBoxLayout *layout = new QVBoxLayout(controlsWidget);
     layout->setContentsMargins(4, 4, 4, 4);
@@ -314,14 +307,7 @@ void EditorModule::buildUI() {
 
     layout->addStretch();
 
-    QScrollArea *scrollArea = new QScrollArea();
-    scrollArea->setWidget(controlsWidget);
-    scrollArea->setWidgetResizable(true);
-    scrollArea->setMinimumWidth(220);
-    scrollArea->setMaximumWidth(360);
-    scrollArea->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
-
-    splitter->addWidget(scrollArea);
+    return controlsWidget;
 }
 
 // ─── Public methods ───────────────────────────────────────────────────────────

@@ -5,41 +5,74 @@
  */
 #pragma once
 #include <QWidget>
-#include <QQueue>
+#include <QComboBox>
+#include <QListWidget>
 #include <QPushButton>
-#include <utility>
+#include <QQueue>
+#include <memory>
 #include "relief/mesh.h"
+#include "relief/op.h"
+#include "relief/op/bvol.h"
 #include "gui/module.h"
 #include "gui/orbital3dview.h"
 #include "gui/relief_view.h"
 
-/// @brief Placeholder for a bounding-volume processing step. Parameters and
-///        behavior are decided later; for now it only exists so BoundingModule's
-///        queue has a concrete pair type to hold.
-struct BoundingStep {};
+/// @brief One entry in BoundingModule's pipeline queue: the Op used to reach
+///        this entry's mesh from the previous entry's (null for the seed
+///        entry created by onMeshLoaded(), which just snapshots the freshly
+///        loaded mesh), the resulting mesh snapshot, and a display label.
+///        Holds shared_ptr rather than unique_ptr so BoundingStep stays
+///        copyable, as required by QQueue (a QList) for its element type.
+struct BoundingStep {
+    std::shared_ptr<op::Op> op;        ///< Null for the seed entry.
+    std::shared_ptr<mesh::Mesh> mesh;  ///< Mesh after applying `op`.
+    QString label;                     ///< Text shown in the queue list.
+};
 
 /// @brief Widget hosting an orbital 3D view and a relief view side by side, plus
-///        an (currently empty) controls pane. Independent of sibling modules: it
-///        does not read data from any other module, only from GlobalContext via
-///        the inherited Module mesh-loaded wiring.
+///        controls to list/add/pop bounding-volume pipeline steps. Independent
+///        of sibling modules: it does not read data from any other module,
+///        only from GlobalContext via the inherited Module mesh-loaded wiring.
 class BoundingModule : public Module {
     Q_OBJECT
 
 public:
     using Module::Module;
 
+public slots:
+    /// Called when a new model is loaded: resets the pipeline queue and seeds
+    /// it with the freshly loaded simplified mesh (no Op applied yet).
+    void onMeshLoaded(mesh::Mesh* original, mesh::Mesh* simplified) override;
+
+private slots:
+    /// Builds a BoundingVolumeOp from the selected type, applies it to a copy
+    /// of the mesh currently at the back of the queue, and enqueues the
+    /// result.
+    void onAddStep();
+    /// Pops the step at the back of the queue, as long as more than one
+    /// remains (the seed step from onMeshLoaded() is never popped).
+    void onPopStep();
+
 private:
-    void buildUI() override;
+    QWidget* buildContent() override;
+    QWidget* buildControls() override;
+
+    /// Repopulates the queue list widget and points both viewports at the
+    /// mesh from the last (most recently enqueued) queue entry.
+    void refreshQueue();
 
     // ── Viewports ─────────────────────────────────────────────────────────────
     Orbital3DView* boundingOrbitalWidget_ = nullptr;
     ReliefView*    boundingReliefWidget_  = nullptr;
 
     // ── Controls ──────────────────────────────────────────────────────────────
-    QPushButton* boundingPlaceholderBtn_ = nullptr;
+    QListWidget* boundingQueueList_       = nullptr;
+    QComboBox*   boundingVolumeTypeCombo_ = nullptr;
+    QPushButton* boundingAddStepBtn_      = nullptr;
+    QPushButton* boundingPopStepBtn_      = nullptr;
 
     // ── Pipeline queue ────────────────────────────────────────────────────────
-    /// Queue of mesh/step pairs awaiting processing. Not yet consumed anywhere;
-    /// filled in once BoundingStep grows real parameters and processing logic.
-    QQueue<std::pair<mesh::Mesh*, BoundingStep>> boundingQueue_;
+    /// Steps in application order; boundingQueue_.last().mesh is the current
+    /// state shown in the viewports.
+    QQueue<BoundingStep> boundingQueue_;
 };

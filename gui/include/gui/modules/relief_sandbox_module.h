@@ -101,9 +101,8 @@ class ReliefSandboxModule : public Module {
     void onPixelPicked(QPointF uv, bool hit);
 
    private:
-    void buildUI() override;
-
-    QWidget *buildControls();
+    QWidget *buildContent() override;
+    QWidget *buildControls() override;
 
     /**
      * Builds the "Relief Mapping Parameters" group box and appends it to

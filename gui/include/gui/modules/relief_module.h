@@ -36,7 +36,8 @@ public slots:
     void onTexturesReady(TexturePrepModule* source);
 
 private:
-    void buildUI() override;
+    QWidget* buildContent() override;
+    QWidget* buildControls() override;
     /// Flushes any pending mesh/texture data once the tab becomes visible — the GL
     /// widgets below can only safely receive data once they have a valid context,
     /// which Qt only guarantees once they're actually shown.

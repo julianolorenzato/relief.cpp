@@ -8,8 +8,6 @@
 #include <QVBoxLayout>
 #include <QHBoxLayout>
 #include <QGroupBox>
-#include <QScrollArea>
-#include <QSplitter>
 #include <QFileDialog>
 #include <QMessageBox>
 #include <QPixmap>
@@ -32,17 +30,11 @@ static QImage rgbaTextureToQImage(const std::vector<uint8_t>& data, int w, int h
     return img.copy(); // detach from the mesh's buffer
 }
 
-// ─── buildUI ─────────────────────────────────────────────────────────────────
+// ─── buildContent / buildControls ──────────────────────────────────────────
 
-void TexturePrepModule::buildUI()
+QWidget* TexturePrepModule::buildContent()
 {
-    QHBoxLayout* outerLayout = new QHBoxLayout(this);
-    outerLayout->setContentsMargins(0, 0, 0, 0);
-
-    QSplitter* splitter = new QSplitter(Qt::Horizontal, this);
-    outerLayout->addWidget(splitter);
-
-    // ── Left: one preview panel at a time, switched via a dropdown ────────────
+    // ── One preview panel at a time, switched via a dropdown ─────────────────
     static const char* previewTitles[4] = {
         "Color Map",
         "Relief Map  (R=min G=max(mip-bound) B=offset mask A=—)",
@@ -134,9 +126,11 @@ void TexturePrepModule::buildUI()
     }
 
     panelsWidget->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
-    splitter->addWidget(panelsWidget);
+    return panelsWidget;
+}
 
-    // ── Right: controls in a QScrollArea ─────────────────────────────────────
+QWidget* TexturePrepModule::buildControls()
+{
     QWidget* controlsWidget = new QWidget();
     QVBoxLayout* mainLayout = new QVBoxLayout(controlsWidget);
 
@@ -209,14 +203,7 @@ void TexturePrepModule::buildUI()
     mainLayout->addWidget(ctrlGroup);
     mainLayout->addStretch();
 
-    QScrollArea* scrollArea = new QScrollArea();
-    scrollArea->setWidget(controlsWidget);
-    scrollArea->setWidgetResizable(true);
-    scrollArea->setMinimumWidth(220);
-    scrollArea->setMaximumWidth(360);
-    scrollArea->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
-
-    splitter->addWidget(scrollArea);
+    return controlsWidget;
 }
 
 // ─── Public slots ─────────────────────────────────────────────────────────────

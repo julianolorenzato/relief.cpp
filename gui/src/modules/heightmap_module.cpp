@@ -36,24 +36,16 @@ public slots:
 #include <QVBoxLayout>
 #include <QHBoxLayout>
 #include <QGroupBox>
-#include <QScrollArea>
-#include <QSplitter>
 #include <QFileDialog>
 #include <QMessageBox>
 #include <QImage>
 #include <QPixmap>
 
-// ─── buildUI ─────────────────────────────────────────────────────────────────
+// ─── buildContent / buildControls ──────────────────────────────────────────
 
-void HeightmapModule::buildUI()
+QWidget* HeightmapModule::buildContent()
 {
-    QHBoxLayout* outerLayout = new QHBoxLayout(this);
-    outerLayout->setContentsMargins(0, 0, 0, 0);
-
-    QSplitter* splitter = new QSplitter(Qt::Horizontal, this);
-    outerLayout->addWidget(splitter);
-
-    // ── Left: preview QGroupBox ───────────────────────────────────────────────
+    // ── Preview QGroupBox ─────────────────────────────────────────────────
     QGroupBox* panel = new QGroupBox("UV Correspondence");
     panel->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
     QVBoxLayout* pLayout = new QVBoxLayout(panel);
@@ -76,9 +68,11 @@ void HeightmapModule::buildUI()
     connect(hmSaveBtn_, &QPushButton::clicked, this, &HeightmapModule::onSaveHeightmap);
     pLayout->addWidget(hmSaveBtn_);
 
-    splitter->addWidget(panel);
+    return panel;
+}
 
-    // ── Right: controls in a QScrollArea ─────────────────────────────────────
+QWidget* HeightmapModule::buildControls()
+{
     QWidget* controlsWidget = new QWidget();
     QVBoxLayout* mainLayout = new QVBoxLayout(controlsWidget);
 
@@ -121,14 +115,7 @@ void HeightmapModule::buildUI()
     mainLayout->addWidget(ctrlGroup);
     mainLayout->addStretch();
 
-    QScrollArea* scrollArea = new QScrollArea();
-    scrollArea->setWidget(controlsWidget);
-    scrollArea->setWidgetResizable(true);
-    scrollArea->setMinimumWidth(220);
-    scrollArea->setMaximumWidth(360);
-    scrollArea->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
-
-    splitter->addWidget(scrollArea);
+    return controlsWidget;
 }
 
 // ─── Public slots ─────────────────────────────────────────────────────────────

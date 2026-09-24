@@ -29,7 +29,8 @@ private slots:
     void onBakeDone();
 
 private:
-    void buildUI() override;
+    QWidget* buildContent() override;
+    QWidget* buildControls() override;
     void launchBake();
     void displayHeightmap(const heightmap::HeightmapResult& r);
     void setBakeButtonsEnabled(bool enabled);
