@@ -37,6 +37,7 @@ void MainWindow::setupUI() {
         {"Relief", createModule<ReliefModule>(this->globalContext, this)},
         {"Relief Sandbox", createModule<ReliefSandboxModule>(this->globalContext, this)},
         {"Normal Map", createModule<NormalMapModule>(this->globalContext, this)},
+        {"Bounding", createModule<BoundingModule>(this->globalContext, this)},
     };
 
     auto *heightmap = static_cast<HeightmapModule *>(this->modules[1].second);
