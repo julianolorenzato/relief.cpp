@@ -7,19 +7,17 @@ namespace op::bboxproj {
 
 namespace {
 
-/// @return The world corner of `box` selected by `bits`, where bit `i` set
-///         picks `box.max[i]`, cleared picks `box.min[i]`.
-Eigen::Vector3d corner(const BBox& box, int bits) {
-    Eigen::Vector3d c;
-    for (int i = 0; i < 3; i++) c[i] = (bits & (1 << i)) ? box.max[i] : box.min[i];
-    return c;
-}
+/// Axis index (0=X, 1=Y, 2=Z) of BBox::faces[i].
+constexpr int kFaceAxis[6] = {0, 0, 1, 1, 2, 2};
+
+/// Outward sign (-1 or +1 along kFaceAxis[i]) of BBox::faces[i].
+constexpr double kFaceSign[6] = {-1, +1, -1, +1, -1, +1};
 
 }  // namespace
 
 void BBoxProjectionOp::apply(mesh::Mesh& mesh) const {
-    bool any = false;
     BBox box;
+    bool any = false;
     for (const auto& v : mesh.vertices) {
         if (v.removed) continue;
         box.min = box.min.cwiseMin(v.pos);
@@ -28,59 +26,71 @@ void BBoxProjectionOp::apply(mesh::Mesh& mesh) const {
     }
     if (!any) return;
 
+    Eigen::Vector3d center = 0.5 * (box.min + box.max);
+    Eigen::Vector3d halfExtents = 0.5 * (box.max - box.min);
+
+    // Each face gets a flat quad spanning its full rectangle, with a
+    // synthetic unit-square UV (no source geometry is projected onto it).
+    for (int face = 0; face < 6; face++) {
+        int axis = kFaceAxis[face];
+        int u = (axis + 1) % 3;
+        int v = (axis + 2) % 3;
+        double hu = halfExtents[u];
+        double hv = halfExtents[v];
+
+        BBoxFace& patch = box.faces[face];
+        patch.vertices = {Eigen::Vector2d(-hu, -hv), Eigen::Vector2d(hu, -hv),
+                           Eigen::Vector2d(hu, hv), Eigen::Vector2d(-hu, hv)};
+        patch.uvs = {Eigen::Vector2d(0, 0), Eigen::Vector2d(1, 0), Eigen::Vector2d(1, 1),
+                     Eigen::Vector2d(0, 1)};
+        if (kFaceSign[face] > 0) {
+            patch.triangles.push_back({{0, 1, 2}});
+            patch.triangles.push_back({{0, 2, 3}});
+        } else {
+            patch.triangles.push_back({{0, 2, 1}});
+            patch.triangles.push_back({{0, 3, 2}});
+        }
+    }
+
     mesh.vertices.clear();
     mesh.wedges.clear();
     mesh.faces.clear();
 
-    // 8 shared corner vertices, indexed by a 3-bit mask (bit i set -> max[i],
-    // cleared -> min[i]).
-    for (int bits = 0; bits < 8; bits++) {
-        mesh::Vertex vertex;
-        vertex.pos = corner(box, bits);
-        mesh.vertices.push_back(vertex);
-    }
-
-    static const Eigen::Vector2d kQuadUV[4] = {{0, 0}, {1, 0}, {1, 1}, {0, 1}};
-
-    // Each of the 6 faces gets its own 4 wedges (unwelded across faces) with
-    // a synthetic unit-square UV, matching the box-face convention used by
-    // op::bvol::BoundingVolumeOp for faces with no source geometry to
-    // project.
-    for (int axis = 0; axis < 3; axis++) {
+    // Each face's local 2D vertices/UVs/triangles are flattened back into
+    // 3D independently (no welding across faces), so the result is a
+    // disconnected triangle soup at box edges/corners.
+    for (int face = 0; face < 6; face++) {
+        int axis = kFaceAxis[face];
         int u = (axis + 1) % 3;
         int v = (axis + 2) % 3;
-        for (int sign = -1; sign <= 1; sign += 2) {
-            int axisBit = sign > 0 ? (1 << axis) : 0;
+        Eigen::Vector3d faceOrigin =
+            center + kFaceSign[face] * halfExtents[axis] * Eigen::Vector3d::Unit(axis);
+        Eigen::Vector3d axisU = Eigen::Vector3d::Unit(u);
+        Eigen::Vector3d axisV = Eigen::Vector3d::Unit(v);
 
-            int base = (int)mesh.wedges.size();
-            const int uvBits[4][2] = {{0, 0}, {1, 0}, {1, 1}, {0, 1}};
-            for (int i = 0; i < 4; i++) {
-                int bits = axisBit | (uvBits[i][0] << u) | (uvBits[i][1] << v);
+        const BBoxFace& patch = box.faces[face];
+        std::vector<int> wedgeOf(patch.vertices.size());
+        for (size_t i = 0; i < patch.vertices.size(); i++) {
+            const Eigen::Vector2d& local = patch.vertices[i];
+            Eigen::Vector3d pos = faceOrigin + local.x() * axisU + local.y() * axisV;
 
-                mesh::Wedge wedge;
-                wedge.vertex = bits;
-                wedge.uv = kQuadUV[i];
-                mesh.wedges.push_back(wedge);
-            }
+            mesh::Vertex vertex;
+            vertex.pos = pos;
+            int vertexIdx = (int)mesh.vertices.size();
+            mesh.vertices.push_back(vertex);
 
-            mesh::Face f0, f1;
-            if (sign > 0) {
-                f0.w[0] = base;
-                f0.w[1] = base + 1;
-                f0.w[2] = base + 2;
-                f1.w[0] = base;
-                f1.w[1] = base + 2;
-                f1.w[2] = base + 3;
-            } else {
-                f0.w[0] = base;
-                f0.w[1] = base + 2;
-                f0.w[2] = base + 1;
-                f1.w[0] = base;
-                f1.w[1] = base + 3;
-                f1.w[2] = base + 2;
-            }
-            mesh.faces.push_back(f0);
-            mesh.faces.push_back(f1);
+            mesh::Wedge wedge;
+            wedge.vertex = vertexIdx;
+            wedge.uv = patch.uvs[i];
+            wedgeOf[i] = (int)mesh.wedges.size();
+            mesh.wedges.push_back(wedge);
+        }
+        for (const BBoxTriangle& tri : patch.triangles) {
+            mesh::Face f;
+            f.w[0] = wedgeOf[tri.v[0]];
+            f.w[1] = wedgeOf[tri.v[1]];
+            f.w[2] = wedgeOf[tri.v[2]];
+            mesh.faces.push_back(f);
         }
     }
 
