@@ -5,6 +5,7 @@
  */
 #pragma once
 #include <QWidget>
+#include <QCheckBox>
 #include <QComboBox>
 #include <QListWidget>
 #include <QPushButton>
@@ -78,6 +79,12 @@ private:
     ReliefView*    boundingReliefWidget_  = nullptr;
 
     // ── Controls ──────────────────────────────────────────────────────────────
+    /// View-feature toggles applied to both viewports (wireframe/backface
+    /// cull) or Orbital3DView only (seam edges, which ReliefView has no
+    /// equivalent slot for).
+    QCheckBox*      boundingWireframeCheck_   = nullptr;
+    QCheckBox*      boundingCullFaceCheck_    = nullptr;
+    QCheckBox*      boundingSeamEdgesCheck_   = nullptr;
     QListWidget*    boundingQueueList_       = nullptr;
     /// Selects which Op kind onAddStep() builds; index matches the page of
     /// boundingParamsStack_ holding that operation's parameter controls.

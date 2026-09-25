@@ -5,6 +5,7 @@
  *        applying/undoing bounding-volume operations.
  */
 #include "gui/modules/bounding_module.h"
+#include <QCheckBox>
 #include <QFont>
 #include <QGroupBox>
 #include <QHBoxLayout>
@@ -52,6 +53,26 @@ QWidget* BoundingModule::buildControls()
     QVBoxLayout* containerLayout = new QVBoxLayout(controlsContainer);
     containerLayout->setContentsMargins(4, 4, 4, 4);
     containerLayout->setSpacing(8);
+
+    // ── View features ─────────────────────────────────────────────────────────
+    QHBoxLayout* viewRow = new QHBoxLayout();
+
+    boundingWireframeCheck_ = new QCheckBox("Wireframe");
+    connect(boundingWireframeCheck_, &QCheckBox::toggled, boundingOrbitalWidget_, &Orbital3DView::setWireframe);
+    connect(boundingWireframeCheck_, &QCheckBox::toggled, boundingReliefWidget_,  &ReliefView::setWireframe);
+    viewRow->addWidget(boundingWireframeCheck_);
+
+    boundingCullFaceCheck_ = new QCheckBox("Backface Cull");
+    boundingCullFaceCheck_->setChecked(true);
+    connect(boundingCullFaceCheck_, &QCheckBox::toggled, boundingOrbitalWidget_, &Orbital3DView::setCullFace);
+    connect(boundingCullFaceCheck_, &QCheckBox::toggled, boundingReliefWidget_,  &ReliefView::setCullFace);
+    viewRow->addWidget(boundingCullFaceCheck_);
+
+    boundingSeamEdgesCheck_ = new QCheckBox("Seam Edges");
+    connect(boundingSeamEdgesCheck_, &QCheckBox::toggled, boundingOrbitalWidget_, &Orbital3DView::setShowSeamEdges);
+    viewRow->addWidget(boundingSeamEdgesCheck_);
+
+    containerLayout->addLayout(viewRow);
 
     boundingQueueList_ = new QListWidget();
     containerLayout->addWidget(boundingQueueList_, 1);
