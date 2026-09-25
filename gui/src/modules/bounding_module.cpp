@@ -1,13 +1,26 @@
 /**
  * @file bounding_module.cpp
  * @brief BoundingModule implementation: builds the side-by-side orbital/relief
- *        preview content, and a controls pane for listing/adding/popping
- *        bounding-volume pipeline steps.
+ *        preview content, and a controls pane for listing pipeline steps and
+ *        applying/undoing bounding-volume operations.
  */
 #include "gui/modules/bounding_module.h"
+#include <QFont>
+#include <QGroupBox>
 #include <QHBoxLayout>
 #include <QLabel>
 #include <QVBoxLayout>
+
+namespace {
+
+/// Operations offered by boundingOpCombo_, in the same order as the
+/// corresponding pages of boundingParamsStack_.
+enum class BoundingOpKind {
+    BoundingVolume,
+    BBoxProjection,
+};
+
+}  // namespace
 
 // ─── buildContent / buildControls ──────────────────────────────────────────
 
@@ -34,33 +47,85 @@ QWidget* BoundingModule::buildContent()
 
 QWidget* BoundingModule::buildControls()
 {
-    // ── Step queue: list, type picker, add/pop buttons ────────────────────
+    // ── Step queue, operation picker/params, apply/undo buttons ───────────
     QWidget* controlsContainer = new QWidget();
     QVBoxLayout* containerLayout = new QVBoxLayout(controlsContainer);
-    containerLayout->setContentsMargins(0, 0, 0, 0);
+    containerLayout->setContentsMargins(4, 4, 4, 4);
+    containerLayout->setSpacing(8);
 
     boundingQueueList_ = new QListWidget();
-    containerLayout->addWidget(boundingQueueList_);
+    containerLayout->addWidget(boundingQueueList_, 1);
 
-    QHBoxLayout* typeRow = new QHBoxLayout();
-    typeRow->addWidget(new QLabel("Type:"));
+    // ── Operation ───────────────────────────────────────────────────────────
+    QGroupBox* opGroup = new QGroupBox("Operation");
+    QVBoxLayout* opLayout = new QVBoxLayout(opGroup);
+    opLayout->setSpacing(6);
+
+    boundingOpCombo_ = new QComboBox();
+    boundingOpCombo_->addItem("Bounding Volume", (int)BoundingOpKind::BoundingVolume);
+    boundingOpCombo_->addItem("BBox Projection", (int)BoundingOpKind::BBoxProjection);
+    opLayout->addWidget(boundingOpCombo_);
+
+    // One parameter page per boundingOpCombo_ entry, same order/index.
+    boundingParamsStack_ = new QStackedWidget();
+    boundingParamsStack_->addWidget(buildBoundingVolumeParams());
+    boundingParamsStack_->addWidget(buildBBoxProjectionParams());
+    opLayout->addWidget(boundingParamsStack_);
+    connect(boundingOpCombo_, QOverload<int>::of(&QComboBox::currentIndexChanged), boundingParamsStack_,
+            &QStackedWidget::setCurrentIndex);
+
+    containerLayout->addWidget(opGroup);
+
+    // ── Apply / Undo ────────────────────────────────────────────────────────
+    QHBoxLayout* btnRow = new QHBoxLayout();
+    btnRow->setSpacing(6);
+
+    boundingAddStepBtn_ = new QPushButton("Apply");
+    boundingAddStepBtn_->setMinimumHeight(40);
+    QFont applyFont = boundingAddStepBtn_->font();
+    applyFont.setBold(true);
+    boundingAddStepBtn_->setFont(applyFont);
+    connect(boundingAddStepBtn_, &QPushButton::clicked, this, &BoundingModule::onAddStep);
+    btnRow->addWidget(boundingAddStepBtn_, 1);
+
+    boundingPopStepBtn_ = new QPushButton("Undo");
+    boundingPopStepBtn_->setFixedWidth(56);
+    connect(boundingPopStepBtn_, &QPushButton::clicked, this, &BoundingModule::onPopStep);
+    btnRow->addWidget(boundingPopStepBtn_);
+
+    containerLayout->addLayout(btnRow);
+
+    return controlsContainer;
+}
+
+QWidget* BoundingModule::buildBoundingVolumeParams()
+{
+    QWidget* params = new QWidget();
+    QHBoxLayout* layout = new QHBoxLayout(params);
+    layout->setContentsMargins(0, 0, 0, 0);
+    layout->setSpacing(6);
+
+    layout->addWidget(new QLabel("Type:"));
     boundingVolumeTypeCombo_ = new QComboBox();
     boundingVolumeTypeCombo_->addItem("AABB", (int)op::bvol::BoundingVolumeType::AABB);
     boundingVolumeTypeCombo_->addItem("OBB",  (int)op::bvol::BoundingVolumeType::OBB);
-    typeRow->addWidget(boundingVolumeTypeCombo_, 1);
-    containerLayout->addLayout(typeRow);
+    layout->addWidget(boundingVolumeTypeCombo_, 1);
 
-    boundingAddStepBtn_ = new QPushButton("Add Step");
-    connect(boundingAddStepBtn_, &QPushButton::clicked, this, &BoundingModule::onAddStep);
-    containerLayout->addWidget(boundingAddStepBtn_);
+    return params;
+}
 
-    boundingPopStepBtn_ = new QPushButton("Pop Step");
-    connect(boundingPopStepBtn_, &QPushButton::clicked, this, &BoundingModule::onPopStep);
-    containerLayout->addWidget(boundingPopStepBtn_);
+QWidget* BoundingModule::buildBBoxProjectionParams()
+{
+    // BBoxProjectionOp takes no parameters.
+    QWidget* params = new QWidget();
+    QHBoxLayout* layout = new QHBoxLayout(params);
+    layout->setContentsMargins(0, 0, 0, 0);
 
-    containerLayout->addStretch();
+    QLabel* noParamsLabel = new QLabel("(no parameters)");
+    noParamsLabel->setEnabled(false);
+    layout->addWidget(noParamsLabel);
 
-    return controlsContainer;
+    return params;
 }
 
 // ─── Public slots ───────────────────────────────────────────────────────────
@@ -86,8 +151,22 @@ void BoundingModule::onAddStep()
     if (boundingQueue_.isEmpty())
         return;
 
-    auto type = (op::bvol::BoundingVolumeType)boundingVolumeTypeCombo_->currentData().toInt();
-    auto stepOp = std::make_shared<op::bvol::BoundingVolumeOp>(type);
+    auto opKind = (BoundingOpKind)boundingOpCombo_->currentData().toInt();
+
+    std::shared_ptr<op::Op> stepOp;
+    QString label;
+    switch (opKind) {
+        case BoundingOpKind::BoundingVolume: {
+            auto type = (op::bvol::BoundingVolumeType)boundingVolumeTypeCombo_->currentData().toInt();
+            stepOp = std::make_shared<op::bvol::BoundingVolumeOp>(type);
+            label = boundingVolumeTypeCombo_->currentText();
+            break;
+        }
+        case BoundingOpKind::BBoxProjection:
+            stepOp = std::make_shared<op::bboxproj::BBoxProjectionOp>();
+            label = boundingOpCombo_->currentText();
+            break;
+    }
 
     auto stepMesh = std::make_shared<mesh::Mesh>(*boundingQueue_.last().mesh);
     stepOp->apply(*stepMesh);
@@ -95,7 +174,7 @@ void BoundingModule::onAddStep()
     boundingQueue_.enqueue({
         stepOp,
         stepMesh,
-        boundingVolumeTypeCombo_->currentText(),
+        label,
     });
 
     refreshQueue();
