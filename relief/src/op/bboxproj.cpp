@@ -6,10 +6,10 @@
 namespace op::bboxproj {
 
 /// Axis index (0=X, 1=Y, 2=Z) of BBox::faces[i].
-constexpr int kFaceAxis[6] = {0, 0, 1, 1, 2, 2};
+constexpr int FACE_AXIS[6] = {0, 0, 1, 1, 2, 2};
 
-/// Outward sign (-1 or +1 along kFaceAxis[i]) of BBox::faces[i].
-constexpr double kFaceSign[6] = {-1, +1, -1, +1, -1, +1};
+/// Outward sign (-1 or +1 along FACE_AXIS[i]) of BBox::faces[i].
+constexpr double FACE_SIGN[6] = {-1, +1, -1, +1, -1, +1};
 
 void BBoxProjectionOp::apply(mesh::Mesh& mesh) const {
     BBox box;
@@ -37,8 +37,8 @@ void BBoxProjectionOp::apply(mesh::Mesh& mesh) const {
         if (normal.isZero()) continue;
 
         for (int face = 0; face < 6; face++) {
-            int axis = kFaceAxis[face];
-            Eigen::Vector3d outward = kFaceSign[face] * Eigen::Vector3d::Unit(axis);
+            int axis = FACE_AXIS[face];
+            Eigen::Vector3d outward = FACE_SIGN[face] * Eigen::Vector3d::Unit(axis);
             if (normal.dot(outward) <= 0.0) continue;
 
             int u = (axis + 1) % 3;
@@ -71,7 +71,7 @@ void BBoxProjectionOp::apply(mesh::Mesh& mesh) const {
         BBoxFace& patch = box.faces[face];
         if (!patch.faces.empty()) continue;
 
-        int axis = kFaceAxis[face];
+        int axis = FACE_AXIS[face];
         int u = (axis + 1) % 3;
         int v = (axis + 2) % 3;
         double hu = halfExtents[u];
@@ -92,7 +92,7 @@ void BBoxProjectionOp::apply(mesh::Mesh& mesh) const {
             wedge.uv = cornerUVs[i];
             patch.wedges.push_back(wedge);
         }
-        if (kFaceSign[face] > 0) {
+        if (FACE_SIGN[face] > 0) {
             patch.faces.push_back({{0, 1, 2}});
             patch.faces.push_back({{0, 2, 3}});
         } else {
@@ -109,11 +109,11 @@ void BBoxProjectionOp::apply(mesh::Mesh& mesh) const {
     // 3D independently (no welding across faces), so the result is a
     // disconnected triangle soup at box edges/corners.
     for (int face = 0; face < 6; face++) {
-        int axis = kFaceAxis[face];
+        int axis = FACE_AXIS[face];
         int u = (axis + 1) % 3;
         int v = (axis + 2) % 3;
         Eigen::Vector3d faceOrigin =
-            center + kFaceSign[face] * halfExtents[axis] * Eigen::Vector3d::Unit(axis);
+            center + FACE_SIGN[face] * halfExtents[axis] * Eigen::Vector3d::Unit(axis);
         Eigen::Vector3d axisU = Eigen::Vector3d::Unit(u);
         Eigen::Vector3d axisV = Eigen::Vector3d::Unit(v);
 
