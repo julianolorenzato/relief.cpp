@@ -45,13 +45,7 @@ std::vector<Eigen::Vector3d> computeFaceNormals(const Mesh& mesh) {
     std::vector<Eigen::Vector3d> normals(mesh.faces.size(), Eigen::Vector3d::Zero());
     for (int fi = 0; fi < (int)mesh.faces.size(); fi++) {
         if (mesh.faces[fi].removed) continue;
-        auto vs = faceVerts(mesh, fi);
-        const Eigen::Vector3d& p0 = mesh.vertices[vs[0]].pos;
-        const Eigen::Vector3d& p1 = mesh.vertices[vs[1]].pos;
-        const Eigen::Vector3d& p2 = mesh.vertices[vs[2]].pos;
-        Eigen::Vector3d n = (p1 - p0).cross(p2 - p0);
-        double len = n.norm();
-        normals[fi] = (len > 1e-12) ? Eigen::Vector3d(n / len) : Eigen::Vector3d::Zero();
+        normals[fi] = mesh.faceNormal(mesh.faces[fi]);
     }
     return normals;
 }

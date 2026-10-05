@@ -33,9 +33,8 @@ void BBoxProjectionOp::apply(mesh::Mesh& mesh) const {
                                 mesh.vertices[mesh.wedges[f.w[2]].vertex].pos};
         Eigen::Vector2d texUV[3] = {mesh.wedges[f.w[0]].uv, mesh.wedges[f.w[1]].uv,
                                     mesh.wedges[f.w[2]].uv};
-        Eigen::Vector3d normal = (p[1] - p[0]).cross(p[2] - p[0]);
-        if (normal.squaredNorm() == 0.0) continue;
-        normal.normalize();
+        Eigen::Vector3d normal = mesh.faceNormal(f);
+        if (normal.isZero()) continue;
 
         for (int face = 0; face < 6; face++) {
             int axis = kFaceAxis[face];

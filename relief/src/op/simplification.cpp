@@ -73,10 +73,8 @@ void SimplifyOp::computeQ() const {
         int v1 = mesh_->wedges[fc.w[1]].vertex;
         int v2 = mesh_->wedges[fc.w[2]].vertex;
         const Eigen::Vector3d &p0 = mesh_->vertices[v0].pos;
-        const Eigen::Vector3d &p1 = mesh_->vertices[v1].pos;
-        const Eigen::Vector3d &p2 = mesh_->vertices[v2].pos;
 
-        Eigen::Vector3d n = (p1 - p0).cross(p2 - p0).normalized();
+        Eigen::Vector3d n = mesh_->faceNormal(fc);
         double d = -n.dot(p0);
 
         Eigen::Matrix4d Kp = quadricFromPlane(n.x(), n.y(), n.z(), d);
@@ -270,11 +268,7 @@ void SimplifyOp::addBoundaryConstraints(double weight) const {
     // Adiciona ao par (a,b) a quádrica de plano perpendicular à face `fi`
     // passando pela aresta (Seção 4 do paper), ponderada por `weight`.
     auto applyEdgeConstraint = [&](int a, int b, int fi) {
-        const Eigen::Vector3d &p0 = mesh_->vertices[mesh_->wedges[mesh_->faces[fi].w[0]].vertex].pos;
-        const Eigen::Vector3d &p1 = mesh_->vertices[mesh_->wedges[mesh_->faces[fi].w[1]].vertex].pos;
-        const Eigen::Vector3d &p2 = mesh_->vertices[mesh_->wedges[mesh_->faces[fi].w[2]].vertex].pos;
-
-        Eigen::Vector3d faceNormal = (p1 - p0).cross(p2 - p0).normalized();
+        Eigen::Vector3d faceNormal = mesh_->faceNormal(mesh_->faces[fi]);
         Eigen::Vector3d edgeDir = (mesh_->vertices[b].pos - mesh_->vertices[a].pos).normalized();
 
         Eigen::Vector3d cn = faceNormal.cross(edgeDir);

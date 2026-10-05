@@ -95,6 +95,14 @@ public:
     /// @return Number of non-removed vertices.
     int vertexCount() const;
 
+    /**
+     * @brief Computes the unit normal of a face from its vertex positions
+     *        (counter-clockwise winding => outward normal).
+     * @param f A face of this mesh.
+     * @return The normalized normal, or the zero vector if `f` is degenerate.
+     */
+    Eigen::Vector3d faceNormal(const Face& f) const;
+
     /// @return Edge-to-incident-faces adjacency for the current mesh, keyed
     ///         by (small, large) position-vertex id. A boundary edge (same
     ///         criterion used by op::simplification::SimplifyOp's boundary

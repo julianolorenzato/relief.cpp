@@ -86,6 +86,16 @@ Mesh::GPUMesh Mesh::explodeForGPU() const {
     return out;
 }
 
+Eigen::Vector3d Mesh::faceNormal(const Face &f) const {
+    const Eigen::Vector3d &p0 = vertices[wedges[f.w[0]].vertex].pos;
+    const Eigen::Vector3d &p1 = vertices[wedges[f.w[1]].vertex].pos;
+    const Eigen::Vector3d &p2 = vertices[wedges[f.w[2]].vertex].pos;
+    Eigen::Vector3d n = (p1 - p0).cross(p2 - p0);
+    double len = n.norm();
+    if (len == 0.0) return Eigen::Vector3d::Zero();
+    return n / len;
+}
+
 int Mesh::faceCount() const {
     int n = 0;
     for (auto &f : faces)

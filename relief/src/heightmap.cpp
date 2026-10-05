@@ -16,8 +16,6 @@ namespace heightmap {
 
 using mesh::Mesh;
 
-using V3 = Eigen::Vector3d;
-
 // Helpers
 
 /**
@@ -47,13 +45,12 @@ std::vector<HeightmapBaker::TexelSample> HeightmapBaker::rasterizeUV(const Mesh 
         const auto &fc = mesh.faces[fi];
         if (fc.removed) continue;
 
-        const V3 &p0 = mesh.vertices[mesh.wedges[fc.w[0]].vertex].pos;
-        const V3 &p1 = mesh.vertices[mesh.wedges[fc.w[1]].vertex].pos;
-        const V3 &p2 = mesh.vertices[mesh.wedges[fc.w[2]].vertex].pos;
+        const Eigen::Vector3d &p0 = mesh.vertices[mesh.wedges[fc.w[0]].vertex].pos;
+        const Eigen::Vector3d &p1 = mesh.vertices[mesh.wedges[fc.w[1]].vertex].pos;
+        const Eigen::Vector3d &p2 = mesh.vertices[mesh.wedges[fc.w[2]].vertex].pos;
 
-        V3 n = (p1 - p0).cross(p2 - p0);
-        if (n.norm() < 1e-10) continue;
-        n.normalize();
+        Eigen::Vector3d n = mesh.faceNormal(fc);
+        if (n.isZero()) continue;
 
         Eigen::Vector2d uv0 = mesh.wedges[fc.w[0]].uv;
         Eigen::Vector2d uv1 = mesh.wedges[fc.w[1]].uv;
