@@ -23,15 +23,35 @@ struct BBoxQuadEdge {
 /// small, self-contained mesh of its own, unwelded from its neighbors.
 /// `faces[i].w` indexes `wedges`, and `wedges[j].vertex` indexes
 /// `vertices`, exactly as in mesh::Mesh. `vertices[k].pos` stores local 2D
-/// quad-plane coordinates in x/y (z is unused/zero), since every vertex on
-/// a given quad lies in that quad's plane; the enclosing BBox's
-/// `min`/`max`, plus which of the 6 quads this is, determine how these
-/// local coordinates map into 3D. `Vertex::Q` and `Vertex::removed` are
-/// unused here.
+/// quad-plane coordinates in x/y, since every vertex on a given quad lies in
+/// that quad's plane; the enclosing BBox's `min`/`max`, plus which of the 6
+/// quads this is, determine how these local coordinates map into 3D. z holds
+/// the depth of the projected point, i.e. its distance from the quad plane
+/// (0 on the plane, growing towards the box's far side); it is only used for
+/// occlusion resolution and ignored when the quad is flattened back to 3D.
+/// `Vertex::Q` and `Vertex::removed` are unused here.
+///
+/// `depth` and `owner` form a `resolution` x `resolution` buffer over the
+/// quad's rectangle (row-major, pixel (x, y) at `y * resolution + x`) used by
+/// BBox::resolveOcclusion.
 struct BBoxQuad {
     std::vector<mesh::Vertex> vertices;
     std::vector<mesh::Wedge> wedges;
     std::vector<mesh::Face> faces;
+
+    /// Side length, in pixels, of the square depth buffer.
+    int resolution;
+    /// Depth of the nearest projected surface at each pixel (+infinity if
+    /// nothing covers it).
+    std::vector<double> depth;
+    /// Index into `faces` of the triangle owning each pixel's depth (-1 if
+    /// nothing covers it).
+    std::vector<int> owner;
+
+    BBoxQuad(int resolution = 1)
+        : resolution(resolution),
+          depth(resolution * resolution, std::numeric_limits<double>::infinity()),
+          owner(resolution * resolution, -1) {}
 };
 
 /// @brief Axis-aligned bounding box: min/max corners, plus each of its 6
@@ -45,8 +65,23 @@ struct BBox {
     /// The box's 6 quads, in order [-X, +X, -Y, +Y, -Z, +Z].
     std::array<BBoxQuad, 6> quads;
 
-    /// @brief Builds the box as the bounds of `mesh`'s non-removed vertices.
-    explicit BBox(const mesh::Mesh& mesh) : BBox(computeBounds(mesh)) {}
+    /**
+     * @brief Builds the box as the bounds of `mesh`'s non-removed vertices.
+     * @param mesh       Mesh to bound.
+     * @param resolution Side length, in pixels, of each quad's depth buffer.
+     */
+    BBox(const mesh::Mesh& mesh, int resolution) : BBox(computeBounds(mesh), resolution) {}
+
+    /**
+     * @brief Removes the triangles occluded on each quad.
+     *
+     * Rasterizes every quad's triangles into its depth buffer (nearest to
+     * the quad plane wins; ties go to the earlier triangle), then drops each
+     * triangle that doesn't win any pixel. Surviving triangles are kept whole,
+     * not clipped, so partly occluded ones stay. A triangle too small or thin
+     * to cover a pixel center is dropped as well.
+     */
+    void resolveOcclusion();
 
     /**
      * @brief Replaces a mesh's geometry with the box's quads.
@@ -63,11 +98,13 @@ struct BBox {
    private:
     using Bounds = std::pair<Eigen::Vector3d, Eigen::Vector3d>;
 
-    explicit BBox(const Bounds& bounds)
+    BBox(const Bounds& bounds, int resolution)
         : min(bounds.first),
           max(bounds.second),
           center(0.5 * (min + max)),
-          halfExtents(0.5 * (max - min)) {}
+          halfExtents(0.5 * (max - min)) {
+        quads.fill(BBoxQuad(resolution));
+    }
 
     static Bounds computeBounds(const mesh::Mesh& mesh) {
         Eigen::Vector3d min = Eigen::Vector3d::Constant(std::numeric_limits<double>::max());
@@ -85,17 +122,27 @@ struct BBox {
  * @brief Replaces a mesh's vertices/wedges/faces with a plain axis-aligned
  *        bounding box, re-triangulated per quad by projecting every
  *        outward-facing mesh face onto whichever box quad(s) it faces
- *        (unwelded across quads; original UVs are kept as-is, with no
- *        occlusion resolution -- overlapping projected triangles are all
- *        kept). Quads with no mesh geometry ever facing them (e.g. a
- *        flat/open source mesh) fall back to a flat rectangle spanning the
- *        full quad, with a synthetic unit-square UV, so the box stays
- *        closed everywhere.
+ *        (unwelded across quads; original UVs are kept as-is). Occluded
+ *        triangles are dropped using a per-quad depth buffer (see
+ *        BBox::resolveOcclusion). Quads with no mesh geometry ever facing
+ *        them (e.g. a flat/open source mesh) fall back to a flat rectangle
+ *        spanning the full quad, with a synthetic unit-square UV, so the box
+ *        stays closed everywhere.
  */
 class BBoxProjectionOp : public op::Op {
    public:
-    explicit BBoxProjectionOp() {}
+    /// Default side length, in pixels, of each quad's depth buffer.
+    static constexpr int DEFAULT_RESOLUTION = 256;
+
+    /**
+     * @param resolution Side length, in pixels, of each quad's depth buffer.
+     *                   Higher values resolve occlusion more precisely.
+     */
+    explicit BBoxProjectionOp(int resolution = DEFAULT_RESOLUTION) : resolution_(resolution) {}
 
     void apply(mesh::Mesh& mesh) const override;
+
+   private:
+    int resolution_;
 };
 }  // namespace op::bboxproj
