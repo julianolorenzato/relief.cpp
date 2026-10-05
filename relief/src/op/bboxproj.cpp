@@ -3,6 +3,8 @@
  */
 #include "relief/op/bboxproj.h"
 
+#include "relief/mesh.h"
+
 namespace op::bboxproj {
 
 /// Axis index (0=X, 1=Y, 2=Z) of BBox::quads[i].
@@ -12,43 +14,30 @@ constexpr int QUAD_AXIS[6] = {0, 0, 1, 1, 2, 2};
 constexpr double QUAD_SIGN[6] = {-1, +1, -1, +1, -1, +1};
 
 void BBoxProjectionOp::apply(mesh::Mesh& mesh) const {
-    BBox box;
-    for (const auto& v : mesh.vertices) {
-        if (v.removed) continue;
-        box.min = box.min.cwiseMin(v.pos);
-        box.max = box.max.cwiseMax(v.pos);
-    }
-
-    Eigen::Vector3d center = 0.5 * (box.min + box.max);
-    Eigen::Vector3d halfExtents = 0.5 * (box.max - box.min);
+    BBox box(mesh);
 
     // Project every outward-facing mesh face onto each box quad it faces (a
     // face can face more than one box quad, e.g. towards a corner, in which
     // case it's projected onto each). No occlusion resolution: overlapping
     // projected triangles are all kept, in original mesh order.
     for (const auto& f : mesh.faces) {
-        // Skip removed faces and back faces.
+        // Skip removed faces.
         if (f.removed) continue;
         Eigen::Vector3d normal = mesh.faceNormal(f);
         if (normal.isZero()) continue;
 
-        // Calculate
-        Eigen::Vector3d p[3] = {mesh.faceVertex(f, 0).pos, mesh.faceVertex(f, 1).pos,
-                                mesh.faceVertex(f, 2).pos};
-        Eigen::Vector2d texUV[3] = {mesh.faceWedge(f, 0).uv, mesh.faceWedge(f, 1).uv,
-                                    mesh.faceWedge(f, 2).uv};
-
         for (int quadIdx = 0; quadIdx < 6; quadIdx++) {
-            int axis = QUAD_AXIS[quadIdx];
-            Eigen::Vector3d outward = QUAD_SIGN[quadIdx] * Eigen::Vector3d::Unit(axis);
+            // Skip backfaces for this axis.
+            Eigen::Vector3d outward =
+                QUAD_SIGN[quadIdx] * Eigen::Vector3d::Unit(QUAD_AXIS[quadIdx]);
             if (normal.dot(outward) <= 0.0) continue;
 
-            int u = (axis + 1) % 3;
-            int v = (axis + 2) % 3;
+            int u = (QUAD_AXIS[quadIdx] + 1) % 3;
+            int v = (QUAD_AXIS[quadIdx] + 2) % 3;
             BBoxQuad& quad = box.quads[quadIdx];
             mesh::Face triangle;
             for (int i = 0; i < 3; i++) {
-                Eigen::Vector3d d = p[i] - center;
+                Eigen::Vector3d d = mesh.faceVertex(f, i).pos - box.center;
 
                 mesh::Vertex vertex;
                 vertex.pos = Eigen::Vector3d(d.dot(Eigen::Vector3d::Unit(u)),
@@ -56,9 +45,8 @@ void BBoxProjectionOp::apply(mesh::Mesh& mesh) const {
                 int vertexIdx = (int)quad.vertices.size();
                 quad.vertices.push_back(vertex);
 
-                mesh::Wedge wedge;
+                mesh::Wedge wedge = mesh.faceWedge(f, i);
                 wedge.vertex = vertexIdx;
-                wedge.uv = texUV[i];
                 triangle.w[i] = (int)quad.wedges.size();
                 quad.wedges.push_back(wedge);
             }
@@ -76,8 +64,8 @@ void BBoxProjectionOp::apply(mesh::Mesh& mesh) const {
         int axis = QUAD_AXIS[quadIdx];
         int u = (axis + 1) % 3;
         int v = (axis + 2) % 3;
-        double hu = halfExtents[u];
-        double hv = halfExtents[v];
+        double hu = box.halfExtents[u];
+        double hv = box.halfExtents[v];
 
         std::array<Eigen::Vector2d, 4> corners = {Eigen::Vector2d(-hu, -hv),
                                                   Eigen::Vector2d(hu, -hv), Eigen::Vector2d(hu, hv),
@@ -115,7 +103,7 @@ void BBoxProjectionOp::apply(mesh::Mesh& mesh) const {
         int u = (axis + 1) % 3;
         int v = (axis + 2) % 3;
         Eigen::Vector3d quadOrigin =
-            center + QUAD_SIGN[quadIdx] * halfExtents[axis] * Eigen::Vector3d::Unit(axis);
+            box.center + QUAD_SIGN[quadIdx] * box.halfExtents[axis] * Eigen::Vector3d::Unit(axis);
         Eigen::Vector3d axisU = Eigen::Vector3d::Unit(u);
         Eigen::Vector3d axisV = Eigen::Vector3d::Unit(v);
 

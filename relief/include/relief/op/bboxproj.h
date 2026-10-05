@@ -7,6 +7,7 @@
 
 #include <array>
 #include <limits>
+#include <utility>
 #include <vector>
 
 #include "relief/mesh.h"
@@ -32,11 +33,36 @@ struct BBoxQuad {
 /// @brief Axis-aligned bounding box: min/max corners, plus each of its 6
 ///        quads' own vertex/wedge/face data.
 struct BBox {
-    Eigen::Vector3d min = Eigen::Vector3d::Constant(std::numeric_limits<double>::max());
-    Eigen::Vector3d max = Eigen::Vector3d::Constant(std::numeric_limits<double>::lowest());
+    const Eigen::Vector3d min;
+    const Eigen::Vector3d max;
+    const Eigen::Vector3d center;
+    const Eigen::Vector3d halfExtents;
 
     /// The box's 6 quads, in order [-X, +X, -Y, +Y, -Z, +Z].
     std::array<BBoxQuad, 6> quads;
+
+    /// @brief Builds the box as the bounds of `mesh`'s non-removed vertices.
+    explicit BBox(const mesh::Mesh& mesh) : BBox(computeBounds(mesh)) {}
+
+   private:
+    using Bounds = std::pair<Eigen::Vector3d, Eigen::Vector3d>;
+
+    explicit BBox(const Bounds& bounds)
+        : min(bounds.first),
+          max(bounds.second),
+          center(0.5 * (min + max)),
+          halfExtents(0.5 * (max - min)) {}
+
+    static Bounds computeBounds(const mesh::Mesh& mesh) {
+        Eigen::Vector3d min = Eigen::Vector3d::Constant(std::numeric_limits<double>::max());
+        Eigen::Vector3d max = Eigen::Vector3d::Constant(std::numeric_limits<double>::lowest());
+        for (const auto& v : mesh.vertices) {
+            if (v.removed) continue;
+            min = min.cwiseMin(v.pos);
+            max = max.cwiseMax(v.pos);
+        }
+        return {min, max};
+    }
 };
 
 /**
