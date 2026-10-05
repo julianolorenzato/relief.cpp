@@ -8,6 +8,7 @@
 #include <cstdint>
 #include <map>
 #include <set>
+#include <string>
 #include <utility>
 #include <Eigen/Dense>
 
@@ -60,6 +61,26 @@ public:
     std::vector<Wedge>  wedges;
     std::vector<Face>   faces;
 
+    /// Per-face UV-island id, parallel to `faces` (removed faces get -1).
+    /// Two faces share an island iff they are connected through 3D edges
+    /// across which their UVs agree. Computed by the constructor and
+    /// computeIslands(); faces flagged `removed` afterwards keep their id.
+    std::vector<int> islands;
+
+    /**
+     * @brief Loads a mesh from a file (dispatching on extension, see
+     *        mesh::io::loadMesh) and detects its UV islands.
+     * @param path Path to an .obj/.gltf/.glb file.
+     * @throws std::runtime_error if the file cannot be loaded.
+     */
+    explicit Mesh(const std::string& path);
+
+    /**
+     * @brief Recomputes `islands` from the current faces/wedges. Call after
+     *        modifying faces or UVs in place (the constructor already does it).
+     */
+    void computeIslands();
+
     /// Textures extracted from the source GLTF (RGBA, row-major).
     std::vector<uint8_t> textureData;
     int textureWidth  = 0;
@@ -106,6 +127,14 @@ public:
     /// to stdout. Callable anywhere a quick summary of the mesh's current
     /// state is useful (after load, after simplification, etc.).
     void logSummary() const;
+
+private:
+    /**
+     * @brief Partitions active faces into UV islands via union-find over
+     *        3D-edge-adjacent faces whose UVs agree at the shared edge.
+     * @return One island id per face, in face order; removed faces get -1.
+     */
+    std::vector<int> detectIslands() const;
 };
 
 } // namespace mesh

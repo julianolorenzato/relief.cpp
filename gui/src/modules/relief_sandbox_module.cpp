@@ -327,10 +327,10 @@ void ReliefSandboxModule::onLoadMesh() {
                                      "*.glb);;All Files (*)");
     if (path.isEmpty()) return;
 
-    auto m = std::make_unique<Mesh>();
-    bool ok = loadMesh(*m, path.toStdString());
-
-    if (!ok) {
+    std::unique_ptr<Mesh> m;
+    try {
+        m = std::make_unique<Mesh>(path.toStdString());
+    } catch (const std::exception &) {
         QMessageBox::critical(this, "Error", "Failed to load mesh file.");
         return;
     }

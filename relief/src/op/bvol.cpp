@@ -281,6 +281,7 @@ void BoundingVolumeOp::flattenBoxFaces(const BoundingBox& box, mesh::Mesh& mesh)
             mesh.faces.push_back(face3);
         }
     }
+    mesh.computeIslands();
 }
 
 }  // namespace op::bvol

@@ -80,7 +80,7 @@ bool bary2D(double px, double py, double ax, double ay, double bx, double by, do
  *        texels that are still genuinely inside the island as "outside",
  *        letting the leap band bleed a texel or two into the island.
  * @param mesh Mesh whose UV layout defines the islands.
- * @param faceIsland Per-face island id, as produced by detectIslands().
+ * @param faceIsland Per-face island id, as stored in Mesh::islands.
  * @param width,height Offset map dimensions.
  * @return Per-texel island id (whichever face's UV triangle covers that
  *         texel's center), or -1 if no face covers it.
@@ -175,72 +175,11 @@ void rasterizeBand(const Eigen::Vector2d& p0, const Eigen::Vector2d& p1, double 
     }
 }
 
-/**
- * @brief Assigns each active face an island id via flood fill over
- *        3D-edge-adjacent faces whose UV coordinates agree at the shared edge
- *        (within epsilon). Faces sharing a 3D edge but disagreeing on UV at
- *        that edge are considered seam-separated (different islands).
- * @param mesh Mesh to partition into UV islands.
- * @param edgeToFaces Edge-to-incident-faces adjacency, from mesh.buildEdgeToFaces().
- * @return One island id per face, in face order; removed faces get id -1.
- */
-std::vector<int> detectIslands(const Mesh& mesh,
-                               const std::map<Edge, std::vector<int>>& edgeToFaces) {
-    int nf = (int)mesh.faces.size();
-    std::vector<int> island(nf, -1);
-    if (nf == 0) return island;
-
-    std::vector<int> parent(nf);
-    for (int i = 0; i < nf; i++) parent[i] = i;
-    std::function<int(int)> find = [&](int x) {
-        while (parent[x] != x) {
-            parent[x] = parent[parent[x]];
-            x = parent[x];
-        }
-        return x;
-    };
-    auto unite = [&](int a, int b) {
-        a = find(a);
-        b = find(b);
-        if (a != b) parent[a] = b;
-    };
-
-    constexpr double kUVEps2 = 1e-10;
-    for (const auto& [key, faceIds] : edgeToFaces) {
-        if (faceIds.size() != 2) continue;  // boundary or non-manifold edge: no weld across it
-        int f0 = faceIds[0], f1 = faceIds[1];
-        if (mesh.faces[f0].removed || mesh.faces[f1].removed) continue;
-
-        bool uvMatch =
-            (vertexUV(mesh, f0, key.first) - vertexUV(mesh, f1, key.first)).squaredNorm() <
-                kUVEps2 &&
-            (vertexUV(mesh, f0, key.second) - vertexUV(mesh, f1, key.second)).squaredNorm() <
-                kUVEps2;
-
-        if (uvMatch) unite(f0, f1);
-    }
-
-    std::map<int, int> rootToId;
-    for (int f = 0; f < nf; f++) {
-        if (mesh.faces[f].removed) continue;
-        int r = find(f);
-        auto it = rootToId.find(r);
-        if (it == rootToId.end()) {
-            int id = (int)rootToId.size();
-            rootToId[r] = id;
-            island[f] = id;
-        } else {
-            island[f] = it->second;
-        }
-    }
-    return island;
-}
-
 }  // namespace
 
 MipPyramid buildOffsetMap(const Mesh& mesh, int width, int height, int seamBandTexels) {
     auto edgeToFaces = mesh.buildEdgeToFaces();
-    std::vector<int> faceIsland = detectIslands(mesh, edgeToFaces);
+    const std::vector<int>& faceIsland = mesh.islands;
 
     std::vector<float> data((size_t)width * height * 4, 0.0f);
 
@@ -321,7 +260,7 @@ MipPyramid buildOffsetMap(const Mesh& mesh, int width, int height, int seamBandT
 
 std::vector<Edge> findSeamEdges(const Mesh& mesh) {
     auto edgeToFaces = mesh.buildEdgeToFaces();
-    std::vector<int> faceIsland = detectIslands(mesh, edgeToFaces);
+    const std::vector<int>& faceIsland = mesh.islands;
 
     std::vector<Edge> seams;
     for (const auto& [key, faceIds] : edgeToFaces) {

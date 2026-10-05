@@ -3,12 +3,69 @@
  * @brief Mesh implementation: counts and edge-to-faces adjacency.
  */
 #include "relief/mesh.h"
+#include "relief/mesh/io.h"
 
 #include <iostream>
+#include <functional>
 #include <map>
+#include <stdexcept>
 #include <utility>
 
 namespace mesh {
+
+Mesh::Mesh(const std::string &path) {
+    if (!io::loadMesh(*this, path)) throw std::runtime_error("failed to load mesh: " + path);
+    computeIslands();
+}
+
+void Mesh::computeIslands() { islands = detectIslands(); }
+
+std::vector<int> Mesh::detectIslands() const {
+    auto edgeToFaces = buildEdgeToFaces();
+    int nf = (int)faces.size();
+    std::vector<int> island(nf, -1);
+    if (nf == 0) return island;
+
+    std::vector<int> parent(nf);
+    for (int i = 0; i < nf; i++) parent[i] = i;
+    std::function<int(int)> find = [&](int x) {
+        while (parent[x] != x) {
+            parent[x] = parent[parent[x]];
+            x = parent[x];
+        }
+        return x;
+    };
+
+    // UV at the corner of `face` whose vertex is `vertexId`.
+    auto vertexUV = [&](int face, int vertexId) {
+        const Face &f = faces[face];
+        for (int k = 0; k < 3; k++) {
+            if (wedges[f.w[k]].vertex == vertexId) return wedges[f.w[k]].uv;
+        }
+        return Eigen::Vector2d::Zero().eval();
+    };
+
+    constexpr double kUVEps2 = 1e-10;
+    for (const auto &[key, faceIds] : edgeToFaces) {
+        if (faceIds.size() != 2) continue;  // boundary or non-manifold edge: no weld across it
+        int f0 = faceIds[0], f1 = faceIds[1];
+        bool uvMatch = (vertexUV(f0, key.first) - vertexUV(f1, key.first)).squaredNorm() < kUVEps2 &&
+                       (vertexUV(f0, key.second) - vertexUV(f1, key.second)).squaredNorm() <
+                           kUVEps2;
+        if (uvMatch) {
+            int a = find(f0), b = find(f1);
+            if (a != b) parent[a] = b;
+        }
+    }
+
+    std::map<int, int> rootToId;
+    for (int fi = 0; fi < nf; fi++) {
+        if (faces[fi].removed) continue;
+        auto [it, inserted] = rootToId.emplace(find(fi), (int)rootToId.size());
+        island[fi] = it->second;
+    }
+    return island;
+}
 
 Mesh::GPUMesh Mesh::explodeForGPU() const {
     GPUMesh out;

@@ -8,6 +8,7 @@
 #include "relief/mesh.h"
 #include "relief/mesh/io.h"
 #include <iostream>
+#include <memory>
 #include <map>
 #include <string>
 #include <array>
@@ -26,13 +27,17 @@ int main(int argc, char **argv)
     }
     std::string path = argv[1];
 
-    Mesh mesh;
-    bool ok = loadMesh(mesh, path);
-    if (!ok)
+    std::unique_ptr<Mesh> loaded;
+    try
     {
-        std::cerr << "falha ao carregar " << path << "\n";
+        loaded = std::make_unique<Mesh>(path);
+    }
+    catch (const std::exception &e)
+    {
+        std::cerr << "falha ao carregar " << path << ": " << e.what() << "\n";
         return 1;
     }
+    Mesh &mesh = *loaded;
 
     auto edgeToFaces = mesh.buildEdgeToFaces();
 

@@ -147,6 +147,8 @@ void BBoxProjectionOp::apply(mesh::Mesh& mesh) const {
         }
     }
 
+    mesh.computeIslands();
+
     mesh.logSummary();
 }
 

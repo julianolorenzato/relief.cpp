@@ -9,7 +9,7 @@
 namespace mesh::io {
 
 /// @brief Loads a mesh from a file, dispatching on extension (.obj vs .gltf/.glb).
-/// @param mesh Mesh to load into (replaces its contents).
+/// @param mesh Mesh to load into (replaces its contents); used by the Mesh(path) constructor.
 /// @param path Path to the mesh file.
 /// @return true on success.
 bool loadMesh(Mesh& mesh, const std::string& path);

@@ -21,13 +21,15 @@ int main(int argc, char **argv)
     }
     std::string path = argv[1];
 
-    Mesh mesh;
-    if (!loadMesh(mesh, path))
+    try
     {
-        std::cerr << "failed to load " << path << "\n";
+        Mesh mesh(path);
+        mesh.logSummary();
+    }
+    catch (const std::exception &e)
+    {
+        std::cerr << e.what() << "\n";
         return 1;
     }
-
-    mesh.logSummary();
     return 0;
 }

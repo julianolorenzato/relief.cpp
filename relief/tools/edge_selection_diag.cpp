@@ -10,6 +10,7 @@
 #include "relief/mesh/io.h"
 #include "relief/mesh/edgesel.h"
 #include <iostream>
+#include <memory>
 #include <string>
 
 using namespace mesh;
@@ -27,12 +28,17 @@ int main(int argc, char **argv)
     double radius = (argc > 2) ? std::stod(argv[2]) : 0.1;
     double angleDeg = (argc > 3) ? std::stod(argv[3]) : 35.0;
 
-    Mesh mesh;
-    if (!loadMesh(mesh, path))
+    std::unique_ptr<Mesh> loaded;
+    try
     {
-        std::cerr << "failed to load " << path << "\n";
+        loaded = std::make_unique<Mesh>(path);
+    }
+    catch (const std::exception &e)
+    {
+        std::cerr << e.what() << "\n";
         return 1;
     }
+    Mesh &mesh = *loaded;
     mesh.logSummary();
 
     Eigen::Vector3d bmin = Eigen::Vector3d::Constant(1e18);

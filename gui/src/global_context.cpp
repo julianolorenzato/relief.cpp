@@ -7,10 +7,11 @@
 GlobalContext::GlobalContext(QObject *parent) : QObject(parent) {}
 
 bool GlobalContext::loadModel(const QString &path) {
-    this->originalMesh_ = std::make_unique<mesh::Mesh>();
-
-    bool success = mesh::io::loadMesh(*this->originalMesh_, path.toStdString());
-    if (!success) return false;
+    try {
+        this->originalMesh_ = std::make_unique<mesh::Mesh>(path.toStdString());
+    } catch (const std::exception &) {
+        return false;
+    }
 
     this->simplifiedMesh_ = std::make_unique<mesh::Mesh>(*this->originalMesh_);
 
