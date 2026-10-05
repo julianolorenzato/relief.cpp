@@ -68,6 +68,16 @@ public:
     std::vector<int> islands;
 
     /**
+     * @brief Replaces the mesh's geometry and recomputes its UV islands.
+     *        Textures are left untouched.
+     * @param newVertices New vertices.
+     * @param newWedges   New wedges (indexing `newVertices`).
+     * @param newFaces    New faces (indexing `newWedges`).
+     */
+    void replaceGeometry(std::vector<Vertex> newVertices, std::vector<Wedge> newWedges,
+                         std::vector<Face> newFaces);
+
+    /**
      * @brief Loads a mesh from a file (dispatching on extension, see
      *        mesh::io::loadMesh) and detects its UV islands.
      * @param path Path to an .obj/.gltf/.glb file.

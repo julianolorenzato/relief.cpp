@@ -14,6 +14,14 @@
 
 namespace mesh {
 
+void Mesh::replaceGeometry(std::vector<Vertex> newVertices, std::vector<Wedge> newWedges,
+                           std::vector<Face> newFaces) {
+    vertices = std::move(newVertices);
+    wedges = std::move(newWedges);
+    faces = std::move(newFaces);
+    computeIslands();
+}
+
 Mesh::Mesh(const std::string &path) {
     if (!io::loadMesh(*this, path)) throw std::runtime_error("failed to load mesh: " + path);
     computeIslands();

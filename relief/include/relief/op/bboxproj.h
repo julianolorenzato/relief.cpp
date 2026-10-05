@@ -14,6 +14,10 @@
 #include "relief/op.h"
 namespace op::bboxproj {
 
+struct BBoxQuadEdge {
+    std::pair<int, int> w;
+};
+
 /// One of a BBox's 6 quads: an independently triangulated planar patch,
 /// with the same vertex/wedge/face shape as mesh::Mesh -- i.e. a quad is a
 /// small, self-contained mesh of its own, unwelded from its neighbors.
@@ -43,6 +47,18 @@ struct BBox {
 
     /// @brief Builds the box as the bounds of `mesh`'s non-removed vertices.
     explicit BBox(const mesh::Mesh& mesh) : BBox(computeBounds(mesh)) {}
+
+    /**
+     * @brief Replaces a mesh's geometry with the box's quads.
+     *
+     * Each quad's local 2D vertices/UVs/triangles are flattened back into 3D
+     * independently (no welding across quads), so the result is a
+     * disconnected triangle soup at box edges/corners. The mesh's textures
+     * are kept.
+     *
+     * @param mesh Mesh whose geometry is replaced.
+     */
+    void exportTo(mesh::Mesh& mesh) const;
 
    private:
     using Bounds = std::pair<Eigen::Vector3d, Eigen::Vector3d>;
@@ -80,6 +96,6 @@ class BBoxProjectionOp : public op::Op {
    public:
     explicit BBoxProjectionOp() {}
 
-    void apply(mesh::Mesh &mesh) const override;
+    void apply(mesh::Mesh& mesh) const override;
 };
 }  // namespace op::bboxproj

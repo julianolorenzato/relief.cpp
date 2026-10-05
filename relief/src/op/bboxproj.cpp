@@ -91,36 +91,39 @@ void BBoxProjectionOp::apply(mesh::Mesh& mesh) const {
         }
     }
 
-    mesh.vertices.clear();
-    mesh.wedges.clear();
-    mesh.faces.clear();
+    box.exportTo(mesh);
 
-    // Each quad's local 2D vertices/UVs/triangles are flattened back into
-    // 3D independently (no welding across quads), so the result is a
-    // disconnected triangle soup at box edges/corners.
+    mesh.logSummary();
+}
+
+void BBox::exportTo(mesh::Mesh& mesh) const {
+    std::vector<mesh::Vertex> vertices;
+    std::vector<mesh::Wedge> wedges;
+    std::vector<mesh::Face> faces;
+
     for (int quadIdx = 0; quadIdx < 6; quadIdx++) {
         int axis = QUAD_AXIS[quadIdx];
         int u = (axis + 1) % 3;
         int v = (axis + 2) % 3;
         Eigen::Vector3d quadOrigin =
-            box.center + QUAD_SIGN[quadIdx] * box.halfExtents[axis] * Eigen::Vector3d::Unit(axis);
+            center + QUAD_SIGN[quadIdx] * halfExtents[axis] * Eigen::Vector3d::Unit(axis);
         Eigen::Vector3d axisU = Eigen::Vector3d::Unit(u);
         Eigen::Vector3d axisV = Eigen::Vector3d::Unit(v);
 
-        const BBoxQuad& quad = box.quads[quadIdx];
-        int vertexBase = (int)mesh.vertices.size();
+        const BBoxQuad& quad = quads[quadIdx];
+        int vertexBase = (int)vertices.size();
         for (const mesh::Vertex& local : quad.vertices) {
             mesh::Vertex vertex;
             vertex.pos = quadOrigin + local.pos.x() * axisU + local.pos.y() * axisV;
-            mesh.vertices.push_back(vertex);
+            vertices.push_back(vertex);
         }
 
-        int wedgeBase = (int)mesh.wedges.size();
+        int wedgeBase = (int)wedges.size();
         for (const mesh::Wedge& localWedge : quad.wedges) {
             mesh::Wedge wedge;
             wedge.vertex = vertexBase + localWedge.vertex;
             wedge.uv = localWedge.uv;
-            mesh.wedges.push_back(wedge);
+            wedges.push_back(wedge);
         }
 
         for (const mesh::Face& tri : quad.faces) {
@@ -128,13 +131,10 @@ void BBoxProjectionOp::apply(mesh::Mesh& mesh) const {
             f.w[0] = wedgeBase + tri.w[0];
             f.w[1] = wedgeBase + tri.w[1];
             f.w[2] = wedgeBase + tri.w[2];
-            mesh.faces.push_back(f);
+            faces.push_back(f);
         }
     }
-
-    mesh.computeIslands();
-
-    mesh.logSummary();
+    mesh.replaceGeometry(std::move(vertices), std::move(wedges), std::move(faces));
 }
 
 }  // namespace op::bboxproj
