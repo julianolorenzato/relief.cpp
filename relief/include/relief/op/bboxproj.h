@@ -33,7 +33,7 @@ struct BBoxQuadEdge {
 ///
 /// `depth` and `owner` form a `resolution` x `resolution` buffer over the
 /// quad's rectangle (row-major, pixel (x, y) at `y * resolution + x`) used by
-/// BBox::resolveOcclusion.
+/// BBoxProjectionOp::apply to resolve occlusion.
 struct BBoxQuad {
     std::vector<mesh::Vertex> vertices;
     std::vector<mesh::Wedge> wedges;
@@ -71,17 +71,6 @@ struct BBox {
      * @param resolution Side length, in pixels, of each quad's depth buffer.
      */
     BBox(const mesh::Mesh& mesh, int resolution) : BBox(computeBounds(mesh), resolution) {}
-
-    /**
-     * @brief Removes the triangles occluded on each quad.
-     *
-     * Rasterizes every quad's triangles into its depth buffer (nearest to
-     * the quad plane wins; ties go to the earlier triangle), then drops each
-     * triangle that doesn't win any pixel. Surviving triangles are kept whole,
-     * not clipped, so partly occluded ones stay. A triangle too small or thin
-     * to cover a pixel center is dropped as well.
-     */
-    void resolveOcclusion();
 
     /**
      * @brief Replaces a mesh's geometry with the box's quads.
@@ -123,16 +112,15 @@ struct BBox {
  *        bounding box, re-triangulated per quad by projecting every
  *        outward-facing mesh face onto whichever box quad(s) it faces
  *        (unwelded across quads; original UVs are kept as-is). Occluded
- *        triangles are dropped using a per-quad depth buffer (see
- *        BBox::resolveOcclusion). Quads with no mesh geometry ever facing
- *        them (e.g. a flat/open source mesh) fall back to a flat rectangle
- *        spanning the full quad, with a synthetic unit-square UV, so the box
- *        stays closed everywhere.
+ *        triangles are dropped using a per-quad depth buffer. Quads with no
+ *        mesh geometry ever facing them (e.g. a flat/open source mesh) fall
+ *        back to a flat rectangle spanning the full quad, with a synthetic
+ *        unit-square UV, so the box stays closed everywhere.
  */
 class BBoxProjectionOp : public op::Op {
    public:
     /// Default side length, in pixels, of each quad's depth buffer.
-    static constexpr int DEFAULT_RESOLUTION = 256;
+    static constexpr int DEFAULT_RESOLUTION = 4096;
 
     /**
      * @param resolution Side length, in pixels, of each quad's depth buffer.

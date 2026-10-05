@@ -19,34 +19,34 @@ constexpr double QUAD_SIGN[6] = {-1, +1, -1, +1, -1, +1};
 void BBoxProjectionOp::apply(mesh::Mesh& mesh) const {
     BBox box(mesh, resolution_);
 
-    // Project every outward-facing mesh face onto each box quad it faces (a
-    // face can face more than one box quad, e.g. towards a corner, in which
-    // case it's projected onto each), in original mesh order. Occluded
-    // triangles are removed afterwards by resolveOcclusion.
-    for (const auto& f : mesh.faces) {
-        // Skip removed faces.
-        if (f.removed) continue;
-        Eigen::Vector3d normal = mesh.faceNormal(f);
-        if (normal.isZero()) continue;
+    for (int quadIdx = 0; quadIdx < 6; quadIdx++) {
+        BBoxQuad& quad = box.quads[quadIdx];
+        const int axis = QUAD_AXIS[quadIdx];
+        const int u = (axis + 1) % 3;
+        const int v = (axis + 2) % 3;
+        const double hu = box.halfExtents[u];
+        const double hv = box.halfExtents[v];
+        const Eigen::Vector3d outward = QUAD_SIGN[quadIdx] * Eigen::Vector3d::Unit(axis);
 
-        for (int quadIdx = 0; quadIdx < 6; quadIdx++) {
-            Eigen::Vector3d outward =
-                QUAD_SIGN[quadIdx] * Eigen::Vector3d::Unit(QUAD_AXIS[quadIdx]);
-            // Skip backfaces for this axis.
+        // Project every mesh face facing this quad onto it, in original mesh
+        // order (a face can face more than one quad, e.g. towards a corner,
+        // in which case it's projected onto each).
+        for (const auto& f : mesh.faces) {
+            if (f.removed) continue;
+
+            // Skip backfaces for this quad (this also skips degenerate faces,
+            // whose normal is zero).
+            Eigen::Vector3d normal = mesh.faceNormal(f);
             if (normal.dot(outward) <= 0.0) continue;
 
-            int u = (QUAD_AXIS[quadIdx] + 1) % 3;
-            int v = (QUAD_AXIS[quadIdx] + 2) % 3;
-            BBoxQuad& quad = box.quads[quadIdx];
             mesh::Face triangle;
             for (int i = 0; i < 3; i++) {
                 Eigen::Vector3d d = mesh.faceVertex(f, i).pos - box.center;
-                double outwardCoord = QUAD_SIGN[quadIdx] * d[QUAD_AXIS[quadIdx]];
-                double depth = box.halfExtents[QUAD_AXIS[quadIdx]] - outwardCoord;
+                double outwardCoord = QUAD_SIGN[quadIdx] * d[axis];
+                double depth = box.halfExtents[axis] - outwardCoord;
 
                 // z is the depth: distance from this quad's plane.
-                auto pos = Eigen::Vector3d(d.dot(Eigen::Vector3d::Unit(u)),
-                                           d.dot(Eigen::Vector3d::Unit(v)), depth);
+                auto pos = Eigen::Vector3d(d[u], d[v], depth);
 
                 int vertexIdx = (int)quad.vertices.size();
                 quad.vertices.push_back(mesh::Vertex{.pos = pos});
@@ -59,58 +59,13 @@ void BBoxProjectionOp::apply(mesh::Mesh& mesh) const {
             }
             quad.faces.push_back(triangle);
         }
-    }
 
-    box.resolveOcclusion();
-
-    // Quads with no mesh geometry ever facing them (e.g. a flat/open source
-    // mesh) fall back to two triangles spanning the full quad rectangle, with
-    // a synthetic unit-square UV, so the box stays closed.
-    for (int quadIdx = 0; quadIdx < 6; quadIdx++) {
-        BBoxQuad& quad = box.quads[quadIdx];
-        if (!quad.faces.empty()) continue;
-
-        int axis = QUAD_AXIS[quadIdx];
-        int u = (axis + 1) % 3;
-        int v = (axis + 2) % 3;
-        double hu = box.halfExtents[u];
-        double hv = box.halfExtents[v];
-
-        std::array<Eigen::Vector2d, 4> corners = {Eigen::Vector2d(-hu, -hv),
-                                                  Eigen::Vector2d(hu, -hv), Eigen::Vector2d(hu, hv),
-                                                  Eigen::Vector2d(-hu, hv)};
-        std::array<Eigen::Vector2d, 4> cornerUVs = {Eigen::Vector2d(0, 0), Eigen::Vector2d(1, 0),
-                                                    Eigen::Vector2d(1, 1), Eigen::Vector2d(0, 1)};
-        for (int i = 0; i < 4; i++) {
-            mesh::Vertex vertex;
-            vertex.pos = Eigen::Vector3d(corners[i].x(), corners[i].y(), 0.0);
-            quad.vertices.push_back(vertex);
-
-            mesh::Wedge wedge;
-            wedge.vertex = i;
-            wedge.uv = cornerUVs[i];
-            quad.wedges.push_back(wedge);
-        }
-        if (QUAD_SIGN[quadIdx] > 0) {
-            quad.faces.push_back({{0, 1, 2}});
-            quad.faces.push_back({{0, 2, 3}});
-        } else {
-            quad.faces.push_back({{0, 2, 1}});
-            quad.faces.push_back({{0, 3, 2}});
-        }
-    }
-
-    box.exportTo(mesh);
-
-    mesh.logSummary();
-}
-
-void BBox::resolveOcclusion() {
-    for (int quadIdx = 0; quadIdx < 6; quadIdx++) {
-        BBoxQuad& quad = quads[quadIdx];
-        const int axis = QUAD_AXIS[quadIdx];
-        const double hu = halfExtents[(axis + 1) % 3];
-        const double hv = halfExtents[(axis + 2) % 3];
+        // Resolve occlusion: rasterize the triangles into the depth buffer
+        // (nearest to the quad plane wins; ties go to the earlier triangle),
+        // then drop every triangle that doesn't win a pixel. Surviving
+        // triangles are kept whole, not clipped, so partly occluded ones
+        // stay. A triangle too small or thin to cover a pixel center is
+        // dropped as well.
         const int res = quad.resolution;
 
         // Maps local quad coordinates to continuous pixel coordinates. A
@@ -186,7 +141,39 @@ void BBox::resolveOcclusion() {
         quad.vertices = std::move(vertices);
         quad.wedges = std::move(wedges);
         quad.faces = std::move(faces);
+
+        // Quads with no mesh geometry ever facing them (e.g. a flat/open
+        // source mesh) fall back to two triangles spanning the full quad
+        // rectangle, with a synthetic unit-square UV, so the box stays closed.
+        if (!quad.faces.empty()) continue;
+
+        std::array<Eigen::Vector2d, 4> corners = {Eigen::Vector2d(-hu, -hv),
+                                                  Eigen::Vector2d(hu, -hv), Eigen::Vector2d(hu, hv),
+                                                  Eigen::Vector2d(-hu, hv)};
+        std::array<Eigen::Vector2d, 4> cornerUVs = {Eigen::Vector2d(0, 0), Eigen::Vector2d(1, 0),
+                                                    Eigen::Vector2d(1, 1), Eigen::Vector2d(0, 1)};
+        for (int i = 0; i < 4; i++) {
+            mesh::Vertex vertex;
+            vertex.pos = Eigen::Vector3d(corners[i].x(), corners[i].y(), 0.0);
+            quad.vertices.push_back(vertex);
+
+            mesh::Wedge wedge;
+            wedge.vertex = i;
+            wedge.uv = cornerUVs[i];
+            quad.wedges.push_back(wedge);
+        }
+        if (QUAD_SIGN[quadIdx] > 0) {
+            quad.faces.push_back({{0, 1, 2}});
+            quad.faces.push_back({{0, 2, 3}});
+        } else {
+            quad.faces.push_back({{0, 2, 1}});
+            quad.faces.push_back({{0, 3, 2}});
+        }
     }
+
+    box.exportTo(mesh);
+
+    mesh.logSummary();
 }
 
 void BBox::exportTo(mesh::Mesh& mesh) const {
