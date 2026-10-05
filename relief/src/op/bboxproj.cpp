@@ -33,11 +33,10 @@ void BBoxProjectionOp::apply(mesh::Mesh& mesh) const {
         if (normal.isZero()) continue;
 
         // Calculate
-        Eigen::Vector3d p[3] = {mesh.vertices[mesh.wedges[f.w[0]].vertex].pos,
-                                mesh.vertices[mesh.wedges[f.w[1]].vertex].pos,
-                                mesh.vertices[mesh.wedges[f.w[2]].vertex].pos};
-        Eigen::Vector2d texUV[3] = {mesh.wedges[f.w[0]].uv, mesh.wedges[f.w[1]].uv,
-                                    mesh.wedges[f.w[2]].uv};
+        Eigen::Vector3d p[3] = {mesh.faceVertex(f, 0).pos, mesh.faceVertex(f, 1).pos,
+                                mesh.faceVertex(f, 2).pos};
+        Eigen::Vector2d texUV[3] = {mesh.faceWedge(f, 0).uv, mesh.faceWedge(f, 1).uv,
+                                    mesh.faceWedge(f, 2).uv};
 
         for (int quadIdx = 0; quadIdx < 6; quadIdx++) {
             int axis = QUAD_AXIS[quadIdx];

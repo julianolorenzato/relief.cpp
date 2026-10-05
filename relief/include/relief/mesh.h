@@ -96,10 +96,26 @@ public:
     int vertexCount() const;
 
     /**
+     * @brief Looks up one corner's wedge of a face.
+     * @param f A face of this mesh.
+     * @param cornerIdx Corner of the face, 0..2.
+     * @return The wedge (vertex + UV) used by that corner.
+     */
+    const Wedge& faceWedge(const Face& f, int cornerIdx) const;
+
+    /**
+     * @brief Looks up one corner's vertex of a face.
+     * @param f A face of this mesh.
+     * @param cornerIdx Corner of the face, 0..2.
+     * @return The vertex used by that corner (via its wedge).
+     */
+    const Vertex& faceVertex(const Face& f, int cornerIdx) const;
+
+    /**
      * @brief Computes the unit normal of a face from its vertex positions
      *        (counter-clockwise winding => outward normal).
      * @param f A face of this mesh.
-     * @return The normalized normal, or the zero vector if `f` is degenerate.
+     * @return The normalized normal, or the zero vector if the face is degenerate.
      */
     Eigen::Vector3d faceNormal(const Face& f) const;
 

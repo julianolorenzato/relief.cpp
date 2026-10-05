@@ -3,13 +3,14 @@
  * @brief Mesh implementation: counts and edge-to-faces adjacency.
  */
 #include "relief/mesh.h"
-#include "relief/mesh/io.h"
 
-#include <iostream>
 #include <functional>
+#include <iostream>
 #include <map>
 #include <stdexcept>
 #include <utility>
+
+#include "relief/mesh/io.h"
 
 namespace mesh {
 
@@ -49,9 +50,9 @@ std::vector<int> Mesh::detectIslands() const {
     for (const auto &[key, faceIds] : edgeToFaces) {
         if (faceIds.size() != 2) continue;  // boundary or non-manifold edge: no weld across it
         int f0 = faceIds[0], f1 = faceIds[1];
-        bool uvMatch = (vertexUV(f0, key.first) - vertexUV(f1, key.first)).squaredNorm() < kUVEps2 &&
-                       (vertexUV(f0, key.second) - vertexUV(f1, key.second)).squaredNorm() <
-                           kUVEps2;
+        bool uvMatch =
+            (vertexUV(f0, key.first) - vertexUV(f1, key.first)).squaredNorm() < kUVEps2 &&
+            (vertexUV(f0, key.second) - vertexUV(f1, key.second)).squaredNorm() < kUVEps2;
         if (uvMatch) {
             int a = find(f0), b = find(f1);
             if (a != b) parent[a] = b;
@@ -86,10 +87,18 @@ Mesh::GPUMesh Mesh::explodeForGPU() const {
     return out;
 }
 
+const Wedge &Mesh::faceWedge(const Face &f, int cornerIdx) const {
+    return wedges[f.w[cornerIdx]];
+}
+
+const Vertex &Mesh::faceVertex(const Face &f, int cornerIdx) const {
+    return vertices[faceWedge(f, cornerIdx).vertex];
+}
+
 Eigen::Vector3d Mesh::faceNormal(const Face &f) const {
-    const Eigen::Vector3d &p0 = vertices[wedges[f.w[0]].vertex].pos;
-    const Eigen::Vector3d &p1 = vertices[wedges[f.w[1]].vertex].pos;
-    const Eigen::Vector3d &p2 = vertices[wedges[f.w[2]].vertex].pos;
+    const Eigen::Vector3d &p0 = faceVertex(f, 0).pos;
+    const Eigen::Vector3d &p1 = faceVertex(f, 1).pos;
+    const Eigen::Vector3d &p2 = faceVertex(f, 2).pos;
     Eigen::Vector3d n = (p1 - p0).cross(p2 - p0);
     double len = n.norm();
     if (len == 0.0) return Eigen::Vector3d::Zero();
@@ -132,17 +141,18 @@ std::vector<std::set<int>> Mesh::buildVertexToVertices() const {
     return vertexToVertices;
 }
 
-void Mesh::moveVertex(int index, const Eigen::Vector3d& pos) {
+void Mesh::moveVertex(int index, const Eigen::Vector3d &pos) {
     if (!vertices[index].removed) vertices[index].pos = pos;
 }
 
 void Mesh::logSummary() const {
-    std::cout << "Mesh: " << vertexCount() << " vertices, " << wedges.size()
-              << " wedges, " << faceCount() << " faces\n";
+    std::cout << "Mesh: " << vertexCount() << " vertices, " << wedges.size() << " wedges, "
+              << faceCount() << " faces\n";
     if (!textureData.empty())
         std::cout << "  color texture: " << textureWidth << "x" << textureHeight << "\n";
     if (!normalTextureData.empty())
-        std::cout << "  normal texture: " << normalTextureWidth << "x" << normalTextureHeight << "\n";
+        std::cout << "  normal texture: " << normalTextureWidth << "x" << normalTextureHeight
+                  << "\n";
 }
 
-} // namespace mesh
+}  // namespace mesh
