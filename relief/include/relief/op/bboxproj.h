@@ -6,6 +6,7 @@
 #pragma once
 
 #include <array>
+#include <limits>
 #include <vector>
 
 #include "relief/mesh.h"
@@ -31,8 +32,8 @@ struct BBoxFace {
 /// @brief Axis-aligned bounding box: min/max corners, plus each of its 6
 ///        faces' own vertex/wedge/face data.
 struct BBox {
-    Eigen::Vector3d min = Eigen::Vector3d::Constant(1e18);
-    Eigen::Vector3d max = Eigen::Vector3d::Constant(-1e18);
+    Eigen::Vector3d min = Eigen::Vector3d::Constant(std::numeric_limits<double>::max());
+    Eigen::Vector3d max = Eigen::Vector3d::Constant(std::numeric_limits<double>::lowest());
 
     /// The box's 6 faces, in order [-X, +X, -Y, +Y, -Z, +Z].
     std::array<BBoxFace, 6> faces;
