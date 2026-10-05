@@ -5,15 +5,11 @@
 
 namespace op::bboxproj {
 
-namespace {
-
 /// Axis index (0=X, 1=Y, 2=Z) of BBox::faces[i].
 constexpr int kFaceAxis[6] = {0, 0, 1, 1, 2, 2};
 
 /// Outward sign (-1 or +1 along kFaceAxis[i]) of BBox::faces[i].
 constexpr double kFaceSign[6] = {-1, +1, -1, +1, -1, +1};
-
-}  // namespace
 
 void BBoxProjectionOp::apply(mesh::Mesh& mesh) const {
     BBox box;
