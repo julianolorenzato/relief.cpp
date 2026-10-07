@@ -142,33 +142,33 @@ void BBoxProjectionOp::apply(mesh::Mesh& mesh) const {
         quad.wedges = std::move(wedges);
         quad.faces = std::move(faces);
 
-        // Quads with no mesh geometry ever facing them (e.g. a flat/open
-        // source mesh) fall back to two triangles spanning the full quad
-        // rectangle, with a synthetic unit-square UV, so the box stays closed.
-        if (!quad.faces.empty()) continue;
+        // // Quads with no mesh geometry ever facing them (e.g. a flat/open
+        // // source mesh) fall back to two triangles spanning the full quad
+        // // rectangle, with a synthetic unit-square UV, so the box stays closed.
+        // if (!quad.faces.empty()) continue;
 
-        std::array<Eigen::Vector2d, 4> corners = {Eigen::Vector2d(-hu, -hv),
-                                                  Eigen::Vector2d(hu, -hv), Eigen::Vector2d(hu, hv),
-                                                  Eigen::Vector2d(-hu, hv)};
-        std::array<Eigen::Vector2d, 4> cornerUVs = {Eigen::Vector2d(0, 0), Eigen::Vector2d(1, 0),
-                                                    Eigen::Vector2d(1, 1), Eigen::Vector2d(0, 1)};
-        for (int i = 0; i < 4; i++) {
-            mesh::Vertex vertex;
-            vertex.pos = Eigen::Vector3d(corners[i].x(), corners[i].y(), 0.0);
-            quad.vertices.push_back(vertex);
+        // std::array<Eigen::Vector2d, 4> corners = {Eigen::Vector2d(-hu, -hv),
+        //                                           Eigen::Vector2d(hu, -hv), Eigen::Vector2d(hu, hv),
+        //                                           Eigen::Vector2d(-hu, hv)};
+        // std::array<Eigen::Vector2d, 4> cornerUVs = {Eigen::Vector2d(0, 0), Eigen::Vector2d(1, 0),
+        //                                             Eigen::Vector2d(1, 1), Eigen::Vector2d(0, 1)};
+        // for (int i = 0; i < 4; i++) {
+        //     mesh::Vertex vertex;
+        //     vertex.pos = Eigen::Vector3d(corners[i].x(), corners[i].y(), 0.0);
+        //     quad.vertices.push_back(vertex);
 
-            mesh::Wedge wedge;
-            wedge.vertex = i;
-            wedge.uv = cornerUVs[i];
-            quad.wedges.push_back(wedge);
-        }
-        if (QUAD_SIGN[quadIdx] > 0) {
-            quad.faces.push_back({{0, 1, 2}});
-            quad.faces.push_back({{0, 2, 3}});
-        } else {
-            quad.faces.push_back({{0, 2, 1}});
-            quad.faces.push_back({{0, 3, 2}});
-        }
+        //     mesh::Wedge wedge;
+        //     wedge.vertex = i;
+        //     wedge.uv = cornerUVs[i];
+        //     quad.wedges.push_back(wedge);
+        // }
+        // if (QUAD_SIGN[quadIdx] > 0) {
+        //     quad.faces.push_back({{0, 1, 2}});
+        //     quad.faces.push_back({{0, 2, 3}});
+        // } else {
+        //     quad.faces.push_back({{0, 2, 1}});
+        //     quad.faces.push_back({{0, 3, 2}});
+        // }
     }
 
     box.exportTo(mesh);
