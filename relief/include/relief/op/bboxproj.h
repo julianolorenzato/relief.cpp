@@ -6,6 +6,8 @@
 #pragma once
 
 #include <array>
+#include <cstddef>
+#include <cstdint>
 #include <limits>
 #include <utility>
 #include <vector>
@@ -14,17 +16,19 @@
 #include "relief/op.h"
 namespace op::bboxproj {
 
-struct Quad {
+/// Static description of one of a box's 6 quads: which axis it is
+/// perpendicular to, and on which side of the box it sits.
+struct QuadInfo {
+    /// Axis index (0=X, 1=Y, 2=Z) the quad is perpendicular to.
     const uint8_t axis;
+    /// Outward sign (-1 or +1) along `axis`.
     const double sign;
-
-    std::vector<mesh::Edge> edges;
-
-    explicit Quad(uint8_t axis, double sign) : axis(axis), sign(sign) {}
 };
 
-std::array<Quad, 6> quads = {Quad(0, -1), Quad(0, +1), Quad(1, -1),
-                             Quad(1, +1), Quad(2, -1), Quad(2, +1)};
+/// The 6 quads of a box, in order [-X, +X, -Y, +Y, -Z, +Z].
+inline constexpr std::array<QuadInfo, 6> QUADS = {{
+    {0, -1}, {0, +1}, {1, -1}, {1, +1}, {2, -1}, {2, +1},
+}};
 
 struct BBoxQuadEdge {
     std::pair<int, int> w;
@@ -47,6 +51,9 @@ struct BBoxQuadEdge {
 /// quad's rectangle (row-major, pixel (x, y) at `y * resolution + x`) used by
 /// BBoxProjectionOp::apply to resolve occlusion.
 struct BBoxQuad {
+    /// Which of the box's 6 quads this is.
+    QuadInfo info;
+
     std::vector<mesh::Vertex> vertices;
     std::vector<mesh::Wedge> wedges;
     std::vector<mesh::Face> faces;
@@ -60,8 +67,9 @@ struct BBoxQuad {
     /// nothing covers it).
     std::vector<int> owner;
 
-    BBoxQuad(int resolution = 1)
-        : resolution(resolution),
+    BBoxQuad(QuadInfo info, int resolution = 1)
+        : info(info),
+          resolution(resolution),
           depth(resolution * resolution, std::numeric_limits<double>::infinity()),
           owner(resolution * resolution, -1) {}
 };
@@ -103,8 +111,12 @@ struct BBox {
         : min(bounds.first),
           max(bounds.second),
           center(0.5 * (min + max)),
-          halfExtents(0.5 * (max - min)) {
-        quads.fill(BBoxQuad(resolution));
+          halfExtents(0.5 * (max - min)),
+          quads(makeQuads(resolution, std::make_index_sequence<QUADS.size()>{})) {}
+
+    template <std::size_t... I>
+    static std::array<BBoxQuad, 6> makeQuads(int resolution, std::index_sequence<I...>) {
+        return {{BBoxQuad(QUADS[I], resolution)...}};
     }
 
     static Bounds computeBounds(const mesh::Mesh& mesh) {
@@ -145,6 +157,6 @@ class BBoxProjectionOp : public op::Op {
    private:
     int resolution_;
 
-    void handleQuad(const Quad quad, BBox& box, mesh::Mesh& mesh);
+    void handleQuad(const QuadInfo& quad, BBox& box, mesh::Mesh& mesh);
 };
 }  // namespace op::bboxproj

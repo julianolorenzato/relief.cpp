@@ -11,23 +11,17 @@
 
 namespace op::bboxproj {
 
-/// Axis index (0=X, 1=Y, 2=Z) of BBox::quads[i].
-constexpr int QUAD_AXIS[6] = {0, 0, 1, 1, 2, 2};
-
-/// Outward sign (-1 or +1 along QUAD_AXIS[i]) of BBox::quads[i].
-constexpr double QUAD_SIGN[6] = {-1, +1, -1, +1, -1, +1};
-
 void BBoxProjectionOp::apply(mesh::Mesh& mesh) const {
     BBox box(mesh, resolution_);
 
     for (int quadIdx = 0; quadIdx < 6; quadIdx++) {
         BBoxQuad& quad = box.quads[quadIdx];
-        const int axis = QUAD_AXIS[quadIdx];
+        const int axis = quad.info.axis;
         const int u = (axis + 1) % 3;
         const int v = (axis + 2) % 3;
         const double hu = box.halfExtents[u];
         const double hv = box.halfExtents[v];
-        const Eigen::Vector3d outward = QUAD_SIGN[quadIdx] * Eigen::Vector3d::Unit(axis);
+        const Eigen::Vector3d outward = quad.info.sign * Eigen::Vector3d::Unit(axis);
 
         // Project every mesh face facing this quad onto it, in original mesh
         // order (a face can face more than one quad, e.g. towards a corner,
@@ -43,7 +37,7 @@ void BBoxProjectionOp::apply(mesh::Mesh& mesh) const {
             mesh::Face triangle;
             for (int i = 0; i < 3; i++) {
                 Eigen::Vector3d d = mesh.faceVertex(f, i).pos - box.center;
-                double outwardCoord = QUAD_SIGN[quadIdx] * d[axis];
+                double outwardCoord = quad.info.sign * d[axis];
                 double depth = box.halfExtents[axis] - outwardCoord;
 
                 // z is the depth: distance from this quad's plane.
@@ -164,7 +158,7 @@ void BBoxProjectionOp::apply(mesh::Mesh& mesh) const {
         //     wedge.uv = cornerUVs[i];
         //     quad.wedges.push_back(wedge);
         // }
-        // if (QUAD_SIGN[quadIdx] > 0) {
+        // if (quad.info.sign > 0) {
         //     quad.faces.push_back({{0, 1, 2}});
         //     quad.faces.push_back({{0, 2, 3}});
         // } else {
@@ -178,7 +172,7 @@ void BBoxProjectionOp::apply(mesh::Mesh& mesh) const {
     mesh.logSummary();
 }
 
-void BBoxProjectionOp::handleQuad(const Quad quad, BBox& box, mesh::Mesh& mesh) {
+void BBoxProjectionOp::handleQuad(const QuadInfo& quad, BBox& box, mesh::Mesh& mesh) {
     auto edgeToFaces = mesh.buildEdgeToFaces();
 
     const int u = (quad.axis + 1) % 3;
@@ -189,17 +183,14 @@ void BBoxProjectionOp::handleQuad(const Quad quad, BBox& box, mesh::Mesh& mesh) 
 
     std::vector<std::pair<int, int>> edges;
 
-
     // for by island, for by islandFace?
-    
+
     for (const auto& f : mesh.faces) {
         if (f.removed) continue;
         if (mesh.faceNormal(f).dot(outward) <= 0.0) continue;
 
-        
         const auto fEdges = mesh.faceEdges(f);
         // Check which one in fEdges are boundary/seam
-        
 
         auto a = edgeToFaces[mesh::Edge(1, 2)];
     }
@@ -211,15 +202,15 @@ void BBox::exportTo(mesh::Mesh& mesh) const {
     std::vector<mesh::Face> faces;
 
     for (int quadIdx = 0; quadIdx < 6; quadIdx++) {
-        int axis = QUAD_AXIS[quadIdx];
+        const BBoxQuad& quad = quads[quadIdx];
+        int axis = quad.info.axis;
         int u = (axis + 1) % 3;
         int v = (axis + 2) % 3;
         Eigen::Vector3d quadOrigin =
-            center + QUAD_SIGN[quadIdx] * halfExtents[axis] * Eigen::Vector3d::Unit(axis);
+            center + quad.info.sign * halfExtents[axis] * Eigen::Vector3d::Unit(axis);
         Eigen::Vector3d axisU = Eigen::Vector3d::Unit(u);
         Eigen::Vector3d axisV = Eigen::Vector3d::Unit(v);
 
-        const BBoxQuad& quad = quads[quadIdx];
         int vertexBase = (int)vertices.size();
         for (const mesh::Vertex& local : quad.vertices) {
             mesh::Vertex vertex;
