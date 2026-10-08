@@ -8,11 +8,16 @@
 #include <utility>
 
 #include "relief/mesh.h"
+#include "relief/triangulate.h"
 
 namespace op::bboxproj {
 
 void BBoxProjectionOp::apply(mesh::Mesh& mesh) const {
     BBox box(mesh, resolution_);
+
+    for (const auto& quad : QUADS) {
+        BBoxProjectionOp::handleQuad(quad, box, mesh);
+    }
 
     // for (int quadIdx = 0; quadIdx < 6; quadIdx++) {
     //     BBoxQuad& quad = box.quads[quadIdx];
@@ -143,9 +148,11 @@ void BBoxProjectionOp::apply(mesh::Mesh& mesh) const {
     //     // if (!quad.faces.empty()) continue;
 
     //     // std::array<Eigen::Vector2d, 4> corners = {Eigen::Vector2d(-hu, -hv),
-    //     //                                           Eigen::Vector2d(hu, -hv), Eigen::Vector2d(hu,
+    //     //                                           Eigen::Vector2d(hu, -hv),
+    //     Eigen::Vector2d(hu,
     //     //                                           hv), Eigen::Vector2d(-hu, hv)};
-    //     // std::array<Eigen::Vector2d, 4> cornerUVs = {Eigen::Vector2d(0, 0), Eigen::Vector2d(1, 0),
+    //     // std::array<Eigen::Vector2d, 4> cornerUVs = {Eigen::Vector2d(0, 0), Eigen::Vector2d(1,
+    //     0),
     //     //                                             Eigen::Vector2d(1, 1), Eigen::Vector2d(0,
     //     //                                             1)};
     //     // for (int i = 0; i < 4; i++) {
@@ -168,11 +175,9 @@ void BBoxProjectionOp::apply(mesh::Mesh& mesh) const {
     // }
 
     box.exportTo(mesh);
-
-    mesh.logSummary();
 }
 
-void BBoxProjectionOp::handleQuad(const QuadInfo& quad, BBox& box, mesh::Mesh& mesh) {
+void BBoxProjectionOp::handleQuad(const QuadInfo& quad, BBox& box, mesh::Mesh& mesh) const {
     const int u = (quad.axis + 1) % 3;
     const int v = (quad.axis + 2) % 3;
     const double hu = box.halfExtents[u];
@@ -183,7 +188,7 @@ void BBoxProjectionOp::handleQuad(const QuadInfo& quad, BBox& box, mesh::Mesh& m
     std::vector<std::pair<int, int>> edges;
 
     const auto& faces = mesh.faces();
-    auto isOutward = [&](int fi) {
+    auto isOutward = [&faces, &mesh, &outward](int fi) {
         return !faces[fi].removed && mesh.faceNormal(faces[fi]).dot(outward) > 0.0;
     };
 

@@ -536,7 +536,11 @@ void Orbital3DView::createShaders() {
 // ─── Buffer builders ──────────────────────────────────────────────────────────
 
 void Orbital3DView::buildPrimaryBuffers() {
-    if (!primaryMesh_ || primaryMesh_->vertices().empty()) return;
+    if (!primaryMesh_) return;
+    if (primaryMesh_->vertices().empty()) {
+        primaryIndexCount_ = 0;  // nothing to draw; drop the previous mesh
+        return;
+    }
 
     // Compute bounding box for the model matrix normalization, from
     // normalizationMesh_ when set so linked viewports share one scale.

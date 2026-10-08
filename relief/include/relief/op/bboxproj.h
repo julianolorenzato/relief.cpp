@@ -153,6 +153,6 @@ class BBoxProjectionOp : public op::Op {
    private:
     int resolution_;
 
-    void handleQuad(const QuadInfo& quad, BBox& box, mesh::Mesh& mesh);
+    void handleQuad(const QuadInfo& quad, BBox& box, mesh::Mesh& mesh) const;
 };
 }  // namespace op::bboxproj

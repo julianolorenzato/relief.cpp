@@ -614,8 +614,13 @@ void ReliefView::performPick(const QPoint &widgetPos)
 
 void ReliefView::buildMeshBuffers()
 {
-    if (!this->mesh || this->mesh->vertices().empty())
+    if (!this->mesh)
         return;
+    if (this->mesh->vertices().empty())
+    {
+        this->indexCount = 0; // nothing to draw; drop the previous mesh
+        return;
+    }
 
     Eigen::Vector3d bmin(1e18, 1e18, 1e18);
     Eigen::Vector3d bmax(-1e18, -1e18, -1e18);
