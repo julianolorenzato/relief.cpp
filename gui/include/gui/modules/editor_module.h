@@ -14,7 +14,6 @@
 #include <vector>
 #include "gui/module.h"
 #include "relief/mesh.h"
-#include "relief/mesh/io.h"
 #include "relief/op/simplification.h"
 #include "relief/op/inflation.h"
 #include "relief/op/smoothing.h"

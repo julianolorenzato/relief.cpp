@@ -2,7 +2,7 @@
  * @file obj.cpp
  * @brief Wavefront OBJ import/export for Mesh.
  */
-#include "relief/mesh/io/obj.h"
+#include "mesh/io/obj.h"
 
 #include "stb_image.h"
 #define TINYOBJLOADER_IMPLEMENTATION

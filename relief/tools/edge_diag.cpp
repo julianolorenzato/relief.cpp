@@ -6,7 +6,6 @@
  *        position, different vertex index). Not part of the library build.
  */
 #include "relief/mesh.h"
-#include "relief/mesh/io.h"
 #include <iostream>
 #include <memory>
 #include <map>
@@ -16,7 +15,6 @@
 #include <vector>
 
 using namespace mesh;
-using namespace mesh::io;
 
 int main(int argc, char **argv)
 {

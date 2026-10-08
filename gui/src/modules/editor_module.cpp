@@ -343,7 +343,7 @@ void EditorModule::onMeshUpdated() {
 bool EditorModule::saveSimplified(const QString &path) {
     if (!this->simplifiedMesh_ || this->simplifiedMesh_->faceCount() == 0) return false;
 
-    bool success = mesh::io::saveMesh(*this->simplifiedMesh_, path.toStdString());
+    bool success = this->simplifiedMesh_->save(path.toStdString());
 
     return success;
 }

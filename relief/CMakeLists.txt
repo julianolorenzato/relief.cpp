@@ -59,6 +59,9 @@ target_link_libraries(relief
 # dependência de link (a implementação é compilada uma vez em gltf.cpp/obj.cpp
 # via TINYGLTF_IMPLEMENTATION/TINYOBJLOADER_IMPLEMENTATION).
 target_include_directories(relief PRIVATE
+    # Cabeçalhos de I/O (mesh/io*.h) são privados: a API pública carrega
+    # malhas apenas via Mesh(path) e salva via Mesh::save.
+    ${CMAKE_CURRENT_SOURCE_DIR}/src
     $<TARGET_PROPERTY:tinygltf,INTERFACE_INCLUDE_DIRECTORIES>
     ${tinyobjloader_SOURCE_DIR}
 )

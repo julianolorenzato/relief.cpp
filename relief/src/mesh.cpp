@@ -10,7 +10,7 @@
 #include <stdexcept>
 #include <utility>
 
-#include "relief/mesh/io.h"
+#include "mesh/io.h"
 
 namespace mesh {
 
@@ -26,6 +26,8 @@ Mesh::Mesh(const std::string &path) {
     if (!io::loadMesh(*this, path)) throw std::runtime_error("failed to load mesh: " + path);
     computeIslands();
 }
+
+bool Mesh::save(const std::string &path) const { return io::saveMesh(*this, path); }
 
 void Mesh::computeIslands() { islands = detectIslands(); }
 

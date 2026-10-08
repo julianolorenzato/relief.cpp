@@ -1,7 +1,7 @@
 /**
  * @file mesh.h
  * @brief Triangle mesh data type: vertices, faces, textures, and basic
- *        topology queries. See mesh/io.h for OBJ/glTF I/O.
+ *        topology queries, and OBJ/glTF I/O via Mesh(path) and Mesh::save.
  */
 #pragma once
 #include <array>
@@ -79,12 +79,19 @@ public:
                          std::vector<Face> newFaces);
 
     /**
-     * @brief Loads a mesh from a file (dispatching on extension, see
-     *        mesh::io::loadMesh) and detects its UV islands.
+     * @brief Loads a mesh from a file (dispatching on extension: .obj or
+     *        .gltf/.glb) and detects its UV islands.
      * @param path Path to an .obj/.gltf/.glb file.
      * @throws std::runtime_error if the file cannot be loaded.
      */
     explicit Mesh(const std::string& path);
+
+    /**
+     * @brief Saves the mesh to a file, dispatching on extension (.obj or .gltf/.glb).
+     * @param path Destination path.
+     * @return true on success.
+     */
+    bool save(const std::string& path) const;
 
     /**
      * @brief Recomputes `islands` from the current faces/wedges. Call after

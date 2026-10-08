@@ -2,9 +2,9 @@
  * @file io.cpp
  * @brief Generic mesh import/export, dispatching by file extension.
  */
-#include "relief/mesh/io.h"
-#include "relief/mesh/io/obj.h"
-#include "relief/mesh/io/gltf.h"
+#include "mesh/io.h"
+#include "mesh/io/obj.h"
+#include "mesh/io/gltf.h"
 #include <algorithm>
 #include <cctype>
 

@@ -5,12 +5,10 @@
  *        algorithms to eyeball what the vertex/wedge/face counts do.
  */
 #include "relief/mesh.h"
-#include "relief/mesh/io.h"
 #include <iostream>
 #include <string>
 
 using namespace mesh;
-using namespace mesh::io;
 
 int main(int argc, char **argv)
 {

@@ -24,12 +24,10 @@
 #include <cmath>
 
 #include "gui/texture_inspector_widget.h"
-#include "relief/mesh/io.h"
 #include "relief/textures.h"
 #include "relief/uv_atlas.h"
 
 using namespace mesh;
-using namespace mesh::io;
 using namespace textures;
 
 /**

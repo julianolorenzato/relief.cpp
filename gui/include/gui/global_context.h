@@ -9,7 +9,6 @@
 #include <QString>
 #include <memory>
 #include "relief/mesh.h"
-#include "relief/mesh/io.h"
 
 /// @brief Loads a mesh file from disk and broadcasts it to interested modules.
 class GlobalContext : public QObject {

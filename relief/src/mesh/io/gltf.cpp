@@ -8,7 +8,7 @@
 #define STB_IMAGE_WRITE_IMPLEMENTATION
 #include "tiny_gltf.h"
 
-#include "relief/mesh/io/gltf.h"
+#include "mesh/io/gltf.h"
 #include <iostream>
 #include <map>
 #include <tuple>
