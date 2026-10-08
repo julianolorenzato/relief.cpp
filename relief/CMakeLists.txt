@@ -34,6 +34,7 @@ add_library(relief STATIC
     src/mesh/edgesel.cpp
     src/heightmap.cpp
     src/uv_atlas.cpp
+    src/triangulate.cpp
     src/textures.cpp
     src/metrics.cpp
     src/op/simplification.cpp

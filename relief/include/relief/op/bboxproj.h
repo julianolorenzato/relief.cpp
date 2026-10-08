@@ -30,10 +30,6 @@ inline constexpr std::array<QuadInfo, 6> QUADS = {{
     {0, -1}, {0, +1}, {1, -1}, {1, +1}, {2, -1}, {2, +1},
 }};
 
-struct BBoxQuadEdge {
-    std::pair<int, int> w;
-};
-
 /// One of a BBox's 6 quads: an independently triangulated planar patch,
 /// with the same vertex/wedge/face shape as mesh::Mesh -- i.e. a quad is a
 /// small, self-contained mesh of its own, unwelded from its neighbors.
