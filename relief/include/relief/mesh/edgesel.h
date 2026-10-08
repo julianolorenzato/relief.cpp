@@ -48,7 +48,7 @@ struct RayHit {
 /// @param dir Ray direction (need not be normalized).
 RayHit raycastMesh(const Mesh& mesh, const Eigen::Vector3d& origin, const Eigen::Vector3d& dir);
 
-/// @return true iff the 3D segment [mesh.vertices[v0].pos, mesh.vertices[v1].pos]
+/// @return true iff the 3D segment [mesh.vertices()[v0].pos, mesh.vertices()[v1].pos]
 ///         passes within `radius` of `center` (point-to-segment distance).
 bool touchesEdge(const Mesh& mesh, int v0, int v1, const Eigen::Vector3d& center, double radius);
 

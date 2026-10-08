@@ -21,7 +21,7 @@ void SimplifyOp::apply(mesh::Mesh& mesh) const {
     lockSeamEdges_ = false;
     boundaryVertex_.clear();
 
-    userLockedVertex_.assign(mesh.vertices.size(), false);
+    userLockedVertex_.assign(mesh.vertices().size(), false);
     for (const auto& [a, b] : lockedEdges_) {
         userLockedVertex_[a] = true;
         userLockedVertex_[b] = true;
@@ -65,23 +65,23 @@ Eigen::Vector2d SimplifyOp::interpolateUVAlongSegment(const Eigen::Vector3d& p, 
 
 // step 1
 void SimplifyOp::computeQ() const {
-    for (auto &vx : mesh_->vertices) vx.Q.setZero();
+    mesh_->clearQuadrics();
 
-    for (auto &fc : mesh_->faces) {
+    for (const auto &fc : mesh_->faces()) {
         if (fc.removed) continue;
-        int v0 = mesh_->wedges[fc.w[0]].vertex;
-        int v1 = mesh_->wedges[fc.w[1]].vertex;
-        int v2 = mesh_->wedges[fc.w[2]].vertex;
-        const Eigen::Vector3d &p0 = mesh_->vertices[v0].pos;
+        int v0 = mesh_->wedges()[fc.w[0]].vertex;
+        int v1 = mesh_->wedges()[fc.w[1]].vertex;
+        int v2 = mesh_->wedges()[fc.w[2]].vertex;
+        const Eigen::Vector3d &p0 = mesh_->vertices()[v0].pos;
 
         Eigen::Vector3d n = mesh_->faceNormal(fc);
         double d = -n.dot(p0);
 
         Eigen::Matrix4d Kp = quadricFromPlane(n.x(), n.y(), n.z(), d);
 
-        mesh_->vertices[v0].Q += Kp;
-        mesh_->vertices[v1].Q += Kp;
-        mesh_->vertices[v2].Q += Kp;
+        mesh_->addQuadric(v0, Kp);
+        mesh_->addQuadric(v1, Kp);
+        mesh_->addQuadric(v2, Kp);
     }
 }
 
@@ -90,13 +90,13 @@ bool SimplifyOp::computeCollapse(int v1, int v2, EdgeCollapse &ec) const {
     ec.v1 = v1;
     ec.v2 = v2;
 
-    Eigen::Matrix4d Qbar = mesh_->vertices[v1].Q + mesh_->vertices[v2].Q;
+    Eigen::Matrix4d Qbar = mesh_->vertices()[v1].Q + mesh_->vertices()[v2].Q;
 
-    Eigen::Vector3d mid = (mesh_->vertices[v1].pos + mesh_->vertices[v2].pos) * 0.5;
-    double c1 = evalQuadric(Qbar, mesh_->vertices[v1].pos.x(), mesh_->vertices[v1].pos.y(),
-                            mesh_->vertices[v1].pos.z());
-    double c2 = evalQuadric(Qbar, mesh_->vertices[v2].pos.x(), mesh_->vertices[v2].pos.y(),
-                            mesh_->vertices[v2].pos.z());
+    Eigen::Vector3d mid = (mesh_->vertices()[v1].pos + mesh_->vertices()[v2].pos) * 0.5;
+    double c1 = evalQuadric(Qbar, mesh_->vertices()[v1].pos.x(), mesh_->vertices()[v1].pos.y(),
+                            mesh_->vertices()[v1].pos.z());
+    double c2 = evalQuadric(Qbar, mesh_->vertices()[v2].pos.x(), mesh_->vertices()[v2].pos.y(),
+                            mesh_->vertices()[v2].pos.z());
     double cm = evalQuadric(Qbar, mid.x(), mid.y(), mid.z());
 
     bool hasOpt = false;
@@ -112,11 +112,11 @@ bool SimplifyOp::computeCollapse(int v1, int v2, EdgeCollapse &ec) const {
     }
 
     double bestCost = c1;
-    ec.target = mesh_->vertices[v1].pos;
+    ec.target = mesh_->vertices()[v1].pos;
     ec.cost = c1;
     if (c2 < bestCost) {
         bestCost = c2;
-        ec.target = mesh_->vertices[v2].pos;
+        ec.target = mesh_->vertices()[v2].pos;
         ec.cost = c2;
     }
     if (cm < bestCost) {
@@ -135,10 +135,10 @@ bool SimplifyOp::computeCollapse(int v1, int v2, EdgeCollapse &ec) const {
     // edge is a UV seam.
     ec.uvTargets.clear();
     for (auto &[w1, w2] : edgeUVPairs(v1, v2)) {
-        const Eigen::Vector2d &uvA = mesh_->wedges[w1].uv;
-        const Eigen::Vector2d &uvB = mesh_->wedges[w2].uv;
-        Eigen::Vector2d merged = interpolateUVAlongSegment(ec.target, mesh_->vertices[v1].pos, uvA,
-                                                           mesh_->vertices[v2].pos, uvB);
+        const Eigen::Vector2d &uvA = mesh_->wedges()[w1].uv;
+        const Eigen::Vector2d &uvB = mesh_->wedges()[w2].uv;
+        Eigen::Vector2d merged = interpolateUVAlongSegment(ec.target, mesh_->vertices()[v1].pos, uvA,
+                                                           mesh_->vertices()[v2].pos, uvB);
         ec.uvTargets.push_back({w1, w2, merged});
     }
 
@@ -147,12 +147,12 @@ bool SimplifyOp::computeCollapse(int v1, int v2, EdgeCollapse &ec) const {
 
 std::vector<std::pair<int, int>> SimplifyOp::edgeUVPairs(int v1, int v2) const {
     std::vector<std::pair<int, int>> pairs;
-    for (auto &fc : mesh_->faces) {
+    for (auto &fc : mesh_->faces()) {
         if (fc.removed) continue;
         int w1 = -1, w2 = -1;
         for (int k = 0; k < 3; k++) {
-            if (mesh_->wedges[fc.w[k]].vertex == v1) w1 = fc.w[k];
-            if (mesh_->wedges[fc.w[k]].vertex == v2) w2 = fc.w[k];
+            if (mesh_->wedges()[fc.w[k]].vertex == v1) w1 = fc.w[k];
+            if (mesh_->wedges()[fc.w[k]].vertex == v2) w2 = fc.w[k];
         }
         if (w1 < 0 || w2 < 0) continue;
         auto p = std::make_pair(w1, w2);
@@ -167,7 +167,7 @@ std::vector<std::pair<int, int>> SimplifyOp::edgeUVPairs(int v1, int v2) const {
 // hoje compartilham vértice de posição) — então precisa ser detectada à
 // parte via uv_atlas::findSeamEdges, não aparece em mesh_->buildEdgeToFaces().
 void SimplifyOp::markBoundaryVertices() const {
-    boundaryVertex_.assign(mesh_->vertices.size(), false);
+    boundaryVertex_.assign(mesh_->vertices().size(), false);
     for (const auto &[edge, faceIds] : mesh_->buildEdgeToFaces()) {
         if (faceIds.size() != 1) continue;
         boundaryVertex_[edge.first] = true;
@@ -207,47 +207,7 @@ void SimplifyOp::buildQueue(PQ &pq) const {
 void SimplifyOp::mergeVertexPair(
     int keep, int remove, const Eigen::Vector3d &pos,
     const std::vector<std::tuple<int, int, Eigen::Vector2d>> &uvTargets) const {
-    mesh::Vertex &kv = mesh_->vertices[keep];
-    mesh::Vertex &rv = mesh_->vertices[remove];
-
-    kv.pos = pos;
-    kv.Q += rv.Q;
-
-    // Each uvTarget pairing collapses onto one surviving wedge (wKeep): if
-    // wRemove stayed a separate (but now identical-valued) wedge, faces on
-    // either side of the old edge would explode into two distinct GPU
-    // vertices at the same spot (explodeForGPU dedups by wedge id, not
-    // value), each only accumulating its own half of the normal -- faceting
-    // the shading right along every collapsed edge. So faces still pointing
-    // at wRemove are repointed at wKeep below, folded into the face pass
-    // already needed for degeneracy checking.
-    std::map<int, int> wedgeRemap;  // wRemove -> wKeep
-    for (auto &[wKeep, wRemove, mergedUV] : uvTargets) {
-        mesh_->wedges[wKeep].uv = mergedUV;
-        wedgeRemap[wRemove] = wKeep;
-    }
-
-    // Any other wedge still belonging to `remove` (parts of its fan that
-    // don't touch this edge) simply moves to `keep`, UV unchanged.
-    for (auto &wg : mesh_->wedges)
-        if (wg.vertex == remove) wg.vertex = keep;
-
-    rv.removed = true;
-
-    // Repoint faces off any merged-away wedge, and mark now-degenerate faces
-    // (two corners collapsed onto the same vertex) removed.
-    for (auto &fc : mesh_->faces) {
-        if (fc.removed) continue;
-        if (!wedgeRemap.empty())
-            for (int i = 0; i < 3; i++) {
-                auto it = wedgeRemap.find(fc.w[i]);
-                if (it != wedgeRemap.end()) fc.w[i] = it->second;
-            }
-        int a = mesh_->wedges[fc.w[0]].vertex;
-        int b = mesh_->wedges[fc.w[1]].vertex;
-        int c = mesh_->wedges[fc.w[2]].vertex;
-        if (a == b || b == c || a == c) fc.removed = true;
-    }
+    mesh_->mergeVertices(keep, remove, pos, uvTargets);
 
     // Mantém a adjacência viva (necessária para buildCandidate checar se o
     // par espelhado de uma aresta de seam ainda é uma aresta real da malha).
@@ -268,17 +228,17 @@ void SimplifyOp::addBoundaryConstraints(double weight) const {
     // Adiciona ao par (a,b) a quádrica de plano perpendicular à face `fi`
     // passando pela aresta (Seção 4 do paper), ponderada por `weight`.
     auto applyEdgeConstraint = [&](int a, int b, int fi) {
-        Eigen::Vector3d faceNormal = mesh_->faceNormal(mesh_->faces[fi]);
-        Eigen::Vector3d edgeDir = (mesh_->vertices[b].pos - mesh_->vertices[a].pos).normalized();
+        Eigen::Vector3d faceNormal = mesh_->faceNormal(mesh_->faces()[fi]);
+        Eigen::Vector3d edgeDir = (mesh_->vertices()[b].pos - mesh_->vertices()[a].pos).normalized();
 
         Eigen::Vector3d cn = faceNormal.cross(edgeDir);
         if (cn.norm() < 1e-10) return false;
         cn.normalize();
-        double d = -cn.dot(mesh_->vertices[a].pos);
+        double d = -cn.dot(mesh_->vertices()[a].pos);
 
         Eigen::Matrix4d Kc = quadricFromPlane(cn.x(), cn.y(), cn.z(), d) * weight;
-        mesh_->vertices[a].Q += Kc;
-        mesh_->vertices[b].Q += Kc;
+        mesh_->addQuadric(a, Kc);
+        mesh_->addQuadric(b, Kc);
         return true;
     };
 
@@ -364,7 +324,7 @@ void SimplifyOp::run() const {
         // As 3 checagens abaixo filtram entradas obsoletas da pq (lazy deletion):
         if (invalidEdges.count(key))
             continue;  // aresta já foi colapsada (ou substituída) antes; esta cópia é lixo.
-        if (mesh_->vertices[ec.v1].removed || mesh_->vertices[ec.v2].removed)
+        if (mesh_->vertices()[ec.v1].removed || mesh_->vertices()[ec.v2].removed)
             continue;  // um dos vértices já sumiu em outro colapso.
         if (edgeMap_.count(key) && std::abs(edgeMap_[key].cost - ec.cost) > 1e-6)
             continue;  // existe um EdgeCollapse mais recente pra essa aresta (refreshAround já

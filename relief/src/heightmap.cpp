@@ -41,20 +41,20 @@ std::vector<HeightmapBaker::TexelSample> HeightmapBaker::rasterizeUV(const Mesh 
                                                                      int H) {
     std::vector<TexelSample> samples(W * H);
 
-    for (int fi = 0; fi < (int)mesh.faces.size(); fi++) {
-        const auto &fc = mesh.faces[fi];
+    for (int fi = 0; fi < (int)mesh.faces().size(); fi++) {
+        const auto &fc = mesh.faces()[fi];
         if (fc.removed) continue;
 
-        const Eigen::Vector3d &p0 = mesh.vertices[mesh.wedges[fc.w[0]].vertex].pos;
-        const Eigen::Vector3d &p1 = mesh.vertices[mesh.wedges[fc.w[1]].vertex].pos;
-        const Eigen::Vector3d &p2 = mesh.vertices[mesh.wedges[fc.w[2]].vertex].pos;
+        const Eigen::Vector3d &p0 = mesh.vertices()[mesh.wedges()[fc.w[0]].vertex].pos;
+        const Eigen::Vector3d &p1 = mesh.vertices()[mesh.wedges()[fc.w[1]].vertex].pos;
+        const Eigen::Vector3d &p2 = mesh.vertices()[mesh.wedges()[fc.w[2]].vertex].pos;
 
         Eigen::Vector3d n = mesh.faceNormal(fc);
         if (n.isZero()) continue;
 
-        Eigen::Vector2d uv0 = mesh.wedges[fc.w[0]].uv;
-        Eigen::Vector2d uv1 = mesh.wedges[fc.w[1]].uv;
-        Eigen::Vector2d uv2 = mesh.wedges[fc.w[2]].uv;
+        Eigen::Vector2d uv0 = mesh.wedges()[fc.w[0]].uv;
+        Eigen::Vector2d uv1 = mesh.wedges()[fc.w[1]].uv;
+        Eigen::Vector2d uv2 = mesh.wedges()[fc.w[2]].uv;
 
         double u0 = uv0.x() * W, v0 = uv0.y() * H;
         double u1 = uv1.x() * W, v1 = uv1.y() * H;

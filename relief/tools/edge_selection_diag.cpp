@@ -41,7 +41,7 @@ int main(int argc, char **argv)
 
     Eigen::Vector3d bmin = Eigen::Vector3d::Constant(1e18);
     Eigen::Vector3d bmax = Eigen::Vector3d::Constant(-1e18);
-    for (const auto &v : mesh.vertices)
+    for (const auto &v : mesh.vertices())
     {
         if (v.removed) continue;
         bmin = bmin.cwiseMin(v.pos);

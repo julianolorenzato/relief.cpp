@@ -321,12 +321,12 @@ void EditorModule::onMeshLoaded(mesh::Mesh *original, mesh::Mesh *simplified) {
     this->glWidgetSimplified->setMesh(this->simplifiedMesh_, this->originalMesh_);
     this->glWidgetOverlay->setMeshes(this->originalMesh_, this->simplifiedMesh_, this->originalMesh_);
 
-    bool hasTexture = !this->originalMesh_->textureData.empty();
+    bool hasTexture = !this->originalMesh_->colorTexture().data.empty();
     this->texturedCheck->setEnabled(hasTexture);
     if (!hasTexture) this->texturedCheck->setChecked(false);
 
     bool hasUVs = false;
-    for (const auto &wg : this->originalMesh_->wedges)
+    for (const auto &wg : this->originalMesh_->wedges())
         if (wg.uv.squaredNorm() > 1e-12) {
             hasUVs = true;
             break;

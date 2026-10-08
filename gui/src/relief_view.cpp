@@ -30,7 +30,7 @@ namespace
                         std::vector<float> &verts,
                         std::vector<unsigned int> &idxs)
     {
-        if (!mesh || mesh->vertices.empty())
+        if (!mesh || mesh->vertices().empty())
             return;
 
         // A Mesh::Vertex may carry multiple UVs (one per seam shell), so the
@@ -614,12 +614,12 @@ void ReliefView::performPick(const QPoint &widgetPos)
 
 void ReliefView::buildMeshBuffers()
 {
-    if (!this->mesh || this->mesh->vertices.empty())
+    if (!this->mesh || this->mesh->vertices().empty())
         return;
 
     Eigen::Vector3d bmin(1e18, 1e18, 1e18);
     Eigen::Vector3d bmax(-1e18, -1e18, -1e18);
-    for (const auto &v : this->mesh->vertices)
+    for (const auto &v : this->mesh->vertices())
     {
         if (v.removed)
             continue;

@@ -10,6 +10,7 @@
 #include <map>
 #include <set>
 #include <string>
+#include <tuple>
 #include <utility>
 #include <vector>
 
@@ -53,31 +54,44 @@ struct Edge {
     bool operator==(const Edge& o) const { return first == o.first && second == o.second; }
 };
 
+/// An RGBA8 (row-major) image attached to a mesh. Empty `data` means "no texture".
+struct Texture {
+    std::vector<uint8_t> data;
+    int width = 0;
+    int height = 0;
+};
+
 /**
  * @brief Triangle mesh with position/UV/texture data.
  */
 class Mesh {
    public:
-    // ---- Data ----
+    // ---- Read-only data access ----
 
-    std::vector<Vertex> vertices;
-    std::vector<Wedge> wedges;
-    std::vector<Face> faces;
+    /// @return The mesh vertices (removed ones included, flagged `removed`).
+    const std::vector<Vertex>& vertices() const { return vertices_; }
+    /// @return The mesh wedges (indexing `vertices()`).
+    const std::vector<Wedge>& wedges() const { return wedges_; }
+    /// @return The mesh faces (indexing `wedges()`).
+    const std::vector<Face>& faces() const { return faces_; }
 
-    /// Per-face UV-island id, parallel to `faces` (removed faces get -1).
-    /// Two faces share an island iff they are connected through 3D edges
-    /// across which their UVs agree. Computed by the constructor and
-    /// computeIslands(); faces flagged `removed` afterwards keep their id.
-    std::vector<int> islands;
+    /// @return Per-face UV-island id, parallel to `faces()` (removed faces get -1).
+    ///         Two faces share an island iff they are connected through 3D edges
+    ///         across which their UVs agree. Computed by the constructor and
+    ///         computeIslands(); faces flagged `removed` afterwards keep their id.
+    const std::vector<int>& islands() const { return islands_; }
 
-    /// Textures extracted from the source GLTF (RGBA, row-major).
-    std::vector<uint8_t> textureData;
-    int textureWidth = 0;
-    int textureHeight = 0;
+    /// @return The color texture extracted from the source file (empty if none).
+    const Texture& colorTexture() const { return colorTexture_; }
+    /// @return The normal-map texture extracted from the source file (empty if none).
+    const Texture& normalTexture() const { return normalTexture_; }
 
-    std::vector<uint8_t> normalTextureData;
-    int normalTextureWidth = 0;
-    int normalTextureHeight = 0;
+    // ---- Texture mutation ----
+
+    /// Replaces the color texture.
+    void setColorTexture(Texture texture) { colorTexture_ = std::move(texture); }
+    /// Replaces the normal-map texture.
+    void setNormalTexture(Texture texture) { normalTexture_ = std::move(texture); }
 
     // ---- Construction, I/O and geometry replacement ----
 
@@ -174,6 +188,31 @@ class Mesh {
     /// simplification), in which case this is a no-op.
     void moveVertex(int index, const Eigen::Vector3d& pos);
 
+    /// Adds `Q` to vertex `index`'s accumulated quadric.
+    void addQuadric(int index, const Eigen::Matrix4d& Q);
+
+    /// Zeroes the accumulated quadric of every vertex.
+    void clearQuadrics();
+
+    /**
+     * @brief Collapses vertex `remove` onto vertex `keep` in place.
+     *
+     * `keep` moves to `pos` and absorbs `remove`'s quadric; `remove` is
+     * flagged removed. Each uvTargets entry (wKeep, wRemove, mergedUV) merges
+     * wedge `wRemove` into wedge `wKeep` with UV `mergedUV`, and faces are
+     * repointed accordingly (so no duplicate same-valued wedges survive and
+     * explodeForGPU doesn't split the shading along the collapsed edge). Any
+     * other wedge of `remove` simply moves to `keep`, UV unchanged. Faces
+     * left with two corners on the same vertex are flagged removed.
+     *
+     * @param keep      Surviving vertex id.
+     * @param remove    Vertex id merged away.
+     * @param pos       New position of `keep`.
+     * @param uvTargets (wKeep, wRemove, mergedUV) wedge merges across the edge.
+     */
+    void mergeVertices(int keep, int remove, const Eigen::Vector3d& pos,
+                       const std::vector<std::tuple<int, int, Eigen::Vector2d>>& uvTargets);
+
     // ---- GPU export ----
 
     /// Flattened, GPU-friendly form of the mesh: one entry per distinct
@@ -198,6 +237,13 @@ class Mesh {
     void logSummary() const;
 
    private:
+    std::vector<Vertex> vertices_;
+    std::vector<Wedge> wedges_;
+    std::vector<Face> faces_;
+    std::vector<int> islands_;
+    Texture colorTexture_;
+    Texture normalTexture_;
+
     /**
      * @brief Partitions active faces into UV islands via union-find over
      *        3D-edge-adjacent faces whose UVs agree at the shared edge.

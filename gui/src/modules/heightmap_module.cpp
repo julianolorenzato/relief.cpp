@@ -202,7 +202,7 @@ void HeightmapModule::launchBake()
     }
 
     bool hasUVs = false;
-    for (const auto& wg : simplifiedMesh_->wedges)
+    for (const auto& wg : simplifiedMesh_->wedges())
         if (wg.uv.squaredNorm() > 1e-12) { hasUVs = true; break; }
     if (!hasUVs)
     {

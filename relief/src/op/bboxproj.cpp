@@ -26,7 +26,7 @@ void BBoxProjectionOp::apply(mesh::Mesh& mesh) const {
         // Project every mesh face facing this quad onto it, in original mesh
         // order (a face can face more than one quad, e.g. towards a corner,
         // in which case it's projected onto each).
-        for (const auto& f : mesh.faces) {
+        for (const auto& f : mesh.faces()) {
             if (f.removed) continue;
 
             // Skip backfaces for this quad (this also skips degenerate faces,
@@ -185,7 +185,7 @@ void BBoxProjectionOp::handleQuad(const QuadInfo& quad, BBox& box, mesh::Mesh& m
 
     // for by island, for by islandFace?
 
-    for (const auto& f : mesh.faces) {
+    for (const auto& f : mesh.faces()) {
         if (f.removed) continue;
         if (mesh.faceNormal(f).dot(outward) <= 0.0) continue;
 

@@ -16,41 +16,40 @@ namespace mesh {
 
 Mesh::Mesh(const std::string &path) {
     if (!io::loadMesh(*this, path)) throw std::runtime_error("failed to load mesh: " + path);
-    computeIslands();
 }
 
 bool Mesh::save(const std::string &path) const { return io::saveMesh(*this, path); }
 
 void Mesh::replaceGeometry(std::vector<Vertex> newVertices, std::vector<Wedge> newWedges,
                            std::vector<Face> newFaces) {
-    vertices = std::move(newVertices);
-    wedges = std::move(newWedges);
-    faces = std::move(newFaces);
+    vertices_ = std::move(newVertices);
+    wedges_ = std::move(newWedges);
+    faces_ = std::move(newFaces);
     computeIslands();
 }
 
-void Mesh::computeIslands() { islands = detectIslands(); }
+void Mesh::computeIslands() { islands_ = detectIslands(); }
 
 int Mesh::faceCount() const {
     int n = 0;
-    for (auto &f : faces)
+    for (auto &f : faces_)
         if (!f.removed) n++;
     return n;
 }
 
 int Mesh::vertexCount() const {
     int n = 0;
-    for (auto &v : vertices)
+    for (auto &v : vertices_)
         if (!v.removed) n++;
     return n;
 }
 
 const Wedge &Mesh::faceWedge(const Face &f, int cornerIdx) const {
-    return wedges[f.w[cornerIdx]];
+    return wedges_[f.w[cornerIdx]];
 }
 
 const Vertex &Mesh::faceVertex(const Face &f, int cornerIdx) const {
-    return vertices[faceWedge(f, cornerIdx).vertex];
+    return vertices_[faceWedge(f, cornerIdx).vertex];
 }
 
 Eigen::Vector3d Mesh::faceNormal(const Face &f) const {
@@ -64,21 +63,21 @@ Eigen::Vector3d Mesh::faceNormal(const Face &f) const {
 }
 
 std::array<Edge, 3> Mesh::faceEdges(const Face &f) const {
-    int v0 = wedges[f.w[0]].vertex, v1 = wedges[f.w[1]].vertex, v2 = wedges[f.w[2]].vertex;
+    int v0 = wedges_[f.w[0]].vertex, v1 = wedges_[f.w[1]].vertex, v2 = wedges_[f.w[2]].vertex;
     return {Edge(v0, v1), Edge(v1, v2), Edge(v2, v0)};
 }
 
 std::map<Edge, std::vector<int>> Mesh::buildEdgeToFaces() const {
     std::map<Edge, std::vector<int>> edgeToFaces;
-    for (int fi = 0; fi < (int)faces.size(); fi++) {
-        if (faces[fi].removed) continue;
-        for (const Edge &e : faceEdges(faces[fi])) edgeToFaces[e].push_back(fi);
+    for (int fi = 0; fi < (int)faces_.size(); fi++) {
+        if (faces_[fi].removed) continue;
+        for (const Edge &e : faceEdges(faces_[fi])) edgeToFaces[e].push_back(fi);
     }
     return edgeToFaces;
 }
 
 std::vector<std::set<int>> Mesh::buildVertexToVertices() const {
-    std::vector<std::set<int>> vertexToVertices(vertices.size());
+    std::vector<std::set<int>> vertexToVertices(vertices_.size());
     for (const auto &entry : buildEdgeToFaces()) {
         const auto &edge = entry.first;
         vertexToVertices[edge.first].insert(edge.second);
@@ -87,22 +86,74 @@ std::vector<std::set<int>> Mesh::buildVertexToVertices() const {
     return vertexToVertices;
 }
 
+void Mesh::addQuadric(int index, const Eigen::Matrix4d &Q) { vertices_[index].Q += Q; }
+
+void Mesh::clearQuadrics() {
+    for (auto &v : vertices_) v.Q.setZero();
+}
+
+void Mesh::mergeVertices(
+    int keep, int remove, const Eigen::Vector3d &pos,
+    const std::vector<std::tuple<int, int, Eigen::Vector2d>> &uvTargets) {
+    Vertex &kv = vertices_[keep];
+    Vertex &rv = vertices_[remove];
+
+    kv.pos = pos;
+    kv.Q += rv.Q;
+
+    // Each uvTarget pairing collapses onto one surviving wedge (wKeep): if
+    // wRemove stayed a separate (but now identical-valued) wedge, faces on
+    // either side of the old edge would explode into two distinct GPU
+    // vertices at the same spot (explodeForGPU dedups by wedge id, not
+    // value), each only accumulating its own half of the normal -- faceting
+    // the shading right along every collapsed edge. So faces still pointing
+    // at wRemove are repointed at wKeep below, folded into the face pass
+    // already needed for degeneracy checking.
+    std::map<int, int> wedgeRemap;  // wRemove -> wKeep
+    for (auto &[wKeep, wRemove, mergedUV] : uvTargets) {
+        wedges_[wKeep].uv = mergedUV;
+        wedgeRemap[wRemove] = wKeep;
+    }
+
+    // Any other wedge still belonging to `remove` (parts of its fan that
+    // don't touch this edge) simply moves to `keep`, UV unchanged.
+    for (auto &wg : wedges_)
+        if (wg.vertex == remove) wg.vertex = keep;
+
+    rv.removed = true;
+
+    // Repoint faces off any merged-away wedge, and mark now-degenerate faces
+    // (two corners collapsed onto the same vertex) removed.
+    for (auto &fc : faces_) {
+        if (fc.removed) continue;
+        if (!wedgeRemap.empty())
+            for (int i = 0; i < 3; i++) {
+                auto it = wedgeRemap.find(fc.w[i]);
+                if (it != wedgeRemap.end()) fc.w[i] = it->second;
+            }
+        int a = wedges_[fc.w[0]].vertex;
+        int b = wedges_[fc.w[1]].vertex;
+        int c = wedges_[fc.w[2]].vertex;
+        if (a == b || b == c || a == c) fc.removed = true;
+    }
+}
+
 void Mesh::moveVertex(int index, const Eigen::Vector3d &pos) {
-    if (!vertices[index].removed) vertices[index].pos = pos;
+    if (!vertices_[index].removed) vertices_[index].pos = pos;
 }
 
 Mesh::GPUMesh Mesh::explodeForGPU() const {
     GPUMesh out;
-    std::vector<int> wedgeToIdx(wedges.size(), -1);
-    out.indices.reserve(faces.size() * 3);
-    for (const auto &f : faces) {
+    std::vector<int> wedgeToIdx(wedges_.size(), -1);
+    out.indices.reserve(faces_.size() * 3);
+    for (const auto &f : faces_) {
         if (f.removed) continue;
         for (int k = 0; k < 3; k++) {
             int wi = f.w[k];
             if (wedgeToIdx[wi] < 0) {
                 wedgeToIdx[wi] = (int)out.positions.size();
-                out.positions.push_back(vertices[wedges[wi].vertex].pos);
-                out.uvs.push_back(wedges[wi].uv);
+                out.positions.push_back(vertices_[wedges_[wi].vertex].pos);
+                out.uvs.push_back(wedges_[wi].uv);
             }
             out.indices.push_back((uint32_t)wedgeToIdx[wi]);
         }
@@ -111,18 +162,19 @@ Mesh::GPUMesh Mesh::explodeForGPU() const {
 }
 
 void Mesh::logSummary() const {
-    std::cout << "Mesh: " << vertexCount() << " vertices, " << wedges.size() << " wedges, "
+    std::cout << "Mesh: " << vertexCount() << " vertices, " << wedges_.size() << " wedges, "
               << faceCount() << " faces\n";
-    if (!textureData.empty())
-        std::cout << "  color texture: " << textureWidth << "x" << textureHeight << "\n";
-    if (!normalTextureData.empty())
-        std::cout << "  normal texture: " << normalTextureWidth << "x" << normalTextureHeight
+    if (!colorTexture_.data.empty())
+        std::cout << "  color texture: " << colorTexture_.width << "x" << colorTexture_.height
+                  << "\n";
+    if (!normalTexture_.data.empty())
+        std::cout << "  normal texture: " << normalTexture_.width << "x" << normalTexture_.height
                   << "\n";
 }
 
 std::vector<int> Mesh::detectIslands() const {
     auto edgeToFaces = buildEdgeToFaces();
-    int nf = (int)faces.size();
+    int nf = (int)faces_.size();
     std::vector<int> island(nf, -1);
     if (nf == 0) return island;
 
@@ -138,9 +190,9 @@ std::vector<int> Mesh::detectIslands() const {
 
     // UV at the corner of `face` whose vertex is `vertexId`.
     auto vertexUV = [&](int face, int vertexId) {
-        const Face &f = faces[face];
+        const Face &f = faces_[face];
         for (int k = 0; k < 3; k++) {
-            if (wedges[f.w[k]].vertex == vertexId) return wedges[f.w[k]].uv;
+            if (wedges_[f.w[k]].vertex == vertexId) return wedges_[f.w[k]].uv;
         }
         return Eigen::Vector2d::Zero().eval();
     };
@@ -160,7 +212,7 @@ std::vector<int> Mesh::detectIslands() const {
 
     std::map<int, int> rootToId;
     for (int fi = 0; fi < nf; fi++) {
-        if (faces[fi].removed) continue;
+        if (faces_[fi].removed) continue;
         auto [it, inserted] = rootToId.emplace(find(fi), (int)rootToId.size());
         island[fi] = it->second;
     }

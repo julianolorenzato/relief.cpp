@@ -54,7 +54,7 @@ int main(int argc, char **argv)
 
     auto posKey = [&](int vi) -> std::array<long long, 3>
     {
-        auto &p = mesh.vertices[vi].pos;
+        auto &p = mesh.vertices()[vi].pos;
         return {quantize(p.x()), quantize(p.y()), quantize(p.z())};
     };
 
@@ -71,8 +71,8 @@ int main(int argc, char **argv)
         if (cnt >= 2)
             seamArtifacts += cnt;
 
-    std::cout << "vertices: " << mesh.vertices.size() << "\n";
-    std::cout << "faces: " << mesh.faces.size() << "\n";
+    std::cout << "vertices: " << mesh.vertices().size() << "\n";
+    std::cout << "faces: " << mesh.faces().size() << "\n";
     std::cout << "arestas totais: " << edgeToFaces.size() << "\n";
     std::cout << "arestas de borda (por indice): " << boundaryCount << "\n";
     std::cout << "arestas de borda com posicao 3D duplicada (provavel costura UV/material): "

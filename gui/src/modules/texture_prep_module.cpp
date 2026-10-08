@@ -256,13 +256,13 @@ void TexturePrepModule::onTpGenerate()
 
     tpGenerateBtn_->setEnabled(false);
     onTpProgress(5, "Resampling color map...");
-    RawImage rawColor{simplifiedMesh_->textureData.data(),
-                       simplifiedMesh_->textureWidth, simplifiedMesh_->textureHeight, 4};
+    RawImage rawColor{simplifiedMesh_->colorTexture().data.data(),
+                       simplifiedMesh_->colorTexture().width, simplifiedMesh_->colorTexture().height, 4};
     colorMapData_ = textures::buildColorMap(rawColor, kRes, kRes);
 
     onTpProgress(30, "Resampling normal map...");
-    RawImage rawNormal{simplifiedMesh_->normalTextureData.data(),
-                        simplifiedMesh_->normalTextureWidth, simplifiedMesh_->normalTextureHeight, 4};
+    RawImage rawNormal{simplifiedMesh_->normalTexture().data.data(),
+                        simplifiedMesh_->normalTexture().width, simplifiedMesh_->normalTexture().height, 4};
     normalMapData_ = textures::buildNormalMap(rawNormal, kRes, kRes);
 
     onTpProgress(70, "Baking UV-atlas offset map...");
@@ -346,10 +346,10 @@ void TexturePrepModule::updateThumbnails()
     QImage colorImg, normalImg;
     if (simplifiedMesh_)
     {
-        colorImg  = rgbaTextureToQImage(simplifiedMesh_->textureData,
-                                        simplifiedMesh_->textureWidth, simplifiedMesh_->textureHeight);
-        normalImg = rgbaTextureToQImage(simplifiedMesh_->normalTextureData,
-                                        simplifiedMesh_->normalTextureWidth, simplifiedMesh_->normalTextureHeight);
+        colorImg  = rgbaTextureToQImage(simplifiedMesh_->colorTexture().data,
+                                        simplifiedMesh_->colorTexture().width, simplifiedMesh_->colorTexture().height);
+        normalImg = rgbaTextureToQImage(simplifiedMesh_->normalTexture().data,
+                                        simplifiedMesh_->normalTexture().width, simplifiedMesh_->normalTexture().height);
     }
     setThumb(0, colorImg,  "(none)");
     setThumb(2, normalImg, "(none)");
@@ -366,8 +366,8 @@ void TexturePrepModule::updateThumbnails()
 void TexturePrepModule::updateGenerateEnabled()
 {
     bool hasMesh   = simplifiedMesh_ && simplifiedMesh_->faceCount() > 0;
-    bool hasColor  = simplifiedMesh_ && !simplifiedMesh_->textureData.empty();
-    bool hasNormal = simplifiedMesh_ && !simplifiedMesh_->normalTextureData.empty();
+    bool hasColor  = simplifiedMesh_ && !simplifiedMesh_->colorTexture().data.empty();
+    bool hasNormal = simplifiedMesh_ && !simplifiedMesh_->normalTexture().data.empty();
     bool hasDepth  = hmResult_.valid && !hmResult_.image.empty();
     tpGenerateBtn_->setEnabled(hasMesh && hasColor && hasNormal && hasDepth);
 }

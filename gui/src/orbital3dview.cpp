@@ -37,7 +37,7 @@ void buildMeshVerts(const Mesh* mesh,
                     std::vector<float>& verts,
                     std::vector<unsigned int>& idxs)
 {
-    if (!mesh || mesh->vertices.empty()) return;
+    if (!mesh || mesh->vertices().empty()) return;
 
     // A Mesh::Vertex may carry multiple UVs (one per seam shell), so the GPU
     // buffer needs one entry per distinct (vertex, uv) pair actually used by
@@ -536,15 +536,15 @@ void Orbital3DView::createShaders() {
 // ─── Buffer builders ──────────────────────────────────────────────────────────
 
 void Orbital3DView::buildPrimaryBuffers() {
-    if (!primaryMesh_ || primaryMesh_->vertices.empty()) return;
+    if (!primaryMesh_ || primaryMesh_->vertices().empty()) return;
 
     // Compute bounding box for the model matrix normalization, from
     // normalizationMesh_ when set so linked viewports share one scale.
     const Mesh* normMesh = normalizationMesh_ ? normalizationMesh_ : primaryMesh_;
-    if (normMesh->vertices.empty()) normMesh = primaryMesh_;
+    if (normMesh->vertices().empty()) normMesh = primaryMesh_;
     Eigen::Vector3d bmin( 1e18,  1e18,  1e18);
     Eigen::Vector3d bmax(-1e18, -1e18, -1e18);
-    for (const auto& v : normMesh->vertices) {
+    for (const auto& v : normMesh->vertices()) {
         if (v.removed) continue;
         bmin = bmin.cwiseMin(v.pos);
         bmax = bmax.cwiseMax(v.pos);
@@ -573,7 +573,7 @@ void Orbital3DView::buildPrimaryBuffers() {
 }
 
 void Orbital3DView::buildSecondaryBuffers() {
-    if (!secondaryMesh_ || secondaryMesh_->vertices.empty()) return;
+    if (!secondaryMesh_ || secondaryMesh_->vertices().empty()) return;
     std::vector<float> verts;
     std::vector<unsigned int> idxs;
     buildMeshVerts(secondaryMesh_, verts, idxs);
@@ -602,13 +602,13 @@ void Orbital3DView::buildEdgeBuffers() {
 
     for (const auto& [edge, faceIds] : edgeToFaces) {
         if (faceIds.size() == 1 || !seamSet.count(edge)) continue;
-        append(primaryMesh_->vertices[edge.first].pos, primaryMesh_->vertices[edge.second].pos, kSeam);
+        append(primaryMesh_->vertices()[edge.first].pos, primaryMesh_->vertices()[edge.second].pos, kSeam);
     }
     seamEdgeEnd_ = (int)(lineVerts.size() / 6);
 
     for (const auto& [edge, faceIds] : edgeToFaces) {
         if (faceIds.size() == 1 || seamSet.count(edge)) continue;
-        append(primaryMesh_->vertices[edge.first].pos, primaryMesh_->vertices[edge.second].pos, kInternal);
+        append(primaryMesh_->vertices()[edge.first].pos, primaryMesh_->vertices()[edge.second].pos, kInternal);
     }
     edgeVertexCount_ = (int)(lineVerts.size() / 6);
 
@@ -632,8 +632,8 @@ void Orbital3DView::rebuildHighlightBuffer() {
     if (primaryMesh_) {
         lineVerts.reserve(brushSelection_.edges().size() * 2 * 6);
         for (const auto &edge : brushSelection_.edges()) {
-            const auto &a = primaryMesh_->vertices[edge.first].pos;
-            const auto &b = primaryMesh_->vertices[edge.second].pos;
+            const auto &a = primaryMesh_->vertices()[edge.first].pos;
+            const auto &b = primaryMesh_->vertices()[edge.second].pos;
             lineVerts.push_back((float)a.x()); lineVerts.push_back((float)a.y()); lineVerts.push_back((float)a.z());
             lineVerts.push_back(kHighlight[0]); lineVerts.push_back(kHighlight[1]); lineVerts.push_back(kHighlight[2]);
             lineVerts.push_back((float)b.x()); lineVerts.push_back((float)b.y()); lineVerts.push_back((float)b.z());
@@ -695,13 +695,13 @@ void Orbital3DView::buildUVBuffers() {
 
 void Orbital3DView::uploadColorFromMesh() {
     if (colorTex_) { glDeleteTextures(1, &colorTex_); colorTex_ = 0; }
-    if (!primaryMesh_ || primaryMesh_->textureData.empty()) return;
+    if (!primaryMesh_ || primaryMesh_->colorTexture().data.empty()) return;
 
     glGenTextures(1, &colorTex_);
     glBindTexture(GL_TEXTURE_2D, colorTex_);
     glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA,
-                 primaryMesh_->textureWidth, primaryMesh_->textureHeight,
-                 0, GL_RGBA, GL_UNSIGNED_BYTE, primaryMesh_->textureData.data());
+                 primaryMesh_->colorTexture().width, primaryMesh_->colorTexture().height,
+                 0, GL_RGBA, GL_UNSIGNED_BYTE, primaryMesh_->colorTexture().data.data());
     glGenerateMipmap(GL_TEXTURE_2D);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
@@ -712,13 +712,13 @@ void Orbital3DView::uploadColorFromMesh() {
 
 void Orbital3DView::uploadNormalFromMesh() {
     if (normalTex_) { glDeleteTextures(1, &normalTex_); normalTex_ = 0; }
-    if (!primaryMesh_ || primaryMesh_->normalTextureData.empty()) return;
+    if (!primaryMesh_ || primaryMesh_->normalTexture().data.empty()) return;
 
     glGenTextures(1, &normalTex_);
     glBindTexture(GL_TEXTURE_2D, normalTex_);
     glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA,
-                 primaryMesh_->normalTextureWidth, primaryMesh_->normalTextureHeight,
-                 0, GL_RGBA, GL_UNSIGNED_BYTE, primaryMesh_->normalTextureData.data());
+                 primaryMesh_->normalTexture().width, primaryMesh_->normalTexture().height,
+                 0, GL_RGBA, GL_UNSIGNED_BYTE, primaryMesh_->normalTexture().data.data());
     glGenerateMipmap(GL_TEXTURE_2D);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);

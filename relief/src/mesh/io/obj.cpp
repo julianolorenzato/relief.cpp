@@ -78,13 +78,10 @@ struct WedgeHash {
 namespace mesh::io::obj {
 
 bool loadOBJ(Mesh &mesh, const std::string &path) {
-    mesh.vertices.clear();
-    mesh.wedges.clear();
-    mesh.faces.clear();
-    mesh.textureData.clear();
-    mesh.textureWidth = mesh.textureHeight = 0;
-    mesh.normalTextureData.clear();
-    mesh.normalTextureWidth = mesh.normalTextureHeight = 0;
+    std::vector<Vertex> vertices;
+    std::vector<Wedge> wedges;
+    std::vector<Face> faces;
+    Texture colorTexture, normalTexture;
 
     fs::path dir = fs::path(path).parent_path();
 
@@ -129,11 +126,11 @@ bool loadOBJ(Mesh &mesh, const std::string &path) {
                 double z = attrib.vertices[3 * corner.vertex_index + 2];
                 std::array<double, 3> position{x, y, z};
                 auto [vIterator, vInserted] =
-                    vertexMap.emplace(position, (int)mesh.vertices.size());
+                    vertexMap.emplace(position, (int)vertices.size());
                 if (vInserted) {
                     // We are only pushing one vertex per position to the Mesh
                     Vertex vertex{.pos = Eigen::Vector3d(x, y, z)};
-                    mesh.vertices.push_back(vertex);
+                    vertices.push_back(vertex);
                 }
                 int vertexIndex = vIterator->second;
 
@@ -147,34 +144,37 @@ bool loadOBJ(Mesh &mesh, const std::string &path) {
                 }
 
                 auto wkey = std::make_pair(vertexIndex, std::array<double, 2>{u, v});
-                auto [wIterator, wInserted] = wedgeMap.emplace(wkey, (int)mesh.wedges.size());
+                auto [wIterator, wInserted] = wedgeMap.emplace(wkey, (int)wedges.size());
                 if (wInserted) {
                     // We are only pushing one wedge
                     // per vertex per UV to the Mesh
                     Wedge wedge{.uv = Eigen::Vector2d(u, v), .vertex = vertexIndex};
-                    mesh.wedges.push_back(wedge);
+                    wedges.push_back(wedge);
                 }
                 face.w[c] = wIterator->second;
             }
-            mesh.faces.push_back(face);
+            faces.push_back(face);
         }
     }
 
     // First material with a texture wins: Mesh holds one global color/normal
     // texture pair (matching the glTF import path), not per-material ones.
     for (const auto &mat : reader.GetMaterials()) {
-        if (mesh.textureData.empty() && !mat.diffuse_texname.empty())
-            loadTexture(dir / mat.diffuse_texname, mesh.textureData, mesh.textureWidth,
-                        mesh.textureHeight);
+        if (colorTexture.data.empty() && !mat.diffuse_texname.empty())
+            loadTexture(dir / mat.diffuse_texname, colorTexture.data, colorTexture.width,
+                        colorTexture.height);
 
         std::string normalMap = !mat.normal_texname.empty() ? mat.normal_texname : mat.bump_texname;
-        if (mesh.normalTextureData.empty() && !normalMap.empty())
-            loadTexture(dir / normalMap, mesh.normalTextureData, mesh.normalTextureWidth,
-                        mesh.normalTextureHeight);
+        if (normalTexture.data.empty() && !normalMap.empty())
+            loadTexture(dir / normalMap, normalTexture.data, normalTexture.width,
+                        normalTexture.height);
 
-        if (!mesh.textureData.empty() && !mesh.normalTextureData.empty()) break;
+        if (!colorTexture.data.empty() && !normalTexture.data.empty()) break;
     }
 
+    mesh.replaceGeometry(std::move(vertices), std::move(wedges), std::move(faces));
+    mesh.setColorTexture(std::move(colorTexture));
+    mesh.setNormalTexture(std::move(normalTexture));
     return true;
 }
 
@@ -186,38 +186,38 @@ bool saveOBJ(const Mesh &mesh, const std::string &path) {
     }
 
     bool hasUV = false;
-    for (auto &wg : mesh.wedges)
+    for (auto &wg : mesh.wedges())
         if (wg.uv.squaredNorm() > 1e-12) {
             hasUV = true;
             break;
         }
 
-    std::vector<int> remap(mesh.vertices.size(), -1);
+    std::vector<int> remap(mesh.vertices().size(), -1);
     int idx = 1;
-    for (int i = 0; i < (int)mesh.vertices.size(); i++) {
-        if (!mesh.vertices[i].removed) {
+    for (int i = 0; i < (int)mesh.vertices().size(); i++) {
+        if (!mesh.vertices()[i].removed) {
             remap[i] = idx++;
-            const auto &p = mesh.vertices[i].pos;
+            const auto &p = mesh.vertices()[i].pos;
             f << "v " << p.x() << " " << p.y() << " " << p.z() << "\n";
         }
     }
 
-    std::vector<int> vtIndex(mesh.wedges.size(), -1);
+    std::vector<int> vtIndex(mesh.wedges().size(), -1);
     if (hasUV) {
         int vtIdx = 1;
-        for (int i = 0; i < (int)mesh.wedges.size(); i++) {
-            const Wedge &wg = mesh.wedges[i];
-            if (mesh.vertices[wg.vertex].removed) continue;
+        for (int i = 0; i < (int)mesh.wedges().size(); i++) {
+            const Wedge &wg = mesh.wedges()[i];
+            if (mesh.vertices()[wg.vertex].removed) continue;
             vtIndex[i] = vtIdx++;
             f << "vt " << wg.uv.x() << " " << 1.0 - wg.uv.y() << "\n";
         }
     }
 
-    for (auto &fc : mesh.faces) {
+    for (auto &fc : mesh.faces()) {
         if (fc.removed) continue;
         f << "f ";
         for (int c = 0; c < 3; c++) {
-            const Wedge &wg = mesh.wedges[fc.w[c]];
+            const Wedge &wg = mesh.wedges()[fc.w[c]];
             f << remap[wg.vertex];
             if (hasUV) f << "/" << vtIndex[fc.w[c]];
             f << (c < 2 ? " " : "\n");

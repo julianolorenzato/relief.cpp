@@ -122,7 +122,7 @@ struct BBox {
     static Bounds computeBounds(const mesh::Mesh& mesh) {
         Eigen::Vector3d min = Eigen::Vector3d::Constant(std::numeric_limits<double>::max());
         Eigen::Vector3d max = Eigen::Vector3d::Constant(std::numeric_limits<double>::lowest());
-        for (const auto& v : mesh.vertices) {
+        for (const auto& v : mesh.vertices()) {
             if (v.removed) continue;
             min = min.cwiseMin(v.pos);
             max = max.cwiseMax(v.pos);

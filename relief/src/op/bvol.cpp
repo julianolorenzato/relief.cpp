@@ -19,7 +19,7 @@ constexpr double kFaceSign[6] = {-1, +1, -1, +1, -1, +1};
 /// @return Number of non-removed vertices in `mesh`.
 int countVisibleVertices(const mesh::Mesh& mesh) {
     int count = 0;
-    for (const auto& v : mesh.vertices) {
+    for (const auto& v : mesh.vertices()) {
         if (!v.removed) count++;
     }
     return count;
@@ -46,7 +46,7 @@ bool pointInTriangle(const Eigen::Vector2d& p, const std::array<Eigen::Vector2d,
 }  // namespace
 
 void BoundingVolumeOp::apply(mesh::Mesh& mesh) const {
-    if (mesh.vertices.empty()) return;
+    if (mesh.vertices().empty()) return;
     switch (this->type) {
         case BoundingVolumeType::AABB:
             std::cout << "BoundingVolumeOp: computing AABB over " << mesh.faceCount() << " faces, "
@@ -85,7 +85,7 @@ void BoundingVolumeOp::applyOBB(mesh::Mesh& mesh) const {
 std::array<Eigen::Vector3d, 3> BoundingVolumeOp::computeOBBAxes(const mesh::Mesh& mesh) {
     Eigen::Vector3d mean = Eigen::Vector3d::Zero();
     int count = 0;
-    for (const auto& v : mesh.vertices) {
+    for (const auto& v : mesh.vertices()) {
         if (v.removed) continue;
         mean += v.pos;
         count++;
@@ -93,7 +93,7 @@ std::array<Eigen::Vector3d, 3> BoundingVolumeOp::computeOBBAxes(const mesh::Mesh
     mean /= (double)count;
 
     Eigen::Matrix3d cov = Eigen::Matrix3d::Zero();
-    for (const auto& v : mesh.vertices) {
+    for (const auto& v : mesh.vertices()) {
         if (v.removed) continue;
         Eigen::Vector3d d = v.pos - mean;
         cov += d * d.transpose();
@@ -113,7 +113,7 @@ void BoundingVolumeOp::computeBoxExtents(const mesh::Mesh& mesh,
                                          Eigen::Vector3d& center, Eigen::Vector3d& halfExtents) {
     Eigen::Vector3d bmin = Eigen::Vector3d::Constant(1e18);
     Eigen::Vector3d bmax = Eigen::Vector3d::Constant(-1e18);
-    for (const auto& v : mesh.vertices) {
+    for (const auto& v : mesh.vertices()) {
         if (v.removed) continue;
         Eigen::Vector3d local(v.pos.dot(axes[0]), v.pos.dot(axes[1]), v.pos.dot(axes[2]));
         bmin = bmin.cwiseMin(local);
@@ -138,13 +138,13 @@ void BoundingVolumeOp::projectMeshOntoBoxFaces(const mesh::Mesh& mesh, BoundingB
     // face it faces (a face can face more than one, e.g. towards a
     // corner, so it's duplicated as a candidate on each).
     std::array<std::vector<FaceCandidate>, 6> candidatesPerFace;
-    for (const auto& f : mesh.faces) {
+    for (const auto& f : mesh.faces()) {
         if (f.removed) continue;
-        Eigen::Vector3d p[3] = {mesh.vertices[mesh.wedges[f.w[0]].vertex].pos,
-                                mesh.vertices[mesh.wedges[f.w[1]].vertex].pos,
-                                mesh.vertices[mesh.wedges[f.w[2]].vertex].pos};
-        Eigen::Vector2d texUV[3] = {mesh.wedges[f.w[0]].uv, mesh.wedges[f.w[1]].uv,
-                                    mesh.wedges[f.w[2]].uv};
+        Eigen::Vector3d p[3] = {mesh.vertices()[mesh.wedges()[f.w[0]].vertex].pos,
+                                mesh.vertices()[mesh.wedges()[f.w[1]].vertex].pos,
+                                mesh.vertices()[mesh.wedges()[f.w[2]].vertex].pos};
+        Eigen::Vector2d texUV[3] = {mesh.wedges()[f.w[0]].uv, mesh.wedges()[f.w[1]].uv,
+                                    mesh.wedges()[f.w[2]].uv};
         Eigen::Vector3d normal = mesh.faceNormal(f);
         if (normal.isZero()) continue;
 
@@ -245,9 +245,9 @@ void BoundingVolumeOp::projectMeshOntoBoxFaces(const mesh::Mesh& mesh, BoundingB
 }
 
 void BoundingVolumeOp::flattenBoxFaces(const BoundingBox& box, mesh::Mesh& mesh) {
-    mesh.vertices.clear();
-    mesh.wedges.clear();
-    mesh.faces.clear();
+    std::vector<mesh::Vertex> vertices;
+    std::vector<mesh::Wedge> wedges;
+    std::vector<mesh::Face> faces;
     for (int face = 0; face < 6; face++) {
         int axis = kFaceAxis[face];
         int u = (axis + 1) % 3;
@@ -263,24 +263,24 @@ void BoundingVolumeOp::flattenBoxFaces(const BoundingBox& box, mesh::Mesh& mesh)
 
             mesh::Vertex vertex;
             vertex.pos = pos;
-            int vertexIdx = (int)mesh.vertices.size();
-            mesh.vertices.push_back(vertex);
+            int vertexIdx = (int)vertices.size();
+            vertices.push_back(vertex);
 
             mesh::Wedge wedge;
             wedge.vertex = vertexIdx;
             wedge.uv = patch.uvs[i];
-            wedgeOf[i] = (int)mesh.wedges.size();
-            mesh.wedges.push_back(wedge);
+            wedgeOf[i] = (int)wedges.size();
+            wedges.push_back(wedge);
         }
         for (const BoundingBoxTriangle& tri : patch.triangles) {
             mesh::Face face3;
             face3.w[0] = wedgeOf[tri.v[0]];
             face3.w[1] = wedgeOf[tri.v[1]];
             face3.w[2] = wedgeOf[tri.v[2]];
-            mesh.faces.push_back(face3);
+            faces.push_back(face3);
         }
     }
-    mesh.computeIslands();
+    mesh.replaceGeometry(std::move(vertices), std::move(wedges), std::move(faces));
 }
 
 }  // namespace op::bvol

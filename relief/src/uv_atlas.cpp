@@ -27,10 +27,10 @@ constexpr double kPi = 3.14159265358979323846;
 
 /// @return The UV at the corner of `face` whose vertex is `vertexId`.
 Eigen::Vector2d vertexUV(const Mesh& mesh, int face, int vertexId) {
-    const Face& f = mesh.faces[face];
+    const Face& f = mesh.faces()[face];
     for (int k = 0; k < 3; k++) {
-        if (mesh.wedges[f.w[k]].vertex == vertexId) {
-            return mesh.wedges[f.w[k]].uv;
+        if (mesh.wedges()[f.w[k]].vertex == vertexId) {
+            return mesh.wedges()[f.w[k]].uv;
         }
     }
     return Eigen::Vector2d::Zero();
@@ -89,13 +89,13 @@ std::vector<int> buildIslandTexelMap(const Mesh& mesh, const std::vector<int>& f
                                      int width, int height) {
     std::vector<int> islandAt((size_t)width * height, -1);
 
-    for (int fi = 0; fi < (int)mesh.faces.size(); fi++) {
-        const Face& f = mesh.faces[fi];
+    for (int fi = 0; fi < (int)mesh.faces().size(); fi++) {
+        const Face& f = mesh.faces()[fi];
         if (f.removed || faceIsland[fi] < 0) continue;
 
-        Eigen::Vector2d uv0 = mesh.wedges[f.w[0]].uv;
-        Eigen::Vector2d uv1 = mesh.wedges[f.w[1]].uv;
-        Eigen::Vector2d uv2 = mesh.wedges[f.w[2]].uv;
+        Eigen::Vector2d uv0 = mesh.wedges()[f.w[0]].uv;
+        Eigen::Vector2d uv1 = mesh.wedges()[f.w[1]].uv;
+        Eigen::Vector2d uv2 = mesh.wedges()[f.w[2]].uv;
         double u0 = uv0.x() * width, v0 = uv0.y() * height;
         double u1 = uv1.x() * width, v1 = uv1.y() * height;
         double u2 = uv2.x() * width, v2 = uv2.y() * height;
@@ -179,11 +179,11 @@ void rasterizeBand(const Eigen::Vector2d& p0, const Eigen::Vector2d& p1, double 
 
 MipPyramid buildOffsetMap(const Mesh& mesh, int width, int height, int seamBandTexels) {
     auto edgeToFaces = mesh.buildEdgeToFaces();
-    const std::vector<int>& faceIsland = mesh.islands;
+    const std::vector<int>& faceIsland = mesh.islands();
 
     std::vector<float> data((size_t)width * height * 4, 0.0f);
 
-    if (width <= 0 || height <= 0 || mesh.faces.empty()) {
+    if (width <= 0 || height <= 0 || mesh.faces().empty()) {
         MipPyramid pyr;
         pyr.width = width;
         pyr.height = height;
@@ -199,7 +199,7 @@ MipPyramid buildOffsetMap(const Mesh& mesh, int width, int height, int seamBandT
     for (const auto& [key, faceIds] : edgeToFaces) {
         if (faceIds.size() != 2) continue;
         int f0 = faceIds[0], f1 = faceIds[1];
-        if (mesh.faces[f0].removed || mesh.faces[f1].removed) continue;
+        if (mesh.faces()[f0].removed || mesh.faces()[f1].removed) continue;
 
         int islandA = faceIsland[f0];
         int islandB = faceIsland[f1];
@@ -260,13 +260,13 @@ MipPyramid buildOffsetMap(const Mesh& mesh, int width, int height, int seamBandT
 
 std::vector<Edge> findSeamEdges(const Mesh& mesh) {
     auto edgeToFaces = mesh.buildEdgeToFaces();
-    const std::vector<int>& faceIsland = mesh.islands;
+    const std::vector<int>& faceIsland = mesh.islands();
 
     std::vector<Edge> seams;
     for (const auto& [key, faceIds] : edgeToFaces) {
         if (faceIds.size() != 2) continue;  // boundary or non-manifold: not a seam between islands.
         int f0 = faceIds[0], f1 = faceIds[1];
-        if (mesh.faces[f0].removed || mesh.faces[f1].removed) continue;
+        if (mesh.faces()[f0].removed || mesh.faces()[f1].removed) continue;
 
         int islandA = faceIsland[f0];
         int islandB = faceIsland[f1];
