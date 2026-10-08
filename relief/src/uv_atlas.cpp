@@ -80,18 +80,16 @@ bool bary2D(double px, double py, double ax, double ay, double bx, double by, do
  *        texels that are still genuinely inside the island as "outside",
  *        letting the leap band bleed a texel or two into the island.
  * @param mesh Mesh whose UV layout defines the islands.
- * @param faceIsland Per-face island id, as stored in Mesh::islands.
  * @param width,height Offset map dimensions.
  * @return Per-texel island id (whichever face's UV triangle covers that
  *         texel's center), or -1 if no face covers it.
  */
-std::vector<int> buildIslandTexelMap(const Mesh& mesh, const std::vector<int>& faceIsland,
-                                     int width, int height) {
+std::vector<int> buildIslandTexelMap(const Mesh& mesh, int width, int height) {
     std::vector<int> islandAt((size_t)width * height, -1);
 
     for (int fi = 0; fi < (int)mesh.faces().size(); fi++) {
         const Face& f = mesh.faces()[fi];
-        if (f.removed || faceIsland[fi] < 0) continue;
+        if (f.removed || f.island < 0) continue;
 
         Eigen::Vector2d uv0 = mesh.wedges()[f.w[0]].uv;
         Eigen::Vector2d uv1 = mesh.wedges()[f.w[1]].uv;
@@ -110,7 +108,7 @@ std::vector<int> buildIslandTexelMap(const Mesh& mesh, const std::vector<int>& f
                 double w0, w1, w2;
                 if (!bary2D(px + 0.5, py + 0.5, u0, v0, u1, v1, u2, v2, w0, w1, w2)) continue;
                 if (w0 < -1e-4 || w1 < -1e-4 || w2 < -1e-4) continue;
-                islandAt[(size_t)py * width + px] = faceIsland[fi];
+                islandAt[(size_t)py * width + px] = f.island;
             }
         }
     }
@@ -179,7 +177,6 @@ void rasterizeBand(const Eigen::Vector2d& p0, const Eigen::Vector2d& p1, double 
 
 MipPyramid buildOffsetMap(const Mesh& mesh, int width, int height, int seamBandTexels) {
     auto edgeToFaces = mesh.buildEdgeToFaces();
-    const std::vector<int>& faceIsland = mesh.islands();
 
     std::vector<float> data((size_t)width * height * 4, 0.0f);
 
@@ -194,15 +191,15 @@ MipPyramid buildOffsetMap(const Mesh& mesh, int width, int height, int seamBandT
 
     std::vector<float> distBuf((size_t)width * height, std::numeric_limits<float>::max());
     double bandWidthUV = (double)std::max(1, seamBandTexels) / (double)std::min(width, height);
-    std::vector<int> islandAt = buildIslandTexelMap(mesh, faceIsland, width, height);
+    std::vector<int> islandAt = buildIslandTexelMap(mesh, width, height);
 
     for (const auto& [key, faceIds] : edgeToFaces) {
         if (faceIds.size() != 2) continue;
         int f0 = faceIds[0], f1 = faceIds[1];
         if (mesh.faces()[f0].removed || mesh.faces()[f1].removed) continue;
 
-        int islandA = faceIsland[f0];
-        int islandB = faceIsland[f1];
+        int islandA = mesh.faces()[f0].island;
+        int islandB = mesh.faces()[f1].island;
         if (islandA < 0 || islandB < 0 || islandA == islandB) continue;  // not a cross-island seam
 
         Eigen::Vector2d uvA0 = vertexUV(mesh, f0, key.first), uvA1 = vertexUV(mesh, f0, key.second);
@@ -260,7 +257,6 @@ MipPyramid buildOffsetMap(const Mesh& mesh, int width, int height, int seamBandT
 
 std::vector<Edge> findSeamEdges(const Mesh& mesh) {
     auto edgeToFaces = mesh.buildEdgeToFaces();
-    const std::vector<int>& faceIsland = mesh.islands();
 
     std::vector<Edge> seams;
     for (const auto& [key, faceIds] : edgeToFaces) {
@@ -268,8 +264,8 @@ std::vector<Edge> findSeamEdges(const Mesh& mesh) {
         int f0 = faceIds[0], f1 = faceIds[1];
         if (mesh.faces()[f0].removed || mesh.faces()[f1].removed) continue;
 
-        int islandA = faceIsland[f0];
-        int islandB = faceIsland[f1];
+        int islandA = mesh.faces()[f0].island;
+        int islandB = mesh.faces()[f1].island;
         if (islandA < 0 || islandB < 0 || islandA == islandB) continue;
 
         seams.push_back(key);

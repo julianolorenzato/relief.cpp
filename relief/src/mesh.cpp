@@ -28,8 +28,6 @@ void Mesh::replaceGeometry(std::vector<Vertex> newVertices, std::vector<Wedge> n
     computeIslands();
 }
 
-void Mesh::computeIslands() { islands_ = detectIslands(); }
-
 int Mesh::faceCount() const {
     int n = 0;
     for (auto &f : faces_)
@@ -172,11 +170,11 @@ void Mesh::logSummary() const {
                   << "\n";
 }
 
-std::vector<int> Mesh::detectIslands() const {
+void Mesh::computeIslands() {
     auto edgeToFaces = buildEdgeToFaces();
     int nf = (int)faces_.size();
-    std::vector<int> island(nf, -1);
-    if (nf == 0) return island;
+    for (auto &f : faces_) f.island = -1;
+    if (nf == 0) return;
 
     std::vector<int> parent(nf);
     for (int i = 0; i < nf; i++) parent[i] = i;
@@ -214,9 +212,8 @@ std::vector<int> Mesh::detectIslands() const {
     for (int fi = 0; fi < nf; fi++) {
         if (faces_[fi].removed) continue;
         auto [it, inserted] = rootToId.emplace(find(fi), (int)rootToId.size());
-        island[fi] = it->second;
+        faces_[fi].island = it->second;
     }
-    return island;
 }
 
 }  // namespace mesh

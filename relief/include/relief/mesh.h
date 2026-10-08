@@ -38,6 +38,11 @@ struct Wedge {
 struct Face {
     int w[3];  ///< Indices into Mesh::wedges (one per corner).
     bool removed = false;
+    /// UV-island id, set by Mesh::computeIslands(). Two faces share an island
+    /// iff they are connected through 3D edges across which their UVs agree.
+    /// -1 if not computed or the face was removed at compute time; faces
+    /// flagged `removed` afterwards keep their id.
+    int island = -1;
 };
 
 /// Canonical (small vertex id, large vertex id) edge key. The constructor
@@ -74,12 +79,6 @@ class Mesh {
     const std::vector<Wedge>& wedges() const { return wedges_; }
     /// @return The mesh faces (indexing `wedges()`).
     const std::vector<Face>& faces() const { return faces_; }
-
-    /// @return Per-face UV-island id, parallel to `faces()` (removed faces get -1).
-    ///         Two faces share an island iff they are connected through 3D edges
-    ///         across which their UVs agree. Computed by the constructor and
-    ///         computeIslands(); faces flagged `removed` afterwards keep their id.
-    const std::vector<int>& islands() const { return islands_; }
 
     /// @return The color texture extracted from the source file (empty if none).
     const Texture& colorTexture() const { return colorTexture_; }
@@ -121,19 +120,19 @@ class Mesh {
                          std::vector<Face> newFaces);
 
     /**
-     * @brief Recomputes `islands` from the current faces/wedges. Call after
-     *        modifying faces or UVs in place (the constructor already does it).
+     * @brief Recomputes every face's `island` from the current faces/wedges
+     *        via union-find over 3D-edge-adjacent faces whose UVs agree at the
+     *        shared edge. Removed faces get -1. Call after modifying faces or
+     *        UVs in place (the constructor already does it).
      */
     void computeIslands();
 
-#pragma region counts
     // ---- Counts ----
 
     /// @return Number of non-removed faces.
     int faceCount() const;
     /// @return Number of non-removed vertices.
     int vertexCount() const;
-#pragma endregion
 
     // ---- Face corner access ----
 
@@ -240,16 +239,8 @@ class Mesh {
     std::vector<Vertex> vertices_;
     std::vector<Wedge> wedges_;
     std::vector<Face> faces_;
-    std::vector<int> islands_;
     Texture colorTexture_;
     Texture normalTexture_;
-
-    /**
-     * @brief Partitions active faces into UV islands via union-find over
-     *        3D-edge-adjacent faces whose UVs agree at the shared edge.
-     * @return One island id per face, in face order; removed faces get -1.
-     */
-    std::vector<int> detectIslands() const;
 };
 
 }  // namespace mesh
