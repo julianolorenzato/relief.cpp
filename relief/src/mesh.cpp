@@ -127,14 +127,16 @@ int Mesh::vertexCount() const {
     return n;
 }
 
+std::array<Edge, 3> Mesh::faceEdges(const Face &f) const {
+    int v0 = wedges[f.w[0]].vertex, v1 = wedges[f.w[1]].vertex, v2 = wedges[f.w[2]].vertex;
+    return {Edge(v0, v1), Edge(v1, v2), Edge(v2, v0)};
+}
+
 std::map<Edge, std::vector<int>> Mesh::buildEdgeToFaces() const {
     std::map<Edge, std::vector<int>> edgeToFaces;
     for (int fi = 0; fi < (int)faces.size(); fi++) {
         if (faces[fi].removed) continue;
-        for (int i = 0; i < 3; i++) {
-            int a = wedges[faces[fi].w[i]].vertex, b = wedges[faces[fi].w[(i + 1) % 3]].vertex;
-            edgeToFaces[Edge(a, b)].push_back(fi);
-        }
+        for (const Edge &e : faceEdges(faces[fi])) edgeToFaces[e].push_back(fi);
     }
     return edgeToFaces;
 }

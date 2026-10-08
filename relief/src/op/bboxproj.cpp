@@ -5,6 +5,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <utility>
 
 #include "relief/mesh.h"
 
@@ -148,10 +149,11 @@ void BBoxProjectionOp::apply(mesh::Mesh& mesh) const {
         // if (!quad.faces.empty()) continue;
 
         // std::array<Eigen::Vector2d, 4> corners = {Eigen::Vector2d(-hu, -hv),
-        //                                           Eigen::Vector2d(hu, -hv), Eigen::Vector2d(hu, hv),
-        //                                           Eigen::Vector2d(-hu, hv)};
+        //                                           Eigen::Vector2d(hu, -hv), Eigen::Vector2d(hu,
+        //                                           hv), Eigen::Vector2d(-hu, hv)};
         // std::array<Eigen::Vector2d, 4> cornerUVs = {Eigen::Vector2d(0, 0), Eigen::Vector2d(1, 0),
-        //                                             Eigen::Vector2d(1, 1), Eigen::Vector2d(0, 1)};
+        //                                             Eigen::Vector2d(1, 1), Eigen::Vector2d(0,
+        //                                             1)};
         // for (int i = 0; i < 4; i++) {
         //     mesh::Vertex vertex;
         //     vertex.pos = Eigen::Vector3d(corners[i].x(), corners[i].y(), 0.0);
@@ -174,6 +176,33 @@ void BBoxProjectionOp::apply(mesh::Mesh& mesh) const {
     box.exportTo(mesh);
 
     mesh.logSummary();
+}
+
+void BBoxProjectionOp::handleQuad(const Quad quad, BBox& box, mesh::Mesh& mesh) {
+    auto edgeToFaces = mesh.buildEdgeToFaces();
+
+    const int u = (quad.axis + 1) % 3;
+    const int v = (quad.axis + 2) % 3;
+    const double hu = box.halfExtents[u];
+    const double hv = box.halfExtents[v];
+    const Eigen::Vector3d outward = quad.sign * Eigen::Vector3d::Unit(quad.axis);
+
+    std::vector<std::pair<int, int>> edges;
+
+
+    // for by island, for by islandFace?
+    
+    for (const auto& f : mesh.faces) {
+        if (f.removed) continue;
+        if (mesh.faceNormal(f).dot(outward) <= 0.0) continue;
+
+        
+        const auto fEdges = mesh.faceEdges(f);
+        // Check which one in fEdges are boundary/seam
+        
+
+        auto a = edgeToFaces[mesh::Edge(1, 2)];
+    }
 }
 
 void BBox::exportTo(mesh::Mesh& mesh) const {

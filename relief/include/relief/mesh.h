@@ -4,6 +4,7 @@
  *        topology queries. See mesh/io.h for OBJ/glTF I/O.
  */
 #pragma once
+#include <array>
 #include <vector>
 #include <cstdint>
 #include <map>
@@ -128,6 +129,13 @@ public:
      * @return The normalized normal, or the zero vector if the face is degenerate.
      */
     Eigen::Vector3d faceNormal(const Face& f) const;
+
+    /**
+     * @brief Returns the three edges of a face, in corner order.
+     * @param f A face of this mesh.
+     * @return Edge i joins the vertices of corners i and (i+1)%3.
+     */
+    std::array<Edge, 3> faceEdges(const Face& f) const;
 
     /// @return Edge-to-incident-faces adjacency for the current mesh, keyed
     ///         by (small, large) position-vertex id. A boundary edge (same

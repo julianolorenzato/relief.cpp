@@ -14,6 +14,18 @@
 #include "relief/op.h"
 namespace op::bboxproj {
 
+struct Quad {
+    const uint8_t axis;
+    const double sign;
+
+    std::vector<mesh::Edge> edges;
+
+    explicit Quad(uint8_t axis, double sign) : axis(axis), sign(sign) {}
+};
+
+std::array<Quad, 6> quads = {Quad(0, -1), Quad(0, +1), Quad(1, -1),
+                             Quad(1, +1), Quad(2, -1), Quad(2, +1)};
+
 struct BBoxQuadEdge {
     std::pair<int, int> w;
 };
@@ -132,5 +144,7 @@ class BBoxProjectionOp : public op::Op {
 
    private:
     int resolution_;
+
+    void handleQuad(const Quad quad, BBox& box, mesh::Mesh& mesh);
 };
 }  // namespace op::bboxproj
