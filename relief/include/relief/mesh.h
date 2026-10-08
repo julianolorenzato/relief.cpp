@@ -4,14 +4,14 @@
  *        topology queries, and OBJ/glTF I/O via Mesh(path) and Mesh::save.
  */
 #pragma once
+#include <Eigen/Dense>
 #include <array>
-#include <vector>
 #include <cstdint>
 #include <map>
 #include <set>
 #include <string>
 #include <utility>
-#include <Eigen/Dense>
+#include <vector>
 
 namespace mesh {
 
@@ -19,9 +19,9 @@ namespace mesh {
 /// Vertices are unique by position; per-corner attributes (UV) live on
 /// Wedge, not here.
 struct Vertex {
-    Eigen::Vector3d pos  = Eigen::Vector3d::Zero();
-    Eigen::Matrix4d Q    = Eigen::Matrix4d::Zero();
-    bool            removed = false;
+    Eigen::Vector3d pos = Eigen::Vector3d::Zero();
+    Eigen::Matrix4d Q = Eigen::Matrix4d::Zero();
+    bool removed = false;
 };
 
 /// A single face-corner's full attribute set: which vertex it uses, and the
@@ -30,12 +30,12 @@ struct Vertex {
 /// but different `uv`.
 struct Wedge {
     Eigen::Vector2d uv = Eigen::Vector2d::Zero();
-    int             vertex = -1;
+    int vertex = -1;
 };
 
 /// A single triangular mesh face.
 struct Face {
-    int  w[3]; ///< Indices into Mesh::wedges (one per corner).
+    int w[3];  ///< Indices into Mesh::wedges (one per corner).
     bool removed = false;
 };
 
@@ -57,10 +57,12 @@ struct Edge {
  * @brief Triangle mesh with position/UV/texture data.
  */
 class Mesh {
-public:
+   public:
+    // ---- Data ----
+
     std::vector<Vertex> vertices;
-    std::vector<Wedge>  wedges;
-    std::vector<Face>   faces;
+    std::vector<Wedge> wedges;
+    std::vector<Face> faces;
 
     /// Per-face UV-island id, parallel to `faces` (removed faces get -1).
     /// Two faces share an island iff they are connected through 3D edges
@@ -68,15 +70,16 @@ public:
     /// computeIslands(); faces flagged `removed` afterwards keep their id.
     std::vector<int> islands;
 
-    /**
-     * @brief Replaces the mesh's geometry and recomputes its UV islands.
-     *        Textures are left untouched.
-     * @param newVertices New vertices.
-     * @param newWedges   New wedges (indexing `newVertices`).
-     * @param newFaces    New faces (indexing `newWedges`).
-     */
-    void replaceGeometry(std::vector<Vertex> newVertices, std::vector<Wedge> newWedges,
-                         std::vector<Face> newFaces);
+    /// Textures extracted from the source GLTF (RGBA, row-major).
+    std::vector<uint8_t> textureData;
+    int textureWidth = 0;
+    int textureHeight = 0;
+
+    std::vector<uint8_t> normalTextureData;
+    int normalTextureWidth = 0;
+    int normalTextureHeight = 0;
+
+    // ---- Construction, I/O and geometry replacement ----
 
     /**
      * @brief Loads a mesh from a file (dispatching on extension: .obj or
@@ -94,24 +97,31 @@ public:
     bool save(const std::string& path) const;
 
     /**
+     * @brief Replaces the mesh's geometry and recomputes its UV islands.
+     *        Textures are left untouched.
+     * @param newVertices New vertices.
+     * @param newWedges   New wedges (indexing `newVertices`).
+     * @param newFaces    New faces (indexing `newWedges`).
+     */
+    void replaceGeometry(std::vector<Vertex> newVertices, std::vector<Wedge> newWedges,
+                         std::vector<Face> newFaces);
+
+    /**
      * @brief Recomputes `islands` from the current faces/wedges. Call after
      *        modifying faces or UVs in place (the constructor already does it).
      */
     void computeIslands();
 
-    /// Textures extracted from the source GLTF (RGBA, row-major).
-    std::vector<uint8_t> textureData;
-    int textureWidth  = 0;
-    int textureHeight = 0;
-
-    std::vector<uint8_t> normalTextureData;
-    int normalTextureWidth  = 0;
-    int normalTextureHeight = 0;
+#pragma region counts
+    // ---- Counts ----
 
     /// @return Number of non-removed faces.
     int faceCount() const;
     /// @return Number of non-removed vertices.
     int vertexCount() const;
+#pragma endregion
+
+    // ---- Face corner access ----
 
     /**
      * @brief Looks up one corner's wedge of a face.
@@ -129,6 +139,8 @@ public:
      */
     const Vertex& faceVertex(const Face& f, int cornerIdx) const;
 
+    // ---- Face geometry ----
+
     /**
      * @brief Computes the unit normal of a face from its vertex positions
      *        (counter-clockwise winding => outward normal).
@@ -144,6 +156,8 @@ public:
      */
     std::array<Edge, 3> faceEdges(const Face& f) const;
 
+    // ---- Topology ----
+
     /// @return Edge-to-incident-faces adjacency for the current mesh, keyed
     ///         by (small, large) position-vertex id. A boundary edge (same
     ///         criterion used by op::simplification::SimplifyOp's boundary
@@ -154,9 +168,13 @@ public:
     ///         directly edge-connected to vertex i, derived from buildEdgeToFaces().
     std::vector<std::set<int>> buildVertexToVertices() const;
 
+    // ---- Mutation ----
+
     /// Moves vertex `index` to `pos`, unless it has been removed (e.g. by
     /// simplification), in which case this is a no-op.
     void moveVertex(int index, const Eigen::Vector3d& pos);
+
+    // ---- GPU export ----
 
     /// Flattened, GPU-friendly form of the mesh: one entry per distinct
     /// (vertex, uv-slot) pair actually used by a face corner, and one index
@@ -166,18 +184,20 @@ public:
     struct GPUMesh {
         std::vector<Eigen::Vector3d> positions;
         std::vector<Eigen::Vector2d> uvs;
-        std::vector<uint32_t> indices; ///< 3 per non-removed face.
+        std::vector<uint32_t> indices;  ///< 3 per non-removed face.
     };
 
     /// @return The GPU-friendly explosion of this mesh (see GPUMesh).
     GPUMesh explodeForGPU() const;
+
+    // ---- Diagnostics ----
 
     /// Prints vertex/wedge/face counts and (if present) texture dimensions
     /// to stdout. Callable anywhere a quick summary of the mesh's current
     /// state is useful (after load, after simplification, etc.).
     void logSummary() const;
 
-private:
+   private:
     /**
      * @brief Partitions active faces into UV islands via union-find over
      *        3D-edge-adjacent faces whose UVs agree at the shared edge.
@@ -186,4 +206,4 @@ private:
     std::vector<int> detectIslands() const;
 };
 
-} // namespace mesh
+}  // namespace mesh
