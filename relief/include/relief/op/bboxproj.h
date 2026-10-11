@@ -17,39 +17,8 @@
 #include "relief/op.h"
 namespace op::bboxproj {
 
-inline const uint32_t GRID_RES = 64;
-
-// struct BBox2d {
-//     const Eigen::Vector3d min;
-//     const Eigen::Vector3d max;
-//     const Eigen::Vector3d center;
-//     const Eigen::Vector3d halfExtents;
-
-//     BoundingBox(const mesh::Mesh& mesh) : BoundingBox(computeBounds(mesh)) {}
-
-//    private:
-//     using Bounds = std::pair<Eigen::Vector3d, Eigen::Vector3d>;
-//     BoundingBox(const Bounds& bounds)
-//         : min(bounds.first),
-//           max(bounds.second),
-//           center(0.5 * (min + max)),
-//           halfExtents(0.5 * (max - min)) {}
-
-//     static Bounds computeBounds(const mesh::Mesh& mesh) {
-//         Eigen::Vector3d min = Eigen::Vector3d::Constant(std::numeric_limits<double>::max());
-//         Eigen::Vector3d max = Eigen::Vector3d::Constant(std::numeric_limits<double>::lowest());
-//         for (const auto& v : mesh.vertices()) {
-//             if (v.removed) continue;
-//             min = min.cwiseMin(v.pos);
-//             max = max.cwiseMax(v.pos);
-//         }
-//         return {min, max};
-//     }
-// };
-
-// struct Grid2d {
-//     std::array<std::vector<int>, GRID_RES> grid;
-// };
+/// Side length, in cells, of the per-quad acceleration grid used to find occluders.
+inline constexpr int GRID_RES = 4096;
 
 /// Static description of one of a box's 6 quads: which axis it is
 /// perpendicular to, and on which side of the box it sits.
@@ -69,14 +38,6 @@ inline constexpr std::array<QuadInfo, 6> QUADS = {{
     {2, -1},
     {2, +1},
 }};
-
-struct Grid2d : std::array<std::vector<int>, GRID_RES> {
-    Grid2d(mesh::Mesh& mesh, const QuadInfo& qInfo) {}
-
-    void addFace(){
-
-    };
-};
 
 /// One of a BBox's 6 quads: an independently triangulated planar patch,
 /// with the same vertex/wedge/face shape as mesh::Mesh -- i.e. a quad is a
@@ -200,7 +161,5 @@ class BBoxProjectionOp : public op::Op {
 
    private:
     int resolution_;
-
-    void handleQuad(const QuadInfo& quad, BBox& box, mesh::Mesh& mesh) const;
 };
 }  // namespace op::bboxproj

@@ -3,419 +3,303 @@
  */
 #include "relief/op/bboxproj.h"
 
-#include <Eigen/src/Core/Matrix.h>
-#include <Eigen/src/Geometry/AlignedBox.h>
-
 #include <Eigen/Geometry>
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <cstdint>
-#include <map>
-#include <random>
 #include <set>
 #include <utility>
 #include <vector>
 
 #include "relief/mesh.h"
-#include "relief/triangulate.h"
 
 namespace op::bboxproj {
 
 namespace {
-    void clipBySide() {}
-void clipTriangle(mesh::Mesh& mesh, mesh::Face& f, std::set<mesh::Face> candidates) {
-    std::vector<mesh::Face> parts;
-    parts.push_back(f);
 
-    for (auto& e : mesh.faceEdges(f)) {
-        clipBySide();
-    }
+/// Areas / distances below this are treated as zero.
+constexpr double EPS = 1e-12;
+
+/// One corner of a clipped polygon, in a quad's local frame.
+struct ClipVert {
+    /// Position on the quad plane, relative to the box center.
+    Eigen::Vector2d uv;
+    /// Distance from the quad plane (smaller is nearer the viewer).
+    double depth;
+    /// Barycentric coordinates within the source mesh face.
+    Eigen::Vector3d bary;
+};
+
+/// Convex polygon, counter-clockwise in (u, v).
+using Poly = std::vector<ClipVert>;
+
+/// A mesh face projected onto a quad, counter-clockwise in (u, v).
+struct ProjTri {
+    std::array<ClipVert, 3> v;
+    /// UVs of the source face's wedges, in the same order as `v`.
+    std::array<Eigen::Vector2d, 3> wedgeUV;
+};
+
+double cross(const Eigen::Vector2d& a, const Eigen::Vector2d& b) {
+    return a.x() * b.y() - a.y() * b.x();
 }
+
+double signedArea(const Poly& p) {
+    double area = 0.0;
+    for (size_t i = 0; i < p.size(); i++) {
+        area += cross(p[i].uv, p[(i + 1) % p.size()].uv);
+    }
+    return 0.5 * area;
+}
+
+ClipVert lerp(const ClipVert& a, const ClipVert& b, double t) {
+    return {a.uv + t * (b.uv - a.uv), a.depth + t * (b.depth - a.depth),
+            a.bary + t * (b.bary - a.bary)};
+}
+
+/**
+ * @brief Splits a convex polygon by the line through a -> b.
+ * @return {part on the left of a -> b (inside, for a CCW triangle), part on
+ *         the right (outside)}. Either may be empty; vertices exactly on the
+ *         line belong to both.
+ */
+std::pair<Poly, Poly> splitByHalfPlane(const Poly& poly, const Eigen::Vector2d& a,
+                                       const Eigen::Vector2d& b) {
+    Poly inside, outside;
+    const Eigen::Vector2d dir = b - a;
+    const size_t n = poly.size();
+
+    for (size_t i = 0; i < n; i++) {
+        const ClipVert& cur = poly[i];
+        const ClipVert& nxt = poly[(i + 1) % n];
+        const double dc = cross(dir, cur.uv - a);
+        const double dn = cross(dir, nxt.uv - a);
+
+        if (dc >= 0.0) inside.push_back(cur);
+        if (dc <= 0.0) outside.push_back(cur);
+        if ((dc > 0.0 && dn < 0.0) || (dc < 0.0 && dn > 0.0)) {
+            const ClipVert cut = lerp(cur, nxt, dc / (dc - dn));
+            inside.push_back(cut);
+            outside.push_back(cut);
+        }
+    }
+    return {std::move(inside), std::move(outside)};
+}
+
+/// Depth of the occluder's plane at a point of the quad.
+double occluderDepthAt(const ProjTri& occ, const Eigen::Vector2d& p) {
+    const Eigen::Vector2d e1 = occ.v[1].uv - occ.v[0].uv;
+    const Eigen::Vector2d e2 = occ.v[2].uv - occ.v[0].uv;
+    const double det = cross(e1, e2);
+    const Eigen::Vector2d d = p - occ.v[0].uv;
+    const double l1 = cross(d, e2) / det;
+    const double l2 = cross(e1, d) / det;
+    return occ.v[0].depth + l1 * (occ.v[1].depth - occ.v[0].depth) +
+           l2 * (occ.v[2].depth - occ.v[0].depth);
+}
+
+/**
+ * @brief Removes from `pieces` the parts hidden behind `occ`.
+ *
+ * A piece is only split when `occ` actually hides part of it: it must overlap
+ * the piece in (u, v) with real area, and be nearer than the piece at every
+ * corner of the overlap. Otherwise the piece is kept whole, so occluders that
+ * merely share a grid cell never fragment it.
+ */
+void subtract(std::vector<Poly>& pieces, const ProjTri& occ) {
+    std::vector<Poly> result;
+
+    for (Poly& piece : pieces) {
+        // Peel the piece along the occluder's three edges. `outside` collects
+        // the parts beyond each edge; `rest` ends up as the overlap with `occ`.
+        std::vector<Poly> outsides;
+        Poly rest = piece;
+        for (int i = 0; i < 3 && rest.size() >= 3; i++) {
+            auto [inside, outside] = splitByHalfPlane(rest, occ.v[i].uv, occ.v[(i + 1) % 3].uv);
+            if (outside.size() >= 3 && std::abs(signedArea(outside)) > EPS) {
+                outsides.push_back(std::move(outside));
+            }
+            rest = std::move(inside);
+        }
+
+        // No overlap: the splits above were only an artifact of the infinite edge lines.
+        bool hidden = rest.size() >= 3 && std::abs(signedArea(rest)) > EPS;
+        if (hidden) {
+            for (const ClipVert& cv : rest) {
+                if (occluderDepthAt(occ, cv.uv) > cv.depth + EPS) hidden = false;
+            }
+        }
+
+        if (!hidden) {
+            result.push_back(std::move(piece));
+            continue;
+        }
+        for (Poly& out : outsides) result.push_back(std::move(out));
+    }
+    pieces = std::move(result);
+}
+
 }  // namespace
 
 void BBoxProjectionOp::apply(mesh::Mesh& mesh) const {
     BBox box(mesh, resolution_);
+    const int res = GRID_RES;
 
-    for (const auto& quad : QUADS) {
-        const int res = 64;
-        std::vector<std::vector<int>> grid(res * res);
+    for (size_t quadIdx = 0; quadIdx < QUADS.size(); quadIdx++) {
+        const QuadInfo& quad = QUADS[quadIdx];
+        BBoxQuad& target = box.quads[quadIdx];
 
-        // BBoxProjectionOp::handleQuad(quad, box, mesh);
-        const auto axis = quad.axis;
-        const int u = (quad.axis + 1) % 3;
-        const int v = (quad.axis + 2) % 3;
-        const Eigen::Vector3d outward = quad.sign * Eigen::Vector3d::Unit(quad.axis);
+        const int axis = quad.axis;
+        const int u = (axis + 1) % 3;
+        const int v = (axis + 2) % 3;
+        const Eigen::Vector3d outward = quad.sign * Eigen::Vector3d::Unit(axis);
         const Eigen::Vector2d origin(-box.halfExtents[u], -box.halfExtents[v]);
-
-        auto getUV = [u, v](const Eigen::Vector3d& coord) -> Eigen::Vector2d {
-            return Eigen::Vector2d(coord[u], coord[v]);
-        };
-        // Distance from the quad's plane: smaller means closer to the quad (nearer the viewer).
-        auto getDepth = [&](const Eigen::Vector3d& coord) -> double {
-            return box.halfExtents[axis] - quad.sign * (coord[axis] - box.center[axis]);
-        };
-        auto depthRange = [&](int faceIdx) -> Eigen::AlignedBox1d {
-            Eigen::AlignedBox1d range;
-            for (const auto& vert : mesh.faceVertices(mesh.faces()[faceIdx])) {
-                range.extend(Eigen::Matrix<double, 1, 1>(getDepth(vert.pos)));
-            }
-            return range;
-        };
-
         const Eigen::Vector2d cellSize(2 * box.halfExtents[u] / res, 2 * box.halfExtents[v] / res);
-        auto toDiscreteBox = [origin, cellSize](Eigen::AlignedBox2d bbox2d) -> Eigen::AlignedBox2i {
-            const Eigen::Vector2d lo = (bbox2d.min() - origin).cwiseQuotient(cellSize);
-            const Eigen::Vector2d hi = (bbox2d.max() - origin).cwiseQuotient(cellSize);
-
-            const Eigen::Vector2i last = Eigen::Vector2i::Constant(res - 1);
-            Eigen::AlignedBox2i bbox2i(lo.array().floor().matrix().cast<int>().cwiseMax(0),
-                                       hi.array().floor().matrix().cast<int>().cwiseMin(last));
-
-            return bbox2i;
-        };
 
         // A flat box has no area to project onto on this quad.
         if ((cellSize.array() <= 0.0).any()) continue;
 
-        // Build the GRID
-        for (int faceIdx : mesh.getOutwardingFaces(outward)) {
-            Eigen::AlignedBox2d bbox2d;
+        // Distance from the quad's plane: smaller means closer to the quad (nearer the viewer).
+        auto getDepth = [&](const Eigen::Vector3d& coord) -> double {
+            return box.halfExtents[axis] - quad.sign * (coord[axis] - box.center[axis]);
+        };
 
-            // Create the bounding box
-            for (auto& v : mesh.faceVertices(mesh.faces()[faceIdx])) {
-                bbox2d.extend(getUV(v.pos - box.center));
+        // Projects a face onto the quad, or returns false if it is degenerate there.
+        auto project = [&](int faceIdx, ProjTri& tri) -> bool {
+            const mesh::Face& f = mesh.faces()[faceIdx];
+            const auto verts = mesh.faceVertices(f);
+            for (int i = 0; i < 3; i++) {
+                const Eigen::Vector3d d = verts[i].pos - box.center;
+                tri.v[i] = {Eigen::Vector2d(d[u], d[v]), getDepth(verts[i].pos),
+                            Eigen::Vector3d::Unit(i)};
+                tri.wedgeUV[i] = mesh.faceWedge(f, i).uv;
             }
+            // Faces towards a -axis quad project clockwise; make them CCW.
+            const double area = signedArea(Poly(tri.v.begin(), tri.v.end()));
+            if (std::abs(area) <= EPS) return false;
+            if (area < 0.0) {
+                std::swap(tri.v[1], tri.v[2]);
+                std::swap(tri.wedgeUV[1], tri.wedgeUV[2]);
+            }
+            return true;
+        };
 
-            auto bbox2i = toDiscreteBox(bbox2d);
+        auto toDiscreteBox = [&](const ProjTri& tri) -> Eigen::AlignedBox2i {
+            Eigen::AlignedBox2d bbox2d;
+            for (const ClipVert& cv : tri.v) bbox2d.extend(cv.uv);
 
+            const Eigen::Vector2d lo = (bbox2d.min() - origin).cwiseQuotient(cellSize);
+            const Eigen::Vector2d hi = (bbox2d.max() - origin).cwiseQuotient(cellSize);
+            const Eigen::Vector2i last = Eigen::Vector2i::Constant(res - 1);
+            return Eigen::AlignedBox2i(lo.array().floor().matrix().cast<int>().cwiseMax(0),
+                                       hi.array().floor().matrix().cast<int>().cwiseMin(last));
+        };
+
+        // Project every face facing this quad, and bin it into the grid.
+        std::vector<ProjTri> tris;
+        std::vector<std::vector<int>> grid(res * res);  // cell -> indices into `tris`
+        for (int faceIdx : mesh.getOutwardingFaces(outward)) {
+            ProjTri tri;
+            if (!project(faceIdx, tri)) continue;
+
+            const int triIdx = (int)tris.size();
+            const auto bbox2i = toDiscreteBox(tri);
             for (int y = bbox2i.min().y(); y <= bbox2i.max().y(); y++) {
                 for (int x = bbox2i.min().x(); x <= bbox2i.max().x(); x++) {
-                    grid[y * res + x].push_back(faceIdx);
+                    grid[y * res + x].push_back(triIdx);
                 }
             }
+            tris.push_back(tri);
         }
 
-        // Query Grid
-        for (int faceIdx : mesh.getOutwardingFaces(outward)) {
-            std::set<int> faceOccluderCandidates;
-            Eigen::AlignedBox2d bbox2d;
-
-            for (auto& v : mesh.faceVertices(mesh.faces()[faceIdx])) {
-                bbox2d.extend(getUV(v.pos - box.center));
-            }
-
-            auto bbox2i = toDiscreteBox(bbox2d);
+        for (int triIdx = 0; triIdx < (int)tris.size(); triIdx++) {
+            const ProjTri& tri = tris[triIdx];
 
             // Every face sharing a cell with this one is a candidate...
+            std::set<int> candidates;
+            const auto bbox2i = toDiscreteBox(tri);
             for (int y = bbox2i.min().y(); y <= bbox2i.max().y(); y++) {
                 for (int x = bbox2i.min().x(); x <= bbox2i.max().x(); x++) {
                     const auto& cell = grid[y * res + x];
-                    faceOccluderCandidates.insert(cell.begin(), cell.end());
+                    candidates.insert(cell.begin(), cell.end());
                 }
             }
 
             // ...except itself, and faces that lie entirely behind it: an occluder
             // must reach closer to the quad than this face's farthest point.
-            faceOccluderCandidates.erase(faceIdx);
+            candidates.erase(triIdx);
+            const double maxDepth = std::max({tri.v[0].depth, tri.v[1].depth, tri.v[2].depth});
 
-            const double faceMaxDepth = depthRange(faceIdx).max()[0];
-            for (auto it = faceOccluderCandidates.begin(); it != faceOccluderCandidates.end();) {
-                if (depthRange(*it).min()[0] >= faceMaxDepth) {
-                    it = faceOccluderCandidates.erase(it);
-                } else {
-                    ++it;
+            std::vector<Poly> pieces{Poly(tri.v.begin(), tri.v.end())};
+            for (int occIdx : candidates) {
+                const ProjTri& occ = tris[occIdx];
+                const double minDepth = std::min({occ.v[0].depth, occ.v[1].depth, occ.v[2].depth});
+                if (minDepth >= maxDepth) continue;
+
+                subtract(pieces, occ);
+                if (pieces.empty()) break;
+            }
+
+            // Fan-triangulate each surviving convex piece into the quad.
+            for (const Poly& piece : pieces) {
+                const int wedgeBase = (int)target.wedges.size();
+
+                for (const ClipVert& cv : piece) {
+                    mesh::Vertex vertex;
+                    vertex.pos = Eigen::Vector3d(cv.uv.x(), cv.uv.y(), cv.depth);
+                    target.vertices.push_back(vertex);
+
+                    mesh::Wedge wedge;
+                    wedge.vertex = (int)target.vertices.size() - 1;
+                    for (int i = 0; i < 3; i++) wedge.uv += cv.bary[i] * tri.wedgeUV[i];
+                    target.wedges.push_back(wedge);
+                }
+
+                for (int i = 1; i + 1 < (int)piece.size(); i++) {
+                    mesh::Face f;
+                    f.w[0] = wedgeBase;
+                    f.w[1] = wedgeBase + i;
+                    f.w[2] = wedgeBase + i + 1;
+                    // Pieces are CCW in (u, v), whose normal is +axis; flip for -axis quads.
+                    if (quad.sign < 0) std::swap(f.w[1], f.w[2]);
+                    target.faces.push_back(f);
                 }
             }
         }
 
-        // for (int quadIdx = 0; quadIdx < 6; quadIdx++) {
-        //     BBoxQuad& quad = box.quads[quadIdx];
-        //     const int axis = quad.info.axis;
-        //     const int u = (axis + 1) % 3;
-        //     const int v = (axis + 2) % 3;
-        //     const Eigen::Vector3d outward = quad.info.sign * Eigen::Vector3d::Unit(axis);
+        // Quads with no mesh geometry ever facing them fall back to two triangles
+        // spanning the full rectangle, with a synthetic unit-square UV, so the box
+        // stays closed.
+        if (!target.faces.empty()) continue;
 
-        //     // Project every mesh face facing this quad onto it, in original mesh
-        //     // order (a face can face more than one quad, e.g. towards a corner,
-        //     // in which case it's projected onto each).
-        //     for (const auto& f : mesh.faces()) {
-        //         if (f.removed) continue;
+        const double hu = box.halfExtents[u], hv = box.halfExtents[v];
+        const std::array<Eigen::Vector2d, 4> corners = {
+            Eigen::Vector2d(-hu, -hv), Eigen::Vector2d(hu, -hv), Eigen::Vector2d(hu, hv),
+            Eigen::Vector2d(-hu, hv)};
+        const std::array<Eigen::Vector2d, 4> cornerUVs = {
+            Eigen::Vector2d(0, 0), Eigen::Vector2d(1, 0), Eigen::Vector2d(1, 1),
+            Eigen::Vector2d(0, 1)};
+        for (int i = 0; i < 4; i++) {
+            mesh::Vertex vertex;
+            vertex.pos = Eigen::Vector3d(corners[i].x(), corners[i].y(), 0.0);
+            target.vertices.push_back(vertex);
 
-        //         // Skip backfaces for this quad (this also skips degenerate faces,
-        //         // whose normal is zero).
-        //         Eigen::Vector3d normal = mesh.faceNormal(f);
-        //         if (normal.dot(outward) <= 0.0) continue;
-
-        //         mesh::Face triangle;
-        //         for (int i = 0; i < 3; i++) {
-        //             Eigen::Vector3d d = mesh.faceVertex(f, i).pos - box.center;
-        //             double outwardCoord = quad.info.sign * d[axis];
-        //             double depth = box.halfExtents[axis] - outwardCoord;
-
-        //             // z is the depth: distance from this quad's plane.
-        //             auto pos = Eigen::Vector3d(d[u], d[v], depth);
-
-        //             int vertexIdx = (int)quad.vertices.size();
-        //             quad.vertices.push_back(mesh::Vertex{.pos = pos});
-
-        //             mesh::Wedge wedge = mesh.faceWedge(f, i);
-        //             wedge.vertex = vertexIdx;
-
-        //             triangle.w[i] = (int)quad.wedges.size();
-        //             quad.wedges.push_back(wedge);
-        //         }
-        //         quad.faces.push_back(triangle);
-        //     }
-
-        //     // Resolve occlusion: rasterize the triangles into the depth buffer
-        //     // (nearest to the quad plane wins; ties go to the earlier triangle),
-        //     // then drop every triangle that doesn't win a pixel. Surviving
-        //     // triangles are kept whole, not clipped, so partly occluded ones
-        //     // stay. A triangle too small or thin to cover a pixel center is
-        //     // dropped as well.
-        //     const int res = quad.resolution;
-
-        //     // Maps local quad coordinates to continuous pixel coordinates. A
-        //     // zero-extent axis collapses to 0, which makes the triangle degenerate.
-        //     auto toPixel = [&](const Eigen::Vector3d& pos) {
-        //         return Eigen::Vector2d(hu > 0.0 ? (pos.x() + hu) / (2.0 * hu) * res : 0.0,
-        //                                hv > 0.0 ? (pos.y() + hv) / (2.0 * hv) * res : 0.0);
-        //     };
-        //     auto cross = [](const Eigen::Vector2d& a, const Eigen::Vector2d& b) {
-        //         return a.x() * b.y() - a.y() * b.x();
-        //     };
-
-        //     for (int faceIdx = 0; faceIdx < (int)quad.faces.size(); faceIdx++) {
-        //         const mesh::Face& face = quad.faces[faceIdx];
-        //         Eigen::Vector2d s[3];
-        //         double z[3];
-        //         for (int i = 0; i < 3; i++) {
-        //             const mesh::Vertex& vertex = quad.vertices[quad.wedges[face.w[i]].vertex];
-        //             s[i] = toPixel(vertex.pos);
-        //             z[i] = vertex.pos.z();
-        //         }
-
-        //         double area = cross(s[1] - s[0], s[2] - s[0]);
-        //         if (std::abs(area) < 1e-12) continue;
-
-        //         Eigen::Vector2d lo = s[0].cwiseMin(s[1]).cwiseMin(s[2]);
-        //         Eigen::Vector2d hi = s[0].cwiseMax(s[1]).cwiseMax(s[2]);
-        //         int x0 = std::max(0, (int)std::floor(lo.x()));
-        //         int x1 = std::min(res - 1, (int)std::ceil(hi.x()));
-        //         int y0 = std::max(0, (int)std::floor(lo.y()));
-        //         int y1 = std::min(res - 1, (int)std::ceil(hi.y()));
-
-        //         for (int y = y0; y <= y1; y++) {
-        //             for (int x = x0; x <= x1; x++) {
-        //                 Eigen::Vector2d c(x + 0.5, y + 0.5);
-        //                 double l0 = cross(s[1] - c, s[2] - c) / area;
-        //                 double l1 = cross(s[2] - c, s[0] - c) / area;
-        //                 double l2 = cross(s[0] - c, s[1] - c) / area;
-        //                 if (l0 < 0.0 || l1 < 0.0 || l2 < 0.0) continue;
-
-        //                 double depth = l0 * z[0] + l1 * z[1] + l2 * z[2];
-        //                 int pixel = y * res + x;
-        //                 if (depth < quad.depth[pixel]) {
-        //                     quad.depth[pixel] = depth;
-        //                     quad.owner[pixel] = faceIdx;
-        //                 }
-        //             }
-        //         }
-        //     }
-
-        //     // Keep only the triangles that own at least one pixel.
-        //     std::vector<bool> visible(quad.faces.size(), false);
-        //     for (int id : quad.owner) {
-        //         if (id >= 0) visible[id] = true;
-        //     }
-
-        //     std::vector<mesh::Vertex> vertices;
-        //     std::vector<mesh::Wedge> wedges;
-        //     std::vector<mesh::Face> faces;
-        //     for (int faceIdx = 0; faceIdx < (int)quad.faces.size(); faceIdx++) {
-        //         if (!visible[faceIdx]) continue;
-
-        //         mesh::Face kept;
-        //         for (int i = 0; i < 3; i++) {
-        //             mesh::Wedge wedge = quad.wedges[quad.faces[faceIdx].w[i]];
-        //             vertices.push_back(quad.vertices[wedge.vertex]);
-        //             wedge.vertex = (int)vertices.size() - 1;
-        //             kept.w[i] = (int)wedges.size();
-        //             wedges.push_back(wedge);
-        //         }
-        //         faces.push_back(kept);
-        //     }
-        //     quad.vertices = std::move(vertices);
-        //     quad.wedges = std::move(wedges);
-        //     quad.faces = std::move(faces);
-
-        //     // // Quads with no mesh geometry ever facing them (e.g. a flat/open
-        //     // // source mesh) fall back to two triangles spanning the full quad
-        //     // // rectangle, with a synthetic unit-square UV, so the box stays closed.
-        //     // if (!quad.faces.empty()) continue;
-
-        //     // std::array<Eigen::Vector2d, 4> corners = {Eigen::Vector2d(-hu, -hv),
-        //     //                                           Eigen::Vector2d(hu, -hv),
-        //     Eigen::Vector2d(hu,
-        //     //                                           hv), Eigen::Vector2d(-hu, hv)};
-        //     // std::array<Eigen::Vector2d, 4> cornerUVs = {Eigen::Vector2d(0, 0),
-        //     Eigen::Vector2d(1, 0),
-        //     //                                             Eigen::Vector2d(1, 1),
-        //     Eigen::Vector2d(0,
-        //     //                                             1)};
-        //     // for (int i = 0; i < 4; i++) {
-        //     //     mesh::Vertex vertex;
-        //     //     vertex.pos = Eigen::Vector3d(corners[i].x(), corners[i].y(), 0.0);
-        //     //     quad.vertices.push_back(vertex);
-
-        //     //     mesh::Wedge wedge;
-        //     //     wedge.vertex = i;
-        //     //     wedge.uv = cornerUVs[i];
-        //     //     quad.wedges.push_back(wedge);
-        //     // }
-        //     // if (quad.info.sign > 0) {
-        //     //     quad.faces.push_back({{0, 1, 2}});
-        //     //     quad.faces.push_back({{0, 2, 3}});
-        //     // } else {
-        //     //     quad.faces.push_back({{0, 2, 1}});
-        //     //     quad.faces.push_back({{0, 3, 2}});
-        //     // }
-        // }
+            mesh::Wedge wedge;
+            wedge.vertex = i;
+            wedge.uv = cornerUVs[i];
+            target.wedges.push_back(wedge);
+        }
+        if (quad.sign > 0) {
+            target.faces.push_back({{0, 1, 2}});
+            target.faces.push_back({{0, 2, 3}});
+        } else {
+            target.faces.push_back({{0, 2, 1}});
+            target.faces.push_back({{0, 3, 2}});
+        }
     }
 
     box.exportTo(mesh);
-}
-
-void BBoxProjectionOp::handleQuad(const QuadInfo& quad, BBox& box, mesh::Mesh& mesh) const {
-    const int u = (quad.axis + 1) % 3;
-    const int v = (quad.axis + 2) % 3;
-    const Eigen::Vector3d outward = quad.sign * Eigen::Vector3d::Unit(quad.axis);
-    auto outwardingFaces = mesh.getOutwardingFaces(outward);
-
-    // const auto edgeToFaces = mesh.buildEdgeToFaces();
-    // const auto& faces = mesh.faces();
-    // auto isOutward = [&faces, &mesh, &outward](int fi) {
-    //     return !faces[fi].removed && mesh.faceNormal(faces[fi]).dot(outward) > 0.0;
-    // };
-
-    // Outline edges of the outward faces, clustered per UV island.
-    // std::map<int, std::vector<std::pair<int, int>>> edgesByIsland;
-    // for (int fi = 0; fi < (int)faces.size(); fi++) {
-    //     if (!isOutward(fi)) continue;
-    //     const int island = faces[fi].island;
-
-    //     for (const auto& e : mesh.faceEdges(faces[fi])) {
-    //         // Only outward faces of the same island count: an edge whose other
-    //         // neighbors face away or belong to another island is a border of
-    //         // this island's outline (a seam is a border of both islands).
-    //         std::vector<int> sameIsland;
-    //         for (int nb : edgeToFaces.at(e)) {
-    //             if (isOutward(nb) && faces[nb].island == island) sameIsland.push_back(nb);
-    //         }
-
-    //         // Each edge is visited from every such face; record it once.
-    //         if (sameIsland.front() != fi) continue;
-    //         if (sameIsland.size() == 1) edgesByIsland[island].emplace_back(e.first,
-    //         e.second);
-    //     }
-    // }
-
-    // auto edgeKey = [](int a, int b) { return std::make_pair(std::min(a, b), std::max(a, b));
-    // };
-
-    // // Chains unordered edges into closed loops of vertex ids.
-    // auto chainLoops = [&edgeKey](const std::vector<std::pair<int, int>>& edges) {
-    //     std::map<int, std::vector<int>> adjacency;
-    //     for (const auto& [a, b] : edges) {
-    //         adjacency[a].push_back(b);
-    //         adjacency[b].push_back(a);
-    //     }
-
-    //     std::set<std::pair<int, int>> usedEdges;
-    //     std::vector<std::vector<int>> loops;
-    //     for (const auto& [start, neighbors] : adjacency) {
-    //         for (int first : neighbors) {
-    //             if (usedEdges.count(edgeKey(start, first))) continue;
-
-    //             std::vector<int> loop{start};
-    //             int prev = start;
-    //             int cur = first;
-    //             usedEdges.insert(edgeKey(start, first));
-    //             while (cur != start) {
-    //                 loop.push_back(cur);
-    //                 int next = -1;
-    //                 for (int nb : adjacency[cur]) {
-    //                     if (nb != prev && !usedEdges.count(edgeKey(cur, nb))) {
-    //                         next = nb;
-    //                         break;
-    //                     }
-    //                 }
-    //                 if (next < 0) break;  // open chain: not a closed loop
-    //                 usedEdges.insert(edgeKey(cur, next));
-    //                 prev = cur;
-    //                 cur = next;
-    //             }
-    //             if (cur == start && loop.size() >= 3) loops.push_back(std::move(loop));
-    //         }
-    //     }
-    //     return loops;
-    // };
-
-    // // Closed loops, tagged with the island they outline.
-    // std::vector<std::pair<int, std::vector<int>>> loops;
-    // for (const auto& [island, edges] : edgesByIsland) {
-    //     for (auto& loop : chainLoops(edges)) loops.emplace_back(island, std::move(loop));
-    // }
-
-    // // Project each loop onto the quad's plane as local (u, v) coordinates
-    // // relative to the box center, matching BBox::exportTo.
-    // const auto& vertices = mesh.vertices();
-    // auto project = [&](const std::vector<int>& loop) {
-    //     std::vector<Eigen::Vector2d> pts;
-    //     pts.reserve(loop.size());
-    //     for (int vi : loop) {
-    //         const Eigen::Vector3d d = vertices[vi].pos - box.center;
-    //         pts.emplace_back(d[u], d[v]);
-    //     }
-    //     return pts;
-    // };
-
-    // // Triangulate every loop (one silhouette each) and merge the patches into
-    // // the quad. Holes are unsupported by triangulatePolygon, so a loop nested
-    // // inside another is filled like any other.
-    // BBoxQuad& target = box.quads[quad.axis * 2 + (quad.sign > 0 ? 1 : 0)];
-    // target.vertices.clear();
-    // target.wedges.clear();
-    // target.faces.clear();
-
-    // // TEMPORARY: one fixed pseudo-random UV per island, so each island samples a
-    // // single texel of the color texture and renders as a flat color.
-    // auto islandUV = [](int island) {
-    //     std::mt19937 rng(static_cast<uint32_t>(island));
-    //     std::uniform_real_distribution<double> dist(0.0, 1.0);
-    //     return Eigen::Vector2d(dist(rng), dist(rng));
-    // };
-
-    // for (const auto& [island, loop] : loops) {
-    //     const Eigen::Vector2d uv = islandUV(island);
-    //     triangulate::Patch patch = triangulate::triangulatePolygon(project(loop));
-    //     const int vertexBase = (int)target.vertices.size();
-    //     const int wedgeBase = (int)target.wedges.size();
-
-    //     for (auto& vtx : patch.vertices) target.vertices.push_back(vtx);
-    //     for (size_t i = 0; i < patch.wedges.size(); i++) {
-    //         mesh::Wedge wedge;
-    //         wedge.vertex = vertexBase + patch.wedges[i].vertex;
-    //         wedge.uv = uv;
-    //         target.wedges.push_back(wedge);
-    //     }
-    //     for (auto f : patch.faces) {
-    //         // Patch faces are CCW in (u, v), whose normal is +axis; flip for -axis quads.
-    //         if (quad.sign < 0) std::swap(f.w[1], f.w[2]);
-    //         for (int& w : f.w) w += wedgeBase;
-    //         target.faces.push_back(f);
-    //     }
-    // }
 }
 
 void BBox::exportTo(mesh::Mesh& mesh) const {
