@@ -5,6 +5,7 @@
  */
 #pragma once
 
+#include <Eigen/Geometry>
 #include <array>
 #include <cstddef>
 #include <cstdint>
@@ -15,6 +16,40 @@
 #include "relief/mesh.h"
 #include "relief/op.h"
 namespace op::bboxproj {
+
+inline const uint32_t GRID_RES = 64;
+
+// struct BBox2d {
+//     const Eigen::Vector3d min;
+//     const Eigen::Vector3d max;
+//     const Eigen::Vector3d center;
+//     const Eigen::Vector3d halfExtents;
+
+//     BoundingBox(const mesh::Mesh& mesh) : BoundingBox(computeBounds(mesh)) {}
+
+//    private:
+//     using Bounds = std::pair<Eigen::Vector3d, Eigen::Vector3d>;
+//     BoundingBox(const Bounds& bounds)
+//         : min(bounds.first),
+//           max(bounds.second),
+//           center(0.5 * (min + max)),
+//           halfExtents(0.5 * (max - min)) {}
+
+//     static Bounds computeBounds(const mesh::Mesh& mesh) {
+//         Eigen::Vector3d min = Eigen::Vector3d::Constant(std::numeric_limits<double>::max());
+//         Eigen::Vector3d max = Eigen::Vector3d::Constant(std::numeric_limits<double>::lowest());
+//         for (const auto& v : mesh.vertices()) {
+//             if (v.removed) continue;
+//             min = min.cwiseMin(v.pos);
+//             max = max.cwiseMax(v.pos);
+//         }
+//         return {min, max};
+//     }
+// };
+
+// struct Grid2d {
+//     std::array<std::vector<int>, GRID_RES> grid;
+// };
 
 /// Static description of one of a box's 6 quads: which axis it is
 /// perpendicular to, and on which side of the box it sits.
@@ -27,8 +62,21 @@ struct QuadInfo {
 
 /// The 6 quads of a box, in order [-X, +X, -Y, +Y, -Z, +Z].
 inline constexpr std::array<QuadInfo, 6> QUADS = {{
-    {0, -1}, {0, +1}, {1, -1}, {1, +1}, {2, -1}, {2, +1},
+    {0, -1},
+    {0, +1},
+    {1, -1},
+    {1, +1},
+    {2, -1},
+    {2, +1},
 }};
+
+struct Grid2d : std::array<std::vector<int>, GRID_RES> {
+    Grid2d(mesh::Mesh& mesh, const QuadInfo& qInfo) {}
+
+    void addFace(){
+
+    };
+};
 
 /// One of a BBox's 6 quads: an independently triangulated planar patch,
 /// with the same vertex/wedge/face shape as mesh::Mesh -- i.e. a quad is a

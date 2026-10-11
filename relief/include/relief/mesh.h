@@ -152,6 +152,13 @@ class Mesh {
      */
     const Vertex& faceVertex(const Face& f, int cornerIdx) const;
 
+    /**
+     * @brief Looks up all three corners' vertices of a face.
+     * @param f A face of this mesh.
+     * @return Copies of the vertices of corners 0..2 (via their wedges).
+     */
+    std::array<Vertex, 3> faceVertices(const Face& f) const;
+
     // ---- Face geometry ----
 
     /**
@@ -168,6 +175,14 @@ class Mesh {
      * @return Edge i joins the vertices of corners i and (i+1)%3.
      */
     std::array<Edge, 3> faceEdges(const Face& f) const;
+
+    /**
+     * @brief Collects the non-removed faces whose normal points towards `axis`.
+     * @param axis Direction to test against (e.g. +X is (1, 0, 0), -Z is (0, 0, -1)).
+     * @return Indices into faces() of the faces with a positive dot product
+     *         between their normal and `axis`. Degenerate faces are excluded.
+     */
+    std::vector<int> getOutwardingFaces(const Eigen::Vector3d& axis) const;
 
     // ---- Topology ----
 

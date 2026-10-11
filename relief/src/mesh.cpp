@@ -50,6 +50,10 @@ const Vertex &Mesh::faceVertex(const Face &f, int cornerIdx) const {
     return vertices_[faceWedge(f, cornerIdx).vertex];
 }
 
+std::array<Vertex, 3> Mesh::faceVertices(const Face &f) const {
+    return {faceVertex(f, 0), faceVertex(f, 1), faceVertex(f, 2)};
+}
+
 Eigen::Vector3d Mesh::faceNormal(const Face &f) const {
     const Eigen::Vector3d &p0 = faceVertex(f, 0).pos;
     const Eigen::Vector3d &p1 = faceVertex(f, 1).pos;
@@ -58,6 +62,15 @@ Eigen::Vector3d Mesh::faceNormal(const Face &f) const {
     double len = n.norm();
     if (len == 0.0) return Eigen::Vector3d::Zero();
     return n / len;
+}
+
+std::vector<int> Mesh::getOutwardingFaces(const Eigen::Vector3d &axis) const {
+    std::vector<int> result;
+    for (int fi = 0; fi < (int)faces_.size(); fi++) {
+        if (faces_[fi].removed) continue;
+        if (faceNormal(faces_[fi]).dot(axis) > 0.0) result.push_back(fi);
+    }
+    return result;
 }
 
 std::array<Edge, 3> Mesh::faceEdges(const Face &f) const {
