@@ -437,15 +437,9 @@ void BBoxProjectionOp::apply(mesh::Mesh& mesh) const {
             }
         }
 
-        // Fill whatever the projected faces leave uncovered so the box is closed.
-        // TEMPORARY: the fill has no source texel; it uses the mean UV of the quad's faces.
-        Eigen::Vector2d fillUV(0.5, 0.5);
-        if (!target.wedges.empty()) {
-            fillUV.setZero();
-            for (const mesh::Wedge& w : target.wedges) fillUV += w.uv;
-            fillUV /= (double)target.wedges.size();
-        }
-        fillQuad(target, box.halfExtents[u], box.halfExtents[v], fillUV);
+        // Fill whatever the projected faces leave uncovered so the box is closed. The fill
+        // has no source texel, so its vertices get UV (0, 0).
+        fillQuad(target, box.halfExtents[u], box.halfExtents[v], Eigen::Vector2d::Zero());
     }
 
     box.exportTo(mesh);
