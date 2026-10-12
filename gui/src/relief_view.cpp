@@ -200,6 +200,41 @@ void ReliefView::setMesh(const Mesh *mesh)
     resetCamera();
 }
 
+void ReliefView::buildMapsFromMesh()
+{
+    const mesh::Texture &color = this->mesh->colorTexture();
+    const mesh::Texture &normal = this->mesh->normalTexture();
+    const mesh::Texture &height = this->mesh->heightTexture();
+
+    const int kRes = textures::nextPowerOfTwo(
+        std::max(color.data.empty() ? height.width : color.width,
+                 color.data.empty() ? height.height : color.height));
+
+    // Without a color texture, fall back to a flat gray.
+    static const uint8_t kGray[4] = {128, 128, 128, 255};
+    const textures::RawImage rawColor =
+        color.data.empty() ? textures::RawImage{kGray, 1, 1, 4}
+                           : textures::RawImage{color.data.data(), color.width, color.height, 4};
+    const textures::RawImage rawHeight{height.data.data(), height.width, height.height, 4};
+
+    const MipPyramid colorMap = textures::buildColorMap(rawColor, kRes, kRes);
+    const MipPyramid normalMap =
+        normal.data.empty()
+            ? textures::buildNormalMapFromHeight(rawHeight, kRes, kRes, 0.1f, 1.0f)
+            : textures::buildNormalMap({normal.data.data(), normal.width, normal.height, 4}, kRes, kRes);
+    const MipPyramid offsetMap = uv_atlas::buildOffsetMap(*this->mesh, kRes, kRes, 16);
+    const MipPyramid reliefMap = textures::buildReliefMap(rawHeight, kRes, kRes, offsetMap);
+
+    uploadTexture(this->colorTex, colorMap, QOpenGLTexture::RGBA32F, QOpenGLTexture::RGBA,
+                  QOpenGLTexture::LinearMipMapLinear, QOpenGLTexture::Linear);
+    uploadTexture(this->reliefTex, reliefMap, QOpenGLTexture::RGBA32F, QOpenGLTexture::RGBA,
+                  QOpenGLTexture::NearestMipMapNearest, QOpenGLTexture::Nearest);
+    uploadTexture(this->normalTex, normalMap, QOpenGLTexture::RGB32F, QOpenGLTexture::RGB,
+                  QOpenGLTexture::LinearMipMapLinear, QOpenGLTexture::Linear);
+    uploadTexture(this->offsetTex, offsetMap, QOpenGLTexture::RGBA32F, QOpenGLTexture::RGBA,
+                  QOpenGLTexture::Nearest, QOpenGLTexture::Nearest);
+}
+
 void ReliefView::setColorMap(const MipPyramid& pyr)
 {
     makeCurrent();
@@ -354,6 +389,8 @@ void ReliefView::paintGL()
     if (this->mesh && meshDirty)
     {
         buildMeshBuffers();
+        if (!this->mesh->heightTexture().data.empty())
+            buildMapsFromMesh();
         meshDirty = false;
     }
 

@@ -84,6 +84,10 @@ class Mesh {
     const Texture& colorTexture() const { return colorTexture_; }
     /// @return The normal-map texture extracted from the source file (empty if none).
     const Texture& normalTexture() const { return normalTexture_; }
+    /// @return The relief height map (empty if none). Same UV layout as the color texture;
+    ///         R holds the normalized depth in [0, 1] (0 on the surface, 1 at the deepest
+    ///         point), G/B repeat it and A is 255.
+    const Texture& heightTexture() const { return heightTexture_; }
 
     // ---- Texture mutation ----
 
@@ -91,6 +95,8 @@ class Mesh {
     void setColorTexture(Texture texture) { colorTexture_ = std::move(texture); }
     /// Replaces the normal-map texture.
     void setNormalTexture(Texture texture) { normalTexture_ = std::move(texture); }
+    /// Replaces the relief height map.
+    void setHeightTexture(Texture texture) { heightTexture_ = std::move(texture); }
 
     // ---- Construction, I/O and geometry replacement ----
 
@@ -256,6 +262,7 @@ class Mesh {
     std::vector<Face> faces_;
     Texture colorTexture_;
     Texture normalTexture_;
+    Texture heightTexture_;
 };
 
 }  // namespace mesh

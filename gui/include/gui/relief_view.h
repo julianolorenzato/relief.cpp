@@ -28,7 +28,9 @@ public:
     explicit ReliefView(QWidget *parent = nullptr);
     ~ReliefView() override;
 
-    /// Sets the mesh to render (not owned).
+    /// Sets the mesh to render (not owned). If the mesh has a height texture
+    /// (mesh::Mesh::heightTexture), the color/relief/normal/offset maps are
+    /// built from the mesh itself, replacing any previously uploaded ones.
     void setMesh(const mesh::Mesh *mesh);
     /// Uploads the relief-mapping color map.
     void setColorMap(const textures::MipPyramid& pyr);
@@ -146,6 +148,9 @@ private:
 
     /// Uploads the mesh's vertex/index buffers.
     void buildMeshBuffers();
+    /// Builds and uploads all four relief maps from `mesh` itself, using its
+    /// height texture for the relief map. Needs a current GL context.
+    void buildMapsFromMesh();
     /// Builds and uploads the unit-radius sphere used to draw the light orb.
     void buildOrbMesh();
     /// Builds and uploads the unit quad used to draw the glow halo billboard.

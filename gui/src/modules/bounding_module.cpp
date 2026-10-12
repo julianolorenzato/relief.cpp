@@ -5,6 +5,7 @@
  *        applying/undoing bounding-volume operations.
  */
 #include "gui/modules/bounding_module.h"
+#include "gui/relief_controls.h"
 #include <QCheckBox>
 #include <QFont>
 #include <QGroupBox>
@@ -115,6 +116,10 @@ QWidget* BoundingModule::buildControls()
     btnRow->addWidget(boundingPopStepBtn_);
 
     containerLayout->addLayout(btnRow);
+
+    // ── Relief mapping controls (same as the relief sandbox) ────────────────
+    containerLayout->addWidget(relief_controls::makeParamsGroup(boundingReliefWidget_, controlsContainer));
+    containerLayout->addWidget(relief_controls::makeLightingGroup(boundingReliefWidget_, controlsContainer));
 
     return controlsContainer;
 }

@@ -144,12 +144,17 @@ struct BBox {
  *        triangles are clipped away against nearer ones. The part of each quad
  *        the projection leaves uncovered (all of it, if nothing faces the quad)
  *        is triangulated on the quad plane, so the box stays closed, and the
- *        8 box corners are shared vertices.
+ *        8 box corners are shared vertices. Also bakes a relief height map
+ *        (mesh::Mesh::heightTexture) in the UV layout of the color texture: per
+ *        texel, the depth of the projected surface below its quad, as a
+ *        fraction of the box thickness along that quad's axis.
  */
 class BBoxProjectionOp : public op::Op {
    public:
     /// Default side length, in pixels, of each quad's depth buffer.
     static constexpr int DEFAULT_RESOLUTION = 4096;
+    /// Side length, in texels, of the height map when the mesh has no color texture to match.
+    static constexpr int DEFAULT_HEIGHTMAP_SIZE = 1024;
 
     /**
      * @param resolution Side length, in pixels, of each quad's depth buffer.

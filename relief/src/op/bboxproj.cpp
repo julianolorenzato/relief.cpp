@@ -309,11 +309,65 @@ void fillQuad(BBoxQuad& quad, double hu, double hv, const Eigen::Vector2d& uv) {
     for (const Gap& g : open) emit(g, hu);
 }
 
+/**
+ * @brief Rasterizes a quad's faces into a UV-space depth map.
+ *
+ * Texel (x, y) is sampled at its center against UV * (width, height), the same
+ * convention as the color texture. Where several faces cover a texel (e.g. a
+ * face projected onto more than one quad) the nearest depth wins.
+ *
+ * @param quad   Quad whose faces are rasterized (z of its vertices is the depth).
+ * @param scale  Multiplier mapping depth to [0, 1] (1 / box thickness along the quad axis).
+ * @param width  Map width in texels.
+ * @param height Map height in texels.
+ * @param depth  Row-major width * height buffer, updated in place; -1 marks "uncovered".
+ */
+void rasterizeDepth(const BBoxQuad& quad, double scale, int width, int height,
+                    std::vector<float>& depth) {
+    for (const mesh::Face& f : quad.faces) {
+        std::array<Eigen::Vector2d, 3> t;
+        std::array<double, 3> d;
+        for (int i = 0; i < 3; i++) {
+            const mesh::Wedge& wedge = quad.wedges[f.w[i]];
+            t[i] = Eigen::Vector2d(wedge.uv.x() * width, wedge.uv.y() * height);
+            d[i] = std::clamp(quad.vertices[wedge.vertex].pos.z() * scale, 0.0, 1.0);
+        }
+
+        const double area = cross(t[1] - t[0], t[2] - t[0]);
+        if (std::abs(area) <= EPS) continue;
+
+        const int minX = std::max(0, (int)std::floor(std::min({t[0].x(), t[1].x(), t[2].x()})));
+        const int maxX = std::min(width - 1, (int)std::ceil(std::max({t[0].x(), t[1].x(), t[2].x()})));
+        const int minY = std::max(0, (int)std::floor(std::min({t[0].y(), t[1].y(), t[2].y()})));
+        const int maxY = std::min(height - 1, (int)std::ceil(std::max({t[0].y(), t[1].y(), t[2].y()})));
+
+        for (int y = minY; y <= maxY; y++) {
+            for (int x = minX; x <= maxX; x++) {
+                const Eigen::Vector2d c(x + 0.5, y + 0.5);
+                const double l0 = cross(t[1] - c, t[2] - c) / area;
+                const double l1 = cross(t[2] - c, t[0] - c) / area;
+                const double l2 = cross(t[0] - c, t[1] - c) / area;
+                if (l0 < -1e-4 || l1 < -1e-4 || l2 < -1e-4) continue;
+
+                const float value = (float)(l0 * d[0] + l1 * d[1] + l2 * d[2]);
+                float& texel = depth[(size_t)y * width + x];
+                texel = texel < 0.f ? value : std::min(texel, value);
+            }
+        }
+    }
+}
+
 }  // namespace
 
 void BBoxProjectionOp::apply(mesh::Mesh& mesh) const {
     BBox box(mesh, resolution_);
     const int res = GRID_RES;
+
+    // Relief height map, in the UV layout of the color texture.
+    const mesh::Texture& color = mesh.colorTexture();
+    const int mapW = color.data.empty() ? DEFAULT_HEIGHTMAP_SIZE : color.width;
+    const int mapH = color.data.empty() ? DEFAULT_HEIGHTMAP_SIZE : color.height;
+    std::vector<float> depthMap((size_t)mapW * mapH, -1.f);
 
     for (size_t quadIdx = 0; quadIdx < QUADS.size(); quadIdx++) {
         const QuadInfo& quad = QUADS[quadIdx];
@@ -437,12 +491,28 @@ void BBoxProjectionOp::apply(mesh::Mesh& mesh) const {
             }
         }
 
+        // Depth of the projected faces, normalized by the box thickness along this axis.
+        const double thickness = 2.0 * box.halfExtents[axis];
+        rasterizeDepth(target, thickness > 0.0 ? 1.0 / thickness : 0.0, mapW, mapH, depthMap);
+
         // Fill whatever the projected faces leave uncovered so the box is closed. The fill
         // has no source texel, so its vertices get UV (0, 0).
         fillQuad(target, box.halfExtents[u], box.halfExtents[v], Eigen::Vector2d::Zero());
     }
 
     box.exportTo(mesh);
+
+    // Uncovered texels (unused atlas space, fill regions) stay on the surface, at depth 0.
+    mesh::Texture height;
+    height.width = mapW;
+    height.height = mapH;
+    height.data.resize(depthMap.size() * 4);
+    for (size_t i = 0; i < depthMap.size(); i++) {
+        const uint8_t v = (uint8_t)std::lround(std::clamp(depthMap[i], 0.f, 1.f) * 255.f);
+        height.data[i * 4 + 0] = height.data[i * 4 + 1] = height.data[i * 4 + 2] = v;
+        height.data[i * 4 + 3] = 255;
+    }
+    mesh.setHeightTexture(std::move(height));
 }
 
 void BBox::exportTo(mesh::Mesh& mesh) const {
