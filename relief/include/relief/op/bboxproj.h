@@ -141,10 +141,10 @@ struct BBox {
  *        bounding box, re-triangulated per quad by projecting every
  *        outward-facing mesh face onto whichever box quad(s) it faces
  *        (unwelded across quads; original UVs are kept as-is). Occluded
- *        triangles are dropped using a per-quad depth buffer. Quads with no
- *        mesh geometry ever facing them (e.g. a flat/open source mesh) fall
- *        back to a flat rectangle spanning the full quad, with a synthetic
- *        unit-square UV, so the box stays closed everywhere.
+ *        triangles are clipped away against nearer ones. The part of each quad
+ *        the projection leaves uncovered (all of it, if nothing faces the quad)
+ *        is triangulated on the quad plane, so the box stays closed, and the
+ *        8 box corners are shared vertices.
  */
 class BBoxProjectionOp : public op::Op {
    public:
