@@ -107,6 +107,16 @@ class Mesh {
     ///         and -Z (BA) planes.
     const Texture16& zPlanesMap() const { return zPlanesMap_; }
 
+    /// @return The X planes depth map (empty if none), same size as xPlanesMap(). R holds the
+    ///         depth of the surface seen on the +X plane, G that on the -X plane (B and A are 0).
+    ///         0 means "nothing covers this texel"; otherwise 1 + round(d * 65534), with d the
+    ///         distance from the plane as a fraction of the box thickness along X, in [0, 1].
+    const Texture16& xPlanesDepth() const { return xPlanesDepth_; }
+    /// @return The Y planes depth map (empty if none). Same layout as xPlanesDepth().
+    const Texture16& yPlanesDepth() const { return yPlanesDepth_; }
+    /// @return The Z planes depth map (empty if none). Same layout as xPlanesDepth().
+    const Texture16& zPlanesDepth() const { return zPlanesDepth_; }
+
     // ---- Texture mutation ----
 
     /// Replaces the color texture.
@@ -121,6 +131,12 @@ class Mesh {
     void setYPlanesMap(Texture16 texture) { yPlanesMap_ = std::move(texture); }
     /// Replaces the Z planes map.
     void setZPlanesMap(Texture16 texture) { zPlanesMap_ = std::move(texture); }
+    /// Replaces the X planes depth map.
+    void setXPlanesDepth(Texture16 texture) { xPlanesDepth_ = std::move(texture); }
+    /// Replaces the Y planes depth map.
+    void setYPlanesDepth(Texture16 texture) { yPlanesDepth_ = std::move(texture); }
+    /// Replaces the Z planes depth map.
+    void setZPlanesDepth(Texture16 texture) { zPlanesDepth_ = std::move(texture); }
 
     // ---- Construction, I/O and geometry replacement ----
 
@@ -257,6 +273,26 @@ class Mesh {
     void mergeVertices(int keep, int remove, const Eigen::Vector3d& pos,
                        const std::vector<std::tuple<int, int, Eigen::Vector2d>>& uvTargets);
 
+    // ---- Baking ----
+
+    /**
+     * @brief Bakes the X/Y/Z planes maps of the mesh's axis-aligned bounding box.
+     *
+     * For each of the box's 6 planes, the mesh is looked at orthographically from
+     * outside the box. Each texel of the plane's map is sampled at its center and
+     * stores the (interpolated) color/normal-map UV of the nearest outward-facing
+     * triangle in front of it, as round(uv * 65535). Texels that no triangle covers
+     * store UV (0, 0). Texel (x, y) spans the plane's local coordinates
+     * ((axis + 1) % 3, (axis + 2) % 3) over the box extents. The +axis plane goes in
+     * channels RG and the -axis plane in BA, so the result is xPlanesMap(),
+     * yPlanesMap() and zPlanesMap(), each `resolution` x `resolution`. The depth of
+     * the chosen triangle at each texel is stored alongside in xPlanesDepth(),
+     * yPlanesDepth() and zPlanesDepth(). The geometry is left untouched.
+     *
+     * @param resolution Side length, in texels, of each planes map.
+     */
+    void bake(int resolution);
+
     // ---- GPU export ----
 
     /// Flattened, GPU-friendly form of the mesh: one entry per distinct
@@ -290,6 +326,9 @@ class Mesh {
     Texture16 xPlanesMap_;
     Texture16 yPlanesMap_;
     Texture16 zPlanesMap_;
+    Texture16 xPlanesDepth_;
+    Texture16 yPlanesDepth_;
+    Texture16 zPlanesDepth_;
 };
 
 }  // namespace mesh

@@ -4,8 +4,11 @@
  */
 #include "relief/mesh.h"
 
+#include <algorithm>
+#include <cmath>
 #include <functional>
 #include <iostream>
+#include <limits>
 #include <map>
 #include <stdexcept>
 #include <utility>
@@ -71,6 +74,107 @@ std::vector<int> Mesh::getOutwardingFaces(const Eigen::Vector3d &axis) const {
         if (faceNormal(faces_[fi]).dot(axis) > 0.0) result.push_back(fi);
     }
     return result;
+}
+
+void Mesh::bake(int resolution) {
+    Eigen::Vector3d min = Eigen::Vector3d::Constant(std::numeric_limits<double>::max());
+    Eigen::Vector3d max = Eigen::Vector3d::Constant(std::numeric_limits<double>::lowest());
+    for (const Vertex &v : vertices_) {
+        if (v.removed) continue;
+        min = min.cwiseMin(v.pos);
+        max = max.cwiseMax(v.pos);
+    }
+    const Eigen::Vector3d center = 0.5 * (min + max);
+    const Eigen::Vector3d half = 0.5 * (max - min);
+
+    auto cross = [](const Eigen::Vector2d &a, const Eigen::Vector2d &b) {
+        return a.x() * b.y() - a.y() * b.x();
+    };
+
+    std::array<Texture16, 3> maps, depths;
+    for (int axis = 0; axis < 3; axis++) {
+        const int u = (axis + 1) % 3;
+        const int v = (axis + 2) % 3;
+
+        Texture16 &map = maps[axis];
+        map.width = resolution;
+        map.height = resolution;
+        map.data.assign((size_t)resolution * resolution * 4, 0);
+        Texture16 &depthMap = depths[axis];
+        depthMap.width = resolution;
+        depthMap.height = resolution;
+        depthMap.data.assign((size_t)resolution * resolution * 4, 0);
+
+        // A flat box has no area to bake on this axis.
+        if (half[u] <= 0.0 || half[v] <= 0.0) continue;
+
+        // Quad 0 is the -axis plane (channels BA), quad 1 the +axis plane (channels RG).
+        for (int side = 0; side < 2; side++) {
+            const double sign = side ? 1.0 : -1.0;
+            const int channel = side ? 0 : 2;
+            const double thickness = 2 * half[axis];
+            std::vector<float> depth((size_t)resolution * resolution,
+                                     std::numeric_limits<float>::infinity());
+
+            for (int fi : getOutwardingFaces(sign * Eigen::Vector3d::Unit(axis))) {
+                const Face &f = faces_[fi];
+                std::array<Eigen::Vector2d, 3> t, uv;
+                std::array<double, 3> d;
+                for (int i = 0; i < 3; i++) {
+                    const Wedge &wedge = wedges_[f.w[i]];
+                    const Eigen::Vector3d p = vertices_[wedge.vertex].pos - center;
+                    t[i] = Eigen::Vector2d((p[u] + half[u]) / (2 * half[u]) * resolution,
+                                           (p[v] + half[v]) / (2 * half[v]) * resolution);
+                    // Distance from the plane: smaller is nearer the viewer.
+                    d[i] = half[axis] - sign * p[axis];
+                    uv[i] = wedge.uv;
+                }
+
+                const double area = cross(t[1] - t[0], t[2] - t[0]);
+                if (std::abs(area) <= 1e-12) continue;
+
+                const int minX = std::max(0, (int)std::floor(std::min({t[0].x(), t[1].x(), t[2].x()})));
+                const int maxX = std::min(resolution - 1, (int)std::ceil(std::max({t[0].x(), t[1].x(), t[2].x()})));
+                const int minY = std::max(0, (int)std::floor(std::min({t[0].y(), t[1].y(), t[2].y()})));
+                const int maxY = std::min(resolution - 1, (int)std::ceil(std::max({t[0].y(), t[1].y(), t[2].y()})));
+
+                for (int y = minY; y <= maxY; y++) {
+                    for (int x = minX; x <= maxX; x++) {
+                        const Eigen::Vector2d c(x + 0.5, y + 0.5);
+                        const double l0 = cross(t[1] - c, t[2] - c) / area;
+                        const double l1 = cross(t[2] - c, t[0] - c) / area;
+                        const double l2 = cross(t[0] - c, t[1] - c) / area;
+                        if (l0 < -1e-4 || l1 < -1e-4 || l2 < -1e-4) continue;
+
+                        const size_t texel = (size_t)y * resolution + x;
+                        const float z = (float)(l0 * d[0] + l1 * d[1] + l2 * d[2]);
+                        if (z >= depth[texel]) continue;
+                        depth[texel] = z;
+
+                        const Eigen::Vector2d value = l0 * uv[0] + l1 * uv[1] + l2 * uv[2];
+                        for (int k = 0; k < 2; k++) {
+                            map.data[texel * 4 + channel + k] =
+                                (uint16_t)std::lround(std::clamp(value[k], 0.0, 1.0) * 65535.0);
+                        }
+                    }
+                }
+            }
+
+            // 0 marks uncovered texels; covered ones are 1 + normalized depth.
+            for (size_t texel = 0; texel < depth.size(); texel++) {
+                if (std::isinf(depth[texel])) continue;
+                const double d = thickness > 0.0 ? std::clamp(depth[texel] / thickness, 0.0, 1.0) : 0.0;
+                depthMap.data[texel * 4 + (side ? 0 : 1)] = (uint16_t)(1 + std::lround(d * 65534.0));
+            }
+        }
+    }
+
+    setXPlanesDepth(std::move(depths[0]));
+    setYPlanesDepth(std::move(depths[1]));
+    setZPlanesDepth(std::move(depths[2]));
+    setXPlanesMap(std::move(maps[0]));
+    setYPlanesMap(std::move(maps[1]));
+    setZPlanesMap(std::move(maps[2]));
 }
 
 std::array<Edge, 3> Mesh::faceEdges(const Face &f) const {
