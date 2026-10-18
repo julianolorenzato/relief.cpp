@@ -21,8 +21,6 @@ using namespace textures;
 /// Converts one mip level's raw float data into a displayable QImage.
 /// Signed [-1,1] components are remapped to [0,1]. `showChannels` optionally
 /// masks out individual X/Y/Z channels.
-/// (Deliberately mirrors TexturePrepModule::mipLevelToQImage, which is private
-/// to that widget; duplicated here rather than refactoring the pipeline module.)
 static QImage mipLevelToQImage(const std::vector<float> &data, int w, int h,
                                int channels, const bool *showChannels) {
     QImage img(w, h, QImage::Format_RGB888);

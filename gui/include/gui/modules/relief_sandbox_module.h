@@ -17,8 +17,6 @@
 #include "relief/uv_atlas.h"
 
 class ReliefSandboxModule;
-class TextureInspectorWidget;
-class QStackedWidget;
 
 /**
  * Builds the "Mesh" group box, appends it to `outerControls`'s layout, and
@@ -91,9 +89,6 @@ class ReliefSandboxModule : public Module {
     /** Loads the normal texture via file dialog. */
     void onLoadNormal();
 
-    /** Swaps the view between ReliefView and the TextureInspectorWidget. */
-    void onToggleInspector(bool show);
-
     /**
      * Handles a pick result forwarded from ReliefView, updating the pick
      * preview panel.
@@ -147,12 +142,6 @@ class ReliefSandboxModule : public Module {
      */
     ReliefView *reliefView = nullptr;
 
-    /** Alternate view showing the baked mip pyramids channel-by-channel. */
-    TextureInspectorWidget *textureInspector = nullptr;
-
-    /** Swaps `reliefView`/`textureInspector` in and out in the same splitter pane. */
-    QStackedWidget *viewStack = nullptr;
-
     /** Images used as input. */
     QImage colorImg, depthImg, normalImg;
 
@@ -161,10 +150,7 @@ class ReliefSandboxModule : public Module {
     QPointF lastPickUv;
     bool lastPickHit = false;
 
-    /**
-     * Baked pyramids fed to ReliefView,
-     * kept around for the texture inspector.
-     */
+    /** Baked pyramids fed to ReliefView. */
     textures::MipPyramid colorMap, reliefMap, normalMap, offsetMap;
 
     MeshControls meshControls;

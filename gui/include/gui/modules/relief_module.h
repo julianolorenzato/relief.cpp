@@ -14,7 +14,6 @@
 #include "gui/module.h"
 #include "gui/orbital3dview.h"
 #include "gui/relief_view.h"
-#include "gui/modules/texture_prep_module.h"
 #include "relief/textures.h"
 
 /// @brief Widget hosting the relief-mapped preview, a textured comparison of
@@ -32,8 +31,6 @@ public slots:
     /// Called when the simplified mesh's data changes in place: the mesh pointers are
     /// unchanged, so re-mark them pending for sync.
     void onMeshUpdated() override;
-    /// Stores the texture-prep source and marks its maps pending for sync.
-    void onTexturesReady(TexturePrepModule* source);
 
 private:
     QWidget* buildContent() override;
@@ -65,9 +62,5 @@ private:
     QPushButton*    reliefResetCamBtn_        = nullptr;
 
     // ── Pending state ─────────────────────────────────────────────────────────
-    bool meshPending_     = false;
-    bool texturesPending_ = false;
-
-    // Non-owned texture-prep source
-    TexturePrepModule* texturePrepSource_ = nullptr;
+    bool meshPending_ = false;
 };

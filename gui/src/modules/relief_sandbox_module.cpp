@@ -18,12 +18,10 @@
 #include <QPushButton>
 #include <QSlider>
 #include <QSpinBox>
-#include <QStackedWidget>
 #include <QVBoxLayout>
 #include <algorithm>
 #include <cmath>
 
-#include "gui/texture_inspector_widget.h"
 #include "relief/textures.h"
 #include "relief/uv_atlas.h"
 
@@ -97,16 +95,7 @@ QWidget* ReliefSandboxModule::buildContent() {
     connect(this->reliefView, &ReliefView::pixelPicked, this,
             &ReliefSandboxModule::onPixelPicked);
 
-    // Alternate view, swapped in for reliefView via the "Show Texture
-    // Inspector" toggle.
-    this->textureInspector = new TextureInspectorWidget(
-        &this->colorMap, &this->reliefMap, &this->normalMap, &this->offsetMap);
-
-    this->viewStack = new QStackedWidget();
-    this->viewStack->addWidget(this->reliefView);
-    this->viewStack->addWidget(this->textureInspector);
-
-    return this->viewStack;
+    return this->reliefView;
 }
 
 MeshControls::MeshControls(QWidget* outerControls, ReliefSandboxModule* self) {
@@ -138,11 +127,6 @@ TextureControls::TextureControls(QWidget* outerControls,
                &ReliefSandboxModule::onLoadDepth);
     makeTexRow(texLayout, self, "Normal", this->thumbNormal, btn,
                &ReliefSandboxModule::onLoadNormal);
-
-    QCheckBox* inspectToggle = new QCheckBox("Show Texture Inspector");
-    QObject::connect(inspectToggle, &QCheckBox::toggled, self,
-                     &ReliefSandboxModule::onToggleInspector);
-    texLayout->addWidget(inspectToggle);
 
     outerControls->layout()->addWidget(group);
 }
@@ -365,7 +349,6 @@ void ReliefSandboxModule::onLoadColor() {
     RawImage raw{c.constBits(), c.width(), c.height(), 4};
     this->colorMap = textures::buildColorMap(raw, kRes, kRes);
     this->reliefView->setColorMap(this->colorMap);
-    this->textureInspector->refreshMaps();
 }
 
 void ReliefSandboxModule::onLoadDepth() {
@@ -401,7 +384,6 @@ void ReliefSandboxModule::onLoadNormal() {
     RawImage raw{n.constBits(), n.width(), n.height(), 3};
     this->normalMap = textures::buildNormalMap(raw, kRes, kRes);
     this->reliefView->setNormalMap(this->normalMap);
-    this->textureInspector->refreshMaps();
 }
 
 void ReliefSandboxModule::recomputeDepthTextures() {
@@ -422,11 +404,6 @@ void ReliefSandboxModule::recomputeDepthTextures() {
     this->reliefMap =
         textures::buildReliefMap(rawDepth, kRes, kRes, this->offsetMap);
     this->reliefView->setReliefMap(this->reliefMap);
-    this->textureInspector->refreshMaps();
-}
-
-void ReliefSandboxModule::onToggleInspector(bool show) {
-    this->viewStack->setCurrentIndex(show ? 1 : 0);
 }
 
 void ReliefSandboxModule::onPixelPicked(QPointF uv, bool hit) {

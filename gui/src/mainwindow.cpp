@@ -32,18 +32,13 @@ void MainWindow::setupUI() {
 
     this->modules = {
         {"Editor", createModule<EditorModule>(this->globalContext, this)},
-        {"Heightmap", createModule<HeightmapModule>(this->globalContext, this)},
-        {"Texture Prep", createModule<TexturePrepModule>(this->globalContext, this)},
+        {"Textures", createModule<TexturesModule>(this->globalContext, this)},
         {"Relief", createModule<ReliefModule>(this->globalContext, this)},
         {"Relief Sandbox", createModule<ReliefSandboxModule>(this->globalContext, this)},
         {"Normal Map", createModule<NormalMapModule>(this->globalContext, this)},
         {"Bounding", createModule<BoundingModule>(this->globalContext, this)},
         {"Baking", createModule<BakingModule>(this->globalContext, this)},
     };
-
-    auto *heightmap = static_cast<HeightmapModule *>(this->modules[1].second);
-    auto *texturePrep = static_cast<TexturePrepModule *>(this->modules[2].second);
-    auto *relief = static_cast<ReliefModule *>(this->modules[3].second);
 
     // ── Context toolbar ────────────────────────────────────────────────────
     this->contextToolBar = addToolBar("Contexts");
@@ -86,14 +81,6 @@ void MainWindow::setupUI() {
     // wired by the Module base class itself, so no explicit connects are needed here for the
     // initial load or for a re-simplify (EditorModule emits notifyMeshUpdate()).
 
-    // heightmap → texture prep
-    connect(heightmap, &HeightmapModule::bakeReady, texturePrep,
-            &TexturePrepModule::onHeightmapReady);
-
-    // texture prep → relief
-    connect(texturePrep, &TexturePrepModule::texturesReady, this,
-            [relief, texturePrep]() { relief->onTexturesReady(texturePrep); });
-
     // status messages
     for (auto &[label, module] : this->modules) {
         connect(module, &Module::statusMessage, this->statusLabel, &QLabel::setText);
@@ -128,9 +115,7 @@ void MainWindow::createMenuBar() {
                            "Quadric Error Metrics simplification with Qt GUI\n"
                            "Mouse: Drag to rotate, Scroll to zoom\n"
                            "Formats: OBJ, GLTF\n\n"
-                           "Heightmap tab: bakes displacement between simplified "
-                           "and original mesh\n"
-                           "via shared UV correspondence.");
+                           "Textures tab: inspect the maps of the loaded mesh.");
     });
 }
 

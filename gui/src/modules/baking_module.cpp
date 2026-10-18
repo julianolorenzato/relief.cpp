@@ -215,12 +215,13 @@ void BakingModule::onBake()
 
     QApplication::setOverrideCursor(Qt::WaitCursor);
 
-    mesh::Mesh baked(*originalMesh_);
-    baked.bake(kPlanesMapSize);
+    originalMesh_->bake(kPlanesMapSize);
 
-    boxMesh_ = std::make_unique<mesh::Mesh>(makeBoxMesh(baked));
+    boxMesh_ = std::make_unique<mesh::Mesh>(makeBoxMesh(*originalMesh_));
     reliefWidget_->setMesh(boxMesh_.get());
 
     QApplication::restoreOverrideCursor();
+    // The original mesh now carries the planes maps; let the other modules (Textures) pick them up.
+    emit notifyMeshUpdate();
     emit statusMessage("Baked planes maps");
 }

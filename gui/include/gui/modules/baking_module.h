@@ -16,8 +16,8 @@
  * @brief Module hosting two linked viewports: a common view of the original
  *        mesh, and a relief view of the 12-triangle bounding box textured with
  *        the baked maps (when they exist). The Bake button runs
- *        mesh::Mesh::bake() on a private copy of the original mesh, so no other
- *        module is affected. Each of the box's six faces shows its own tile (the
+ *        mesh::Mesh::bake() on the global original mesh, then notifies the other
+ *        modules (e.g. Textures) so they can show the baked maps. Each of the box's six faces shows its own tile (the
  *        baked UV map as RGB = (u, v, 0), plus its depth) of a 3x2 atlas.
  */
 class BakingModule : public Module {
@@ -37,7 +37,7 @@ public slots:
 
 private slots:
     /**
-     * @brief Bakes the planes maps from the original mesh and shows them, one
+     * @brief Bakes the planes maps into the original mesh and shows them, one
      *        per face, on the 12-triangle box.
      */
     void onBake();

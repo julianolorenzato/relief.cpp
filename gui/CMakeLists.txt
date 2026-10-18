@@ -19,13 +19,11 @@ add_executable(gui
     include/gui/module.h
     include/gui/orbital3dview.h
     include/gui/modules/editor_module.h
-    include/gui/modules/heightmap_module.h
-    include/gui/modules/texture_prep_module.h
+    include/gui/modules/textures_module.h
     include/gui/modules/relief_module.h
     include/gui/relief_view.h
     include/gui/relief_controls.h
     include/gui/modules/relief_sandbox_module.h
-    include/gui/texture_inspector_widget.h
     include/gui/modules/normal_map_module.h
     include/gui/modules/bounding_module.h
     include/gui/modules/baking_module.h
@@ -36,13 +34,11 @@ add_executable(gui
     src/module.cpp
     src/orbital3dview.cpp
     src/modules/editor_module.cpp
-    src/modules/heightmap_module.cpp
-    src/modules/texture_prep_module.cpp
+    src/modules/textures_module.cpp
     src/modules/relief_module.cpp
     src/relief_view.cpp
     src/relief_controls.cpp
     src/modules/relief_sandbox_module.cpp
-    src/texture_inspector_widget.cpp
     src/modules/normal_map_module.cpp
     src/modules/bounding_module.cpp
     src/modules/baking_module.cpp

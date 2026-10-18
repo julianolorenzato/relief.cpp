@@ -199,13 +199,6 @@ void ReliefModule::onMeshUpdated()
     syncIfReady();
 }
 
-void ReliefModule::onTexturesReady(TexturePrepModule* source)
-{
-    texturePrepSource_ = source;
-    texturesPending_    = true;
-    syncIfReady();
-}
-
 // ─── Private methods ──────────────────────────────────────────────────────────
 
 void ReliefModule::showEvent(QShowEvent* event)
@@ -223,13 +216,5 @@ void ReliefModule::syncIfReady()
         if (originalMesh_)
             reliefOriginalWidget_->setMesh(originalMesh_);
         meshPending_ = false;
-    }
-    if (texturesPending_ && texturePrepSource_ && texturePrepSource_->hasTextures())
-    {
-        reliefWidget_->setColorMap(texturePrepSource_->colorMap());
-        reliefWidget_->setReliefMap(texturePrepSource_->reliefMap());
-        reliefWidget_->setNormalMap(texturePrepSource_->normalMap());
-        reliefWidget_->setOffsetMap(texturePrepSource_->offsetMap());
-        texturesPending_ = false;
     }
 }
