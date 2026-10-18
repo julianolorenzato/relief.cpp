@@ -42,6 +42,7 @@ add_library(relief STATIC
     src/op/inflation.cpp
     src/op/bvol.cpp
     src/op/bboxproj.cpp
+    src/op/planesmaps.cpp
 )
 
 target_include_directories(relief

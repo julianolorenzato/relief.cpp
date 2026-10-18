@@ -66,6 +66,13 @@ struct Texture {
     int height = 0;
 };
 
+/// An RGBA16 (row-major) image attached to a mesh. Empty `data` means "no texture".
+struct Texture16 {
+    std::vector<uint16_t> data;
+    int width = 0;
+    int height = 0;
+};
+
 /**
  * @brief Triangle mesh with position/UV/texture data.
  */
@@ -89,6 +96,17 @@ class Mesh {
     ///         point), G/B repeat it and A is 255.
     const Texture& heightTexture() const { return heightTexture_; }
 
+    /// @return The X planes map (empty if none). Texels span the box's Y/Z plane quads
+    ///         (see op::bboxproj); RG hold the color/normal-map UV of the +X plane, BA those of
+    ///         the -X plane. Components are UVs in [0, 1] scaled to [0, 65535].
+    const Texture16& xPlanesMap() const { return xPlanesMap_; }
+    /// @return The Y planes map (empty if none). Same layout as xPlanesMap(), for the +Y (RG)
+    ///         and -Y (BA) planes.
+    const Texture16& yPlanesMap() const { return yPlanesMap_; }
+    /// @return The Z planes map (empty if none). Same layout as xPlanesMap(), for the +Z (RG)
+    ///         and -Z (BA) planes.
+    const Texture16& zPlanesMap() const { return zPlanesMap_; }
+
     // ---- Texture mutation ----
 
     /// Replaces the color texture.
@@ -97,6 +115,12 @@ class Mesh {
     void setNormalTexture(Texture texture) { normalTexture_ = std::move(texture); }
     /// Replaces the relief height map.
     void setHeightTexture(Texture texture) { heightTexture_ = std::move(texture); }
+    /// Replaces the X planes map.
+    void setXPlanesMap(Texture16 texture) { xPlanesMap_ = std::move(texture); }
+    /// Replaces the Y planes map.
+    void setYPlanesMap(Texture16 texture) { yPlanesMap_ = std::move(texture); }
+    /// Replaces the Z planes map.
+    void setZPlanesMap(Texture16 texture) { zPlanesMap_ = std::move(texture); }
 
     // ---- Construction, I/O and geometry replacement ----
 
@@ -263,6 +287,9 @@ class Mesh {
     Texture colorTexture_;
     Texture normalTexture_;
     Texture heightTexture_;
+    Texture16 xPlanesMap_;
+    Texture16 yPlanesMap_;
+    Texture16 zPlanesMap_;
 };
 
 }  // namespace mesh

@@ -137,6 +137,19 @@ struct BBox {
 };
 
 /**
+ * @brief Projects every outward-facing face of `mesh` onto the box quad(s) it faces, clipping
+ *        occluded parts away against nearer faces.
+ *
+ * Appends the surviving, fan-triangulated pieces to each of `box.quads`'s
+ * vertices/wedges/faces (local quad coordinates, z = depth, original UVs kept). The quads'
+ * uncovered areas are not filled. Quads of a flat box are left empty.
+ *
+ * @param mesh Mesh to project.
+ * @param box  Box to project onto; its quads are expected to be empty.
+ */
+void projectToQuads(const mesh::Mesh& mesh, BBox& box);
+
+/**
  * @brief Replaces a mesh's vertices/wedges/faces with a plain axis-aligned
  *        bounding box, re-triangulated per quad by projecting every
  *        outward-facing mesh face onto whichever box quad(s) it faces

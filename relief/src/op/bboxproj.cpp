@@ -359,15 +359,8 @@ void rasterizeDepth(const BBoxQuad& quad, double scale, int width, int height,
 
 }  // namespace
 
-void BBoxProjectionOp::apply(mesh::Mesh& mesh) const {
-    BBox box(mesh, resolution_);
+void projectToQuads(const mesh::Mesh& mesh, BBox& box) {
     const int res = GRID_RES;
-
-    // Relief height map, in the UV layout of the color texture.
-    const mesh::Texture& color = mesh.colorTexture();
-    const int mapW = color.data.empty() ? DEFAULT_HEIGHTMAP_SIZE : color.width;
-    const int mapH = color.data.empty() ? DEFAULT_HEIGHTMAP_SIZE : color.height;
-    std::vector<float> depthMap((size_t)mapW * mapH, -1.f);
 
     for (size_t quadIdx = 0; quadIdx < QUADS.size(); quadIdx++) {
         const QuadInfo& quad = QUADS[quadIdx];
@@ -490,6 +483,27 @@ void BBoxProjectionOp::apply(mesh::Mesh& mesh) const {
                 }
             }
         }
+    }
+}
+
+void BBoxProjectionOp::apply(mesh::Mesh& mesh) const {
+    BBox box(mesh, resolution_);
+    projectToQuads(mesh, box);
+
+    // Relief height map, in the UV layout of the color texture.
+    const mesh::Texture& color = mesh.colorTexture();
+    const int mapW = color.data.empty() ? DEFAULT_HEIGHTMAP_SIZE : color.width;
+    const int mapH = color.data.empty() ? DEFAULT_HEIGHTMAP_SIZE : color.height;
+    std::vector<float> depthMap((size_t)mapW * mapH, -1.f);
+
+    for (size_t quadIdx = 0; quadIdx < QUADS.size(); quadIdx++) {
+        BBoxQuad& target = box.quads[quadIdx];
+        const int axis = QUADS[quadIdx].axis;
+        const double hu = box.halfExtents[(axis + 1) % 3];
+        const double hv = box.halfExtents[(axis + 2) % 3];
+
+        // A flat box has no area to project onto on this quad.
+        if (hu <= 0.0 || hv <= 0.0) continue;
 
         // Depth of the projected faces, normalized by the box thickness along this axis.
         const double thickness = 2.0 * box.halfExtents[axis];
@@ -497,7 +511,7 @@ void BBoxProjectionOp::apply(mesh::Mesh& mesh) const {
 
         // Fill whatever the projected faces leave uncovered so the box is closed. The fill
         // has no source texel, so its vertices get UV (0, 0).
-        fillQuad(target, box.halfExtents[u], box.halfExtents[v], Eigen::Vector2d::Zero());
+        fillQuad(target, hu, hv, Eigen::Vector2d::Zero());
     }
 
     box.exportTo(mesh);
