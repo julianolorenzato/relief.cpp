@@ -206,9 +206,14 @@ void ReliefView::buildMapsFromMesh()
     const mesh::Texture &normal = this->mesh->normalTexture();
     const mesh::Texture &height = this->mesh->heightTexture();
 
-    const int kRes = textures::nextPowerOfTwo(
-        std::max(color.data.empty() ? height.width : color.width,
-                 color.data.empty() ? height.height : color.height));
+    // The maps are float pyramids padded to a square power of two, so their size grows
+    // fast (an 8192 map is ~1 GB per texture and fails to allocate): cap it, and let
+    // larger sources be resampled down.
+    constexpr int kMaxMapRes = 2048;
+    const int kRes = std::min(
+        kMaxMapRes,
+        textures::nextPowerOfTwo(std::max(color.data.empty() ? height.width : color.width,
+                                          color.data.empty() ? height.height : color.height)));
 
     // Without a color texture, fall back to a flat gray.
     static const uint8_t kGray[4] = {128, 128, 128, 255};

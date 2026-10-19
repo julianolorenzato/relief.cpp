@@ -66,6 +66,8 @@ protected:
     void showEvent(QShowEvent* event) override;
 
 private slots:
+    /// Bakes the planes maps into the original mesh and notifies the other modules.
+    void onBake();
     /// Refills the channel combo and mip slider for the selected map, then refits the view.
     void onMapChanged();
     /// Re-renders the image for the current channel / mip / contrast selection.
@@ -114,6 +116,8 @@ private:
     QGraphicsPixmapItem* pixmapItem_ = nullptr;
 
     // ── Controls ──────────────────────────────────────────────────────────────
+    QComboBox* bakeResCombo_ = nullptr;
+    QPushButton* bakeBtn_ = nullptr;
     QComboBox* mapCombo_ = nullptr;
     QComboBox* channelCombo_ = nullptr;
     QSlider* mipSlider_ = nullptr;

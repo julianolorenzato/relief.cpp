@@ -4,22 +4,35 @@
  *        zoomable image viewer for the original mesh's textures.
  */
 #include "gui/modules/textures_module.h"
+#include <QApplication>
 #include <algorithm>
 #include <cmath>
 #include <cstdint>
 #include <limits>
 #include <QEvent>
 #include <QGroupBox>
+#include <QHBoxLayout>
 #include <QPixmap>
 #include <QShowEvent>
 #include <QTimer>
 #include <QVBoxLayout>
 #include <QWheelEvent>
 
+namespace {
+
+/// Selectable side lengths, in texels, of the baked planes maps.
+constexpr int kBakeResolutions[] = {128, 256, 512, 1024, 2048};
+/// Index into kBakeResolutions selected by default.
+constexpr int kDefaultBakeResolution = 2;
+
+}  // namespace
+
 // ─── Public slots ─────────────────────────────────────────────────────────────
 
 void TexturesModule::onMeshLoaded(mesh::Mesh* original, mesh::Mesh* simplified) {
     Module::onMeshLoaded(original, simplified);
+    if (bakeBtn_)
+        bakeBtn_->setEnabled(originalMesh_ != nullptr);
     rebuildMaps();
 }
 
@@ -48,6 +61,21 @@ QWidget* TexturesModule::buildContent() {
 QWidget* TexturesModule::buildControls() {
     auto* outer = new QWidget();
     auto* layout = new QVBoxLayout(outer);
+
+    auto* bakeRow = new QHBoxLayout();
+    bakeRow->addWidget(new QLabel("Resolution:"));
+    bakeResCombo_ = new QComboBox();
+    for (int res : kBakeResolutions)
+        bakeResCombo_->addItem(QString("%1 x %1").arg(res), res);
+    bakeResCombo_->setCurrentIndex(kDefaultBakeResolution);
+    bakeRow->addWidget(bakeResCombo_, 1);
+    layout->addLayout(bakeRow);
+
+    bakeBtn_ = new QPushButton("Bake");
+    bakeBtn_->setMinimumHeight(40);
+    bakeBtn_->setEnabled(originalMesh_ != nullptr);
+    connect(bakeBtn_, &QPushButton::clicked, this, &TexturesModule::onBake);
+    layout->addWidget(bakeBtn_);
 
     auto* group = new QGroupBox("Texture");
     auto* form = new QVBoxLayout(group);
@@ -90,6 +118,21 @@ QWidget* TexturesModule::buildControls() {
 
     rebuildMaps();
     return outer;
+}
+
+// ─── Slots ────────────────────────────────────────────────────────────────────
+
+void TexturesModule::onBake() {
+    if (!originalMesh_)
+        return;
+
+    QApplication::setOverrideCursor(Qt::WaitCursor);
+    originalMesh_->bake(bakeResCombo_->currentData().toInt());
+    QApplication::restoreOverrideCursor();
+
+    // The original mesh now carries the planes maps; this also refreshes our own list.
+    emit notifyMeshUpdate();
+    emit statusMessage("Baked planes maps");
 }
 
 // ─── Events ───────────────────────────────────────────────────────────────────

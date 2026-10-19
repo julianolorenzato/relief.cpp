@@ -14,9 +14,6 @@
 
 namespace {
 
-/// Side length, in texels, of each baked planes map.
-constexpr int kPlanesMapSize = 512;
-
 /// Atlas grid: one column per axis (X, Y, Z), one row per side (0 = +, 1 = -).
 constexpr int kAtlasCols = 3;
 constexpr int kAtlasRows = 2;
@@ -182,12 +179,6 @@ QWidget* BakingModule::buildControls()
     containerLayout->setContentsMargins(4, 4, 4, 4);
     containerLayout->setSpacing(8);
 
-    bakeBtn_ = new QPushButton("Bake");
-    bakeBtn_->setMinimumHeight(40);
-    bakeBtn_->setEnabled(false);
-    connect(bakeBtn_, &QPushButton::clicked, this, &BakingModule::onBake);
-    containerLayout->addWidget(bakeBtn_);
-
     containerLayout->addWidget(relief_controls::makeParamsGroup(reliefWidget_, controlsContainer));
     containerLayout->addWidget(relief_controls::makeLightingGroup(reliefWidget_, controlsContainer));
     containerLayout->addStretch();
@@ -205,23 +196,12 @@ void BakingModule::onMeshLoaded(mesh::Mesh* original, mesh::Mesh* simplified)
 
     boxMesh_ = std::make_unique<mesh::Mesh>(makeBoxMesh(*originalMesh_));
     reliefWidget_->setMesh(boxMesh_.get());
-
-    bakeBtn_->setEnabled(true);
 }
 
-void BakingModule::onBake()
+void BakingModule::onMeshUpdated()
 {
     if (!originalMesh_) return;
 
-    QApplication::setOverrideCursor(Qt::WaitCursor);
-
-    originalMesh_->bake(kPlanesMapSize);
-
     boxMesh_ = std::make_unique<mesh::Mesh>(makeBoxMesh(*originalMesh_));
     reliefWidget_->setMesh(boxMesh_.get());
-
-    QApplication::restoreOverrideCursor();
-    // The original mesh now carries the planes maps; let the other modules (Textures) pick them up.
-    emit notifyMeshUpdate();
-    emit statusMessage("Baked planes maps");
 }
