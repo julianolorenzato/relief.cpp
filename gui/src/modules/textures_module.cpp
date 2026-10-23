@@ -21,7 +21,7 @@
 namespace {
 
 /// Selectable side lengths, in texels, of the baked planes maps.
-constexpr int kBakeResolutions[] = {128, 256, 512, 1024, 2048};
+constexpr int kBakeResolutions[] = {128, 256, 512, 1024, 2048, 4096};
 /// Index into kBakeResolutions selected by default.
 constexpr int kDefaultBakeResolution = 2;
 

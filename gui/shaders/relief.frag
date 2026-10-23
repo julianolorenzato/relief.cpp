@@ -14,6 +14,8 @@ uniform vec3 LightPosWorld;
 // used: B is the minimum depth over the covered texels of the cell, A is 1 if any is covered. Texel (s, t) spans the plane's local
 // coordinates ((axis + 1) % 3, (axis + 2) % 3) over the box extents.
 uniform sampler2DArray Plane_Maps;
+// Smooth object-space normals of the same planes: RGB = normal * 0.5 + 0.5, A = mask.
+uniform sampler2DArray Normal_Maps;
 uniform sampler2D Color_Map;
 
 uniform vec3 BoxMin;
@@ -98,38 +100,18 @@ int bestPlane(vec3 q) {
 }
 
 /**
- * Surface normal (object space, pointing outward) from the depth gradient of plane `layer`
- * around `q`. Neighbouring texels outside the silhouette fall back to the center depth.
+ * Surface normal (object space, pointing outward) at `q`, read from the baked smooth normals of
+ * plane `layer`. Falls back to the plane's own direction where the normal map is not covered.
  */
 vec3 planeNormal(int layer, vec3 q) {
     int axis = layer / 2;
-    int u = (axis + 1) % 3;
-    int v = (axis + 2) % 3;
-    float sgn = (layer % 2 == 0) ? 1.0 : -1.0;
-    vec3 ext = BoxMax - BoxMin;
-
-    vec2 texel = 1.0 / vec2(textureSize(Plane_Maps, 0).xy);
-    vec2 st = vec2(q[u], q[v]);
-    vec4 c = textureLod(Plane_Maps, vec3(st, float(layer)), 0.0);
-
-    float d[4];
-    vec2 offs[4] = vec2[4](vec2(-1, 0), vec2(1, 0), vec2(0, -1), vec2(0, 1));
-    for (int i = 0; i < 4; i++) {
-        vec4 n = textureLod(Plane_Maps, vec3(st + offs[i] * texel, float(layer)), 0.0);
-        d[i] = n.a >= MASK_THRESHOLD ? n.b : c.b;
-    }
-
-    // Distance (in object units) of the surface from the plane, per unit of s and t.
-    float dds = (d[1] - d[0]) * ext[axis] / (2.0 * texel.x * ext[u]);
-    float ddt = (d[3] - d[2]) * ext[axis] / (2.0 * texel.y * ext[v]);
-
-    // The surface is A(s, t) = c - sgn * depth along `axis`, so its outward normal is
-    // proportional to (dds, ddt) in (u, v) and sgn along `axis`.
-    vec3 n = vec3(0.0);
-    n[u] = dds;
-    n[v] = ddt;
-    n[axis] = sgn;
-    return normalize(n);
+    vec4 s = textureLod(Normal_Maps, vec3(q[(axis + 1) % 3], q[(axis + 2) % 3], float(layer)), 0.0);
+    vec3 fallback = vec3(0.0);
+    fallback[axis] = (layer % 2 == 0) ? 1.0 : -1.0;
+    if (s.a < MASK_THRESHOLD)
+        return fallback;
+    vec3 n = s.rgb * 2.0 - 1.0;
+    return dot(n, n) > 1e-6 ? normalize(n) : fallback;
 }
 
 /**

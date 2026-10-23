@@ -261,6 +261,8 @@ void ReliefView::buildPlanesFromMesh()
 
     delete this->planesTex;
     this->planesTex = nullptr;
+    delete this->planeNormalsTex;
+    this->planeNormalsTex = nullptr;
     const int w = planes[0].width, h = planes[0].height;
     if (w <= 0 || h <= 0)
         return;
@@ -323,6 +325,25 @@ void ReliefView::buildPlanesFromMesh()
     this->planesTex->setMinificationFilter(QOpenGLTexture::NearestMipMapNearest);
     this->planesTex->setMagnificationFilter(QOpenGLTexture::Nearest);
     this->planesTex->setWrapMode(QOpenGLTexture::ClampToEdge);
+
+    // Smooth normals: a single level, nearest filtering (the mask must not be blended).
+    const auto &normals = this->mesh->normalPlanes();
+    this->planeNormalsTex = new QOpenGLTexture(QOpenGLTexture::Target2DArray);
+    this->planeNormalsTex->setFormat(QOpenGLTexture::RGBA16_UNorm);
+    this->planeNormalsTex->setSize(w, h);
+    this->planeNormalsTex->setLayers(6);
+    this->planeNormalsTex->setMipLevels(1);
+    this->planeNormalsTex->allocateStorage();
+    for (int layer = 0; layer < 6; layer++)
+    {
+        if (normals[layer].data.size() != (size_t)w * h * 4)
+            continue;
+        this->planeNormalsTex->setData(0, layer, QOpenGLTexture::RGBA, QOpenGLTexture::UInt16,
+                                       normals[layer].data.data());
+    }
+    this->planeNormalsTex->setMinificationFilter(QOpenGLTexture::Nearest);
+    this->planeNormalsTex->setMagnificationFilter(QOpenGLTexture::Nearest);
+    this->planeNormalsTex->setWrapMode(QOpenGLTexture::ClampToEdge);
 }
 
 QOpenGLShaderProgram *ReliefView::bindSurfaceProgram(int debugView)
@@ -356,6 +377,8 @@ QOpenGLShaderProgram *ReliefView::bindSurfaceProgram(int debugView)
         p.setUniformValue("PlaneMips", this->planeMipCount);
         this->planesTex->bind(1);
         p.setUniformValue("Plane_Maps", 1);
+        this->planeNormalsTex->bind(2);
+        p.setUniformValue("Normal_Maps", 2);
         return &p;
     }
 
@@ -906,6 +929,7 @@ void ReliefView::deleteTextures()
     delete normalTex; normalTex = nullptr;
     delete offsetTex; offsetTex = nullptr;
     delete planesTex; planesTex = nullptr;
+    delete planeNormalsTex; planeNormalsTex = nullptr;
 }
 
 // ─── Camera matrices ──────────────────────────────────────────────────────────

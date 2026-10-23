@@ -46,7 +46,7 @@ public:
     /// @return true once the textures of the active mode have been uploaded: color and the
     ///         6-plane array when rendering baked planes, else color/relief/normal/offset.
     bool hasTextures() const {
-        return usePlanes ? (colorTex && planesTex) : (colorTex && reliefTex && normalTex && offsetTex);
+        return usePlanes ? (colorTex && planesTex && planeNormalsTex) : (colorTex && reliefTex && normalTex && offsetTex);
     }
 
     /// Resets the orbit camera to its default position.
@@ -150,6 +150,8 @@ private:
     QOpenGLTexture *offsetTex  = nullptr;
     /// RGBA16 2D array of the 6 baked planes (layer = axis * 2 + (negative ? 1 : 0)).
     QOpenGLTexture *planesTex  = nullptr;
+    /// RGBA16 2D array of the 6 baked smooth-normal planes (same layers as planesTex).
+    QOpenGLTexture *planeNormalsTex = nullptr;
 
     // Lighting orb GL resources (fresnel-shaded sphere glyph, built once).
     QOpenGLShaderProgram     orbProg;

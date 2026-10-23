@@ -87,6 +87,18 @@ void Mesh::bake(int resolution) {
     const Eigen::Vector3d center = 0.5 * (min + max);
     const Eigen::Vector3d half = 0.5 * (max - min);
 
+    // Smooth vertex normals: area-weighted average of the incident face normals.
+    std::vector<Eigen::Vector3d> vertexNormals(vertices_.size(), Eigen::Vector3d::Zero());
+    for (const Face &f : faces_) {
+        if (f.removed) continue;
+        const int i0 = wedges_[f.w[0]].vertex, i1 = wedges_[f.w[1]].vertex, i2 = wedges_[f.w[2]].vertex;
+        const Eigen::Vector3d n =
+            (vertices_[i1].pos - vertices_[i0].pos).cross(vertices_[i2].pos - vertices_[i0].pos);
+        vertexNormals[i0] += n;
+        vertexNormals[i1] += n;
+        vertexNormals[i2] += n;
+    }
+
     auto cross = [](const Eigen::Vector2d &a, const Eigen::Vector2d &b) {
         return a.x() * b.y() - a.y() * b.x();
     };
@@ -101,6 +113,10 @@ void Mesh::bake(int resolution) {
             plane.width = resolution;
             plane.height = resolution;
             plane.data.assign((size_t)resolution * resolution * 4, 0);
+            Texture16 &normalPlane = normalPlanes_[axis * 2 + (side ? 0 : 1)];
+            normalPlane.width = resolution;
+            normalPlane.height = resolution;
+            normalPlane.data.assign((size_t)resolution * resolution * 4, 0);
         }
 
         // A flat box has no area to bake on this axis.
@@ -109,6 +125,7 @@ void Mesh::bake(int resolution) {
         for (int side = 0; side < 2; side++) {
             const double sign = side ? 1.0 : -1.0;
             Texture16 &plane = planes_[axis * 2 + (side ? 0 : 1)];
+            Texture16 &normalPlane = normalPlanes_[axis * 2 + (side ? 0 : 1)];
             const double thickness = 2 * half[axis];
             std::vector<float> depth((size_t)resolution * resolution,
                                      std::numeric_limits<float>::infinity());
@@ -117,6 +134,7 @@ void Mesh::bake(int resolution) {
                 const Face &f = faces_[fi];
                 std::array<Eigen::Vector2d, 3> t, uv;
                 std::array<double, 3> d;
+                std::array<Eigen::Vector3d, 3> nrm;
                 for (int i = 0; i < 3; i++) {
                     const Wedge &wedge = wedges_[f.w[i]];
                     const Eigen::Vector3d p = vertices_[wedge.vertex].pos - center;
@@ -125,6 +143,7 @@ void Mesh::bake(int resolution) {
                     // Distance from the plane: smaller is nearer the viewer.
                     d[i] = half[axis] - sign * p[axis];
                     uv[i] = wedge.uv;
+                    nrm[i] = vertexNormals[wedge.vertex];
                 }
 
                 const double area = cross(t[1] - t[0], t[2] - t[0]);
@@ -153,6 +172,15 @@ void Mesh::bake(int resolution) {
                             plane.data[texel * 4 + k] =
                                 (uint16_t)std::lround(std::clamp(value[k], 0.0, 1.0) * 65535.0);
                         }
+
+                        Eigen::Vector3d n = l0 * nrm[0] + l1 * nrm[1] + l2 * nrm[2];
+                        if (n.squaredNorm() > 1e-24) n.normalize();
+                        else n = sign * Eigen::Vector3d::Unit(axis);
+                        for (int k = 0; k < 3; k++) {
+                            normalPlane.data[texel * 4 + k] =
+                                (uint16_t)std::lround((0.5 * n[k] + 0.5) * 65535.0);
+                        }
+                        normalPlane.data[texel * 4 + 3] = 65535;
                     }
                 }
             }

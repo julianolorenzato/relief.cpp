@@ -106,6 +106,11 @@ class Mesh {
     ///         extents (see op::bboxproj).
     const std::array<Texture16, 6>& planes() const { return planes_; }
 
+    /// @return The baked smooth normals of the planes, same ordering and layout as planes().
+    ///         Each is RGBA16 with RGB = the object-space unit normal interpolated from the
+    ///         vertex normals, mapped from [-1, 1] to [0, 65535], and A = silhouette mask.
+    const std::array<Texture16, 6>& normalPlanes() const { return normalPlanes_; }
+
     // ---- Texture mutation ----
 
     /// Replaces the color texture.
@@ -262,7 +267,8 @@ class Mesh {
      * stores, for the nearest outward-facing triangle in front of it, the interpolated
      * color/normal-map UV (R, G), the depth (B) and a silhouette mask (A); texels that no
      * triangle covers are all zero. The result is planes(), ordered X+, X-, Y+, Y-, Z+, Z-,
-     * each `resolution` x `resolution`. The geometry is left untouched.
+     * each `resolution` x `resolution`. The smooth (vertex-normal interpolated) normals are
+     * baked alongside into normalPlanes(). The geometry is left untouched.
      *
      * @param resolution Side length, in texels, of each plane texture.
      */
@@ -299,6 +305,7 @@ class Mesh {
     Texture normalTexture_;
     Texture heightTexture_;
     std::array<Texture16, 6> planes_;
+    std::array<Texture16, 6> normalPlanes_;
 };
 
 }  // namespace mesh
