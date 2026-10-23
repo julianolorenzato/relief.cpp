@@ -64,6 +64,8 @@ signals:
 public slots:
     void setReliefEnabled(bool v);
     void setUseAtlas(bool v);
+    /// Selects the 6-plane search: true for the mip-hierarchical one, false for uniform steps.
+    void setMipSearch(bool v);
     void setReliefTextureType(int v);
     void setSteps(int v);
     void setDepthScale(double v);
@@ -90,6 +92,8 @@ private:
     bool reliefEnabled      = true;
     bool useAtlas           = true;
     int  reliefTextureType  = 0;  // 0 = depth map, 1 = height map
+    bool useMipSearch       = true;  // 6-plane shader only
+    int  planeMipCount      = 1;     // Mip levels of planesTex
     int  steps        = 64;
     float depthScale  = 0.05f;
     int  debugView    = 0;

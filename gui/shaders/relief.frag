@@ -9,8 +9,9 @@ uniform mat4 projection;
 uniform vec3 LightPosWorld;
 
 // The six baked planes, in layers X+, X-, Y+, Y-, Z+, Z- (layer = axis * 2 + (negative ? 1 : 0)).
-// Each texel is R = U, G = V (into Color_Map), B = depth from the plane as a fraction of the
-// box thickness along its axis, A = silhouette mask. Texel (s, t) spans the plane's local
+// At mip 0 each texel is R = U, G = V (into Color_Map), B = depth from the plane as a fraction
+// of the box thickness along its axis, A = silhouette mask. At coarser mips only B and A are
+// used: B is the minimum depth over the covered texels of the cell, A is 1 if any is covered. Texel (s, t) spans the plane's local
 // coordinates ((axis + 1) % 3, (axis + 2) % 3) over the box extents.
 uniform sampler2DArray Plane_Maps;
 uniform sampler2D Color_Map;
@@ -19,7 +20,9 @@ uniform vec3 BoxMin;
 uniform vec3 BoxMax;
 
 uniform bool ReliefEnabled;
-uniform int LinearSteps;
+uniform bool UseMipSearch;  // true: mip-hierarchical search, false: uniform linear steps
+uniform int PlaneMips;      // Mip levels of Plane_Maps
+uniform int LinearSteps;    // Linear steps, or the iteration budget of the mip search
 uniform int DebugView;  // 0 Shaded, 1 Steps, 2 Hit plane, 3 UV, 4 Flat color (wireframe overlay)
 
 #define MASK_THRESHOLD 0.5
@@ -129,6 +132,149 @@ vec3 planeNormal(int layer, vec3 q) {
     return normalize(n);
 }
 
+/**
+ * Largest t' >= t such that, judging by axis `axis` alone, the ray cannot be inside the solid
+ * anywhere in [t, t'). Returns t itself when the ray is inside this axis' cell box, i.e. nothing
+ * can be skipped.
+ *
+ * The cell at mip level `mip` under the ray is a box: its (u, v) footprint times the depth span
+ * [min dM, 1 - min dP] that the solid can occupy under it (empty if the cell is uncovered).
+ * Outside that box the solid is absent, so the ray can jump to where it enters the box, or, if
+ * it misses the box, to where it leaves the cell's column.
+ *
+ * @param q0 Ray origin in box-normalized space.
+ * @param dq Ray direction in box-normalized space.
+ */
+float axisAdvance(int axis, vec3 q0, vec3 dq, float t, int mip) {
+    int u = (axis + 1) % 3;
+    int v = (axis + 2) % 3;
+    vec3 q = q0 + dq * t;
+
+    ivec2 size = textureSize(Plane_Maps, mip).xy;
+    vec2 n = vec2(size);
+    ivec2 cell = clamp(ivec2(floor(vec2(q[u], q[v]) * n)), ivec2(0), size - 1);
+    vec2 cmin = vec2(cell) / n;
+    vec2 cmax = vec2(cell + 1) / n;
+
+    // Exit of the cell's column.
+    vec2 d = vec2(dq[u], dq[v]);
+    vec2 qq = vec2(q[u], q[v]);
+    float tCol = 1e30;
+    for (int i = 0; i < 2; i++) {
+        if (d[i] > 1e-12)
+            tCol = min(tCol, (cmax[i] - qq[i]) / d[i]);
+        else if (d[i] < -1e-12)
+            tCol = min(tCol, (cmin[i] - qq[i]) / d[i]);
+    }
+    tCol += t;
+
+    vec4 p = texelFetch(Plane_Maps, ivec3(cell, axis * 2), mip);
+    vec4 m = texelFetch(Plane_Maps, ivec3(cell, axis * 2 + 1), mip);
+    float lo = m.b;
+    float hi = 1.0 - p.b;
+    if (p.a < MASK_THRESHOLD || m.a < MASK_THRESHOLD || lo > hi)
+        return tCol;
+
+    // Parameter range where the ray is within [lo, hi] along `axis`.
+    float tIn, tOut;
+    if (abs(dq[axis]) < 1e-12) {
+        if (q[axis] < lo || q[axis] > hi)
+            return tCol;
+        tIn = -1e30;
+        tOut = 1e30;
+    } else {
+        float t1 = t + (lo - q[axis]) / dq[axis];
+        float t2 = t + (hi - q[axis]) / dq[axis];
+        tIn = min(t1, t2);
+        tOut = max(t1, t2);
+    }
+    tOut = min(tOut, tCol);
+
+    if (tOut < t || tIn > tOut)
+        return tCol;
+    return max(tIn, t);
+}
+
+/**
+ * Mip-hierarchical search for the first point inside the solid. Each iteration takes the
+ * largest skip allowed by any of the three axes; after a few consecutive skips it moves to a
+ * coarser mip, and when nothing can be skipped it moves to a finer one. At mip 0 the cells
+ * are single texels, so "nothing to skip on all three axes" is exactly insideSolid().
+ *
+ * @param[out] hitT  Ray parameter of the hit.
+ * @param[out] iters Iterations used.
+ * @return Whether the ray hits the solid inside the box.
+ */
+bool marchMip(vec3 q0, vec3 dq, float tStart, float tEnd, int budget, out float hitT, out int iters) {
+    float epsT = 1e-5 * (tEnd - tStart);
+    float t = tStart;
+    int mip = 0;
+    int skips = 0;
+    iters = 0;
+    hitT = t;
+
+    for (int i = 0; i < budget; i++) {
+        iters = i + 1;
+        if (t > tEnd)
+            return false;
+
+        float next = t;
+        for (int axis = 0; axis < 3; axis++)
+            next = max(next, axisAdvance(axis, q0, dq, t, mip));
+
+        if (next > t) {
+            t = next + epsT;
+            if (++skips >= 3 && mip < PlaneMips - 1) {
+                mip++;
+                skips = 0;
+            }
+            continue;
+        }
+
+        if (mip > 0) {
+            mip--;
+            skips = 0;
+            continue;
+        }
+        hitT = t;
+        return true;
+    }
+    return false;
+}
+
+/**
+ * Uniform-step search followed by a binary refinement.
+ *
+ * @param[out] hitT  Ray parameter of the hit.
+ * @param[out] iters Steps used.
+ * @return Whether the ray hits the solid inside the box.
+ */
+bool marchLinear(vec3 q0, vec3 dq, float tStart, float tEnd, int steps, out float hitT, out int iters) {
+    float dt = (tEnd - tStart) / float(steps);
+    float prevT = tStart;
+    iters = 0;
+    hitT = tStart;
+    for (int i = 0; i <= steps; i++) {
+        iters = i + 1;
+        float t = tStart + dt * float(i);
+        if (insideSolid(q0 + dq * t)) {
+            float lo = (i == 0) ? t : prevT;
+            float hi = t;
+            for (int k = 0; k < REFINE_STEPS && lo < hi; k++) {
+                float mid = 0.5 * (lo + hi);
+                if (insideSolid(q0 + dq * mid))
+                    hi = mid;
+                else
+                    lo = mid;
+            }
+            hitT = hi;
+            return true;
+        }
+        prevT = t;
+    }
+    return false;
+}
+
 void main() {
     if (DebugView == 4) {
         FragColor = vec4(1.0, 0.9, 0.3, 1.0);
@@ -146,39 +292,15 @@ void main() {
     int steps = max(LinearSteps, 1);
 
     float hitT = tStart;
-    bool hit = false;
     int stepsTaken = 0;
 
     if (ReliefEnabled) {
-        float dt = (tEnd - tStart) / float(steps);
-        float prevT = tStart;
-        for (int i = 0; i <= steps; i++) {
-            stepsTaken = i + 1;
-            float t = tStart + dt * float(i);
-            vec3 q = (CamObj + dir * t - BoxMin) / extent;
-            if (insideSolid(q)) {
-                // Binary search between the last outside sample and this one.
-                float lo = prevT, hi = t;
-                if (i == 0)
-                    lo = hi;
-                for (int k = 0; k < REFINE_STEPS && lo < hi; k++) {
-                    float mid = 0.5 * (lo + hi);
-                    vec3 qm = (CamObj + dir * mid - BoxMin) / extent;
-                    if (insideSolid(qm))
-                        hi = mid;
-                    else
-                        lo = mid;
-                }
-                hitT = hi;
-                hit = true;
-                break;
-            }
-            prevT = t;
-        }
+        vec3 q0 = (CamObj - BoxMin) / extent;
+        vec3 dq = dir / extent;
+        bool hit = UseMipSearch ? marchMip(q0, dq, tStart, tEnd, steps, hitT, stepsTaken)
+                                : marchLinear(q0, dq, tStart, tEnd, steps, hitT, stepsTaken);
         if (!hit)
             discard;
-    } else {
-        hit = true;
     }
 
     vec3 hitObj = CamObj + dir * hitT;

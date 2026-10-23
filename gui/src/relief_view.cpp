@@ -265,21 +265,62 @@ void ReliefView::buildPlanesFromMesh()
     if (w <= 0 || h <= 0)
         return;
 
-    // Nearest, no mips: the mask and depth must not be blended across the silhouette.
+    // Nearest filtering: the mask and depth must not be blended across the silhouette.
+    // Level 0 is the baked plane; each coarser level keeps, per 2x2 block, the minimum depth
+    // over the covered texels in B and whether any is covered in A (see relief.frag).
+    int levels = 1;
+    for (int size = std::max(w, h); size > 1; size >>= 1)
+        levels++;
+    this->planeMipCount = levels;
+
     this->planesTex = new QOpenGLTexture(QOpenGLTexture::Target2DArray);
     this->planesTex->setFormat(QOpenGLTexture::RGBA16_UNorm);
     this->planesTex->setSize(w, h);
     this->planesTex->setLayers(6);
-    this->planesTex->setMipLevels(1);
+    this->planesTex->setMipLevels(levels);
     this->planesTex->allocateStorage();
     for (int layer = 0; layer < 6; layer++)
     {
         if (planes[layer].data.size() != (size_t)w * h * 4)
             continue;
-        this->planesTex->setData(0, layer, QOpenGLTexture::RGBA, QOpenGLTexture::UInt16,
-                                 planes[layer].data.data());
+        std::vector<uint16_t> prev = planes[layer].data;
+        this->planesTex->setData(0, layer, QOpenGLTexture::RGBA, QOpenGLTexture::UInt16, prev.data());
+        int pw = w, ph = h;
+        for (int level = 1; level < levels; level++)
+        {
+            const int cw = std::max(1, pw >> 1), ch = std::max(1, ph >> 1);
+            std::vector<uint16_t> cur((size_t)cw * ch * 4, 0);
+            for (int y = 0; y < ch; y++)
+            {
+                for (int x = 0; x < cw; x++)
+                {
+                    uint16_t minDepth = 65535;
+                    bool covered = false;
+                    for (int dy = 0; dy < 2; dy++)
+                    {
+                        for (int dx = 0; dx < 2; dx++)
+                        {
+                            const int sx = std::min(2 * x + dx, pw - 1);
+                            const int sy = std::min(2 * y + dy, ph - 1);
+                            const uint16_t *src = &prev[((size_t)sy * pw + sx) * 4];
+                            if (src[3] < 32768)
+                                continue;
+                            covered = true;
+                            minDepth = std::min(minDepth, src[2]);
+                        }
+                    }
+                    uint16_t *dst = &cur[((size_t)y * cw + x) * 4];
+                    dst[2] = covered ? minDepth : 0;
+                    dst[3] = covered ? 65535 : 0;
+                }
+            }
+            this->planesTex->setData(level, layer, QOpenGLTexture::RGBA, QOpenGLTexture::UInt16, cur.data());
+            prev = std::move(cur);
+            pw = cw;
+            ph = ch;
+        }
     }
-    this->planesTex->setMinificationFilter(QOpenGLTexture::Nearest);
+    this->planesTex->setMinificationFilter(QOpenGLTexture::NearestMipMapNearest);
     this->planesTex->setMagnificationFilter(QOpenGLTexture::Nearest);
     this->planesTex->setWrapMode(QOpenGLTexture::ClampToEdge);
 }
@@ -311,6 +352,8 @@ QOpenGLShaderProgram *ReliefView::bindSurfaceProgram(int debugView)
     {
         p.setUniformValue("BoxMin", this->boxMin);
         p.setUniformValue("BoxMax", this->boxMax);
+        p.setUniformValue("UseMipSearch", this->useMipSearch);
+        p.setUniformValue("PlaneMips", this->planeMipCount);
         this->planesTex->bind(1);
         p.setUniformValue("Plane_Maps", 1);
         return &p;
@@ -393,6 +436,11 @@ void ReliefView::setReliefEnabled(bool v)
 void ReliefView::setUseAtlas(bool v)
 {
     this->useAtlas = v;
+    update();
+}
+void ReliefView::setMipSearch(bool v)
+{
+    this->useMipSearch = v;
     update();
 }
 void ReliefView::setReliefTextureType(int v)
