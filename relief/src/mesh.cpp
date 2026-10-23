@@ -91,27 +91,24 @@ void Mesh::bake(int resolution) {
         return a.x() * b.y() - a.y() * b.x();
     };
 
-    std::array<Texture16, 3> maps, depths;
     for (int axis = 0; axis < 3; axis++) {
         const int u = (axis + 1) % 3;
         const int v = (axis + 2) % 3;
 
-        Texture16 &map = maps[axis];
-        map.width = resolution;
-        map.height = resolution;
-        map.data.assign((size_t)resolution * resolution * 4, 0);
-        Texture16 &depthMap = depths[axis];
-        depthMap.width = resolution;
-        depthMap.height = resolution;
-        depthMap.data.assign((size_t)resolution * resolution * 4, 0);
+        for (int side = 0; side < 2; side++) {
+            // Planes are ordered X+, X-, Y+, Y-, Z+, Z-.
+            Texture16 &plane = planes_[axis * 2 + (side ? 0 : 1)];
+            plane.width = resolution;
+            plane.height = resolution;
+            plane.data.assign((size_t)resolution * resolution * 4, 0);
+        }
 
         // A flat box has no area to bake on this axis.
         if (half[u] <= 0.0 || half[v] <= 0.0) continue;
 
-        // Quad 0 is the -axis plane (channels BA), quad 1 the +axis plane (channels RG).
         for (int side = 0; side < 2; side++) {
             const double sign = side ? 1.0 : -1.0;
-            const int channel = side ? 0 : 2;
+            Texture16 &plane = planes_[axis * 2 + (side ? 0 : 1)];
             const double thickness = 2 * half[axis];
             std::vector<float> depth((size_t)resolution * resolution,
                                      std::numeric_limits<float>::infinity());
@@ -153,28 +150,22 @@ void Mesh::bake(int resolution) {
 
                         const Eigen::Vector2d value = l0 * uv[0] + l1 * uv[1] + l2 * uv[2];
                         for (int k = 0; k < 2; k++) {
-                            map.data[texel * 4 + channel + k] =
+                            plane.data[texel * 4 + k] =
                                 (uint16_t)std::lround(std::clamp(value[k], 0.0, 1.0) * 65535.0);
                         }
                     }
                 }
             }
 
-            // 0 marks uncovered texels; covered ones are 1 + normalized depth.
+            // Depth goes in B and the silhouette mask in A, only for covered texels.
             for (size_t texel = 0; texel < depth.size(); texel++) {
                 if (std::isinf(depth[texel])) continue;
                 const double d = thickness > 0.0 ? std::clamp(depth[texel] / thickness, 0.0, 1.0) : 0.0;
-                depthMap.data[texel * 4 + (side ? 0 : 1)] = (uint16_t)(1 + std::lround(d * 65534.0));
+                plane.data[texel * 4 + 2] = (uint16_t)std::lround(d * 65535.0);
+                plane.data[texel * 4 + 3] = 65535;
             }
         }
     }
-
-    setXPlanesDepth(std::move(depths[0]));
-    setYPlanesDepth(std::move(depths[1]));
-    setZPlanesDepth(std::move(depths[2]));
-    setXPlanesMap(std::move(maps[0]));
-    setYPlanesMap(std::move(maps[1]));
-    setZPlanesMap(std::move(maps[2]));
 }
 
 std::array<Edge, 3> Mesh::faceEdges(const Face &f) const {

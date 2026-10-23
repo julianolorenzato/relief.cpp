@@ -181,20 +181,13 @@ void TexturesModule::rebuildMaps() {
         v.push_back({"A", {3, -1, -1}, true});
         return v;
     };
-    auto planesViews = [] {
+    auto planeViews = [] {
         std::vector<ChannelView> v;
-        v.push_back({"+ plane UV (RG)", {0, 1, -1}, false});
-        v.push_back({"- plane UV (BA)", {2, 3, -1}, false});
-        v.push_back({"U+ (R)", {0, -1, -1}, true});
-        v.push_back({"V+ (G)", {1, -1, -1}, true});
-        v.push_back({"U- (B)", {2, -1, -1}, true});
-        v.push_back({"V- (A)", {3, -1, -1}, true});
-        return v;
-    };
-    auto depthViews = [] {
-        std::vector<ChannelView> v;
-        v.push_back({"+ depth (R)", {0, -1, -1}, true});
-        v.push_back({"- depth (G)", {1, -1, -1}, true});
+        v.push_back({"UV (RG)", {0, 1, -1}, false});
+        v.push_back({"U (R)", {0, -1, -1}, true});
+        v.push_back({"V (G)", {1, -1, -1}, true});
+        v.push_back({"Depth (B)", {2, -1, -1}, true});
+        v.push_back({"Mask (A)", {3, -1, -1}, true});
         return v;
     };
 
@@ -209,7 +202,7 @@ void TexturesModule::rebuildMaps() {
         m.views = standardViews();
         maps_.push_back(std::move(m));
     };
-    auto add16 = [&](const QString& label, const mesh::Texture16& t, bool depth) {
+    auto add16 = [&](const QString& label, const mesh::Texture16& t) {
         if (t.data.empty() || t.width <= 0 || t.height <= 0)
             return;
         MapSource m;
@@ -217,7 +210,7 @@ void TexturesModule::rebuildMaps() {
         m.data16 = t.data.data();
         m.width = t.width;
         m.height = t.height;
-        m.views = depth ? depthViews() : planesViews();
+        m.views = planeViews();
         maps_.push_back(std::move(m));
     };
 
@@ -226,12 +219,10 @@ void TexturesModule::rebuildMaps() {
         add8("Color", mesh.colorTexture());
         add8("Normal", mesh.normalTexture());
         add8("Height", mesh.heightTexture());
-        add16("X planes map", mesh.xPlanesMap(), false);
-        add16("Y planes map", mesh.yPlanesMap(), false);
-        add16("Z planes map", mesh.zPlanesMap(), false);
-        add16("X planes depth", mesh.xPlanesDepth(), true);
-        add16("Y planes depth", mesh.yPlanesDepth(), true);
-        add16("Z planes depth", mesh.zPlanesDepth(), true);
+        static const char* const kPlaneLabels[6] = {"X+ plane", "X- plane", "Y+ plane",
+                                                    "Y- plane", "Z+ plane", "Z- plane"};
+        for (int i = 0; i < 6; i++)
+            add16(kPlaneLabels[i], mesh.planes()[i]);
     }
 
     mapCombo_->blockSignals(true);

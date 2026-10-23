@@ -96,26 +96,15 @@ class Mesh {
     ///         point), G/B repeat it and A is 255.
     const Texture& heightTexture() const { return heightTexture_; }
 
-    /// @return The X planes map (empty if none). Texels span the box's Y/Z plane quads
-    ///         (see op::bboxproj); RG hold the color/normal-map UV of the +X plane, BA those of
-    ///         the -X plane. Components are UVs in [0, 1] scaled to [0, 65535].
-    const Texture16& xPlanesMap() const { return xPlanesMap_; }
-    /// @return The Y planes map (empty if none). Same layout as xPlanesMap(), for the +Y (RG)
-    ///         and -Y (BA) planes.
-    const Texture16& yPlanesMap() const { return yPlanesMap_; }
-    /// @return The Z planes map (empty if none). Same layout as xPlanesMap(), for the +Z (RG)
-    ///         and -Z (BA) planes.
-    const Texture16& zPlanesMap() const { return zPlanesMap_; }
-
-    /// @return The X planes depth map (empty if none), same size as xPlanesMap(). R holds the
-    ///         depth of the surface seen on the +X plane, G that on the -X plane (B and A are 0).
-    ///         0 means "nothing covers this texel"; otherwise 1 + round(d * 65534), with d the
-    ///         distance from the plane as a fraction of the box thickness along X, in [0, 1].
-    const Texture16& xPlanesDepth() const { return xPlanesDepth_; }
-    /// @return The Y planes depth map (empty if none). Same layout as xPlanesDepth().
-    const Texture16& yPlanesDepth() const { return yPlanesDepth_; }
-    /// @return The Z planes depth map (empty if none). Same layout as xPlanesDepth().
-    const Texture16& zPlanesDepth() const { return zPlanesDepth_; }
+    /// @return The baked plane textures (empty textures if not baked), ordered X+, X-, Y+, Y-,
+    ///         Z+, Z- (index `axis * 2 + (negative ? 1 : 0)`). Each is RGBA16 with
+    ///         R = U and G = V (the color/normal-map UV, in [0, 1] scaled to [0, 65535]),
+    ///         B = depth (distance from the plane as a fraction of the box thickness along the
+    ///         axis, in [0, 1] scaled to [0, 65535]) and A = silhouette mask (65535 where the
+    ///         mesh covers the texel, 0 elsewhere, in which case R, G and B are 0). Texels span
+    ///         the plane's local coordinates ((axis + 1) % 3, (axis + 2) % 3) over the box
+    ///         extents (see op::bboxproj).
+    const std::array<Texture16, 6>& planes() const { return planes_; }
 
     // ---- Texture mutation ----
 
@@ -125,18 +114,8 @@ class Mesh {
     void setNormalTexture(Texture texture) { normalTexture_ = std::move(texture); }
     /// Replaces the relief height map.
     void setHeightTexture(Texture texture) { heightTexture_ = std::move(texture); }
-    /// Replaces the X planes map.
-    void setXPlanesMap(Texture16 texture) { xPlanesMap_ = std::move(texture); }
-    /// Replaces the Y planes map.
-    void setYPlanesMap(Texture16 texture) { yPlanesMap_ = std::move(texture); }
-    /// Replaces the Z planes map.
-    void setZPlanesMap(Texture16 texture) { zPlanesMap_ = std::move(texture); }
-    /// Replaces the X planes depth map.
-    void setXPlanesDepth(Texture16 texture) { xPlanesDepth_ = std::move(texture); }
-    /// Replaces the Y planes depth map.
-    void setYPlanesDepth(Texture16 texture) { yPlanesDepth_ = std::move(texture); }
-    /// Replaces the Z planes depth map.
-    void setZPlanesDepth(Texture16 texture) { zPlanesDepth_ = std::move(texture); }
+    /// Replaces the baked plane texture at `index` (see planes()).
+    void setPlane(int index, Texture16 texture) { planes_[index] = std::move(texture); }
 
     // ---- Construction, I/O and geometry replacement ----
 
@@ -276,20 +255,16 @@ class Mesh {
     // ---- Baking ----
 
     /**
-     * @brief Bakes the X/Y/Z planes maps of the mesh's axis-aligned bounding box.
+     * @brief Bakes the 6 planes of the mesh's axis-aligned bounding box.
      *
      * For each of the box's 6 planes, the mesh is looked at orthographically from
-     * outside the box. Each texel of the plane's map is sampled at its center and
-     * stores the (interpolated) color/normal-map UV of the nearest outward-facing
-     * triangle in front of it, as round(uv * 65535). Texels that no triangle covers
-     * store UV (0, 0). Texel (x, y) spans the plane's local coordinates
-     * ((axis + 1) % 3, (axis + 2) % 3) over the box extents. The +axis plane goes in
-     * channels RG and the -axis plane in BA, so the result is xPlanesMap(),
-     * yPlanesMap() and zPlanesMap(), each `resolution` x `resolution`. The depth of
-     * the chosen triangle at each texel is stored alongside in xPlanesDepth(),
-     * yPlanesDepth() and zPlanesDepth(). The geometry is left untouched.
+     * outside the box. Each texel of the plane's texture is sampled at its center and
+     * stores, for the nearest outward-facing triangle in front of it, the interpolated
+     * color/normal-map UV (R, G), the depth (B) and a silhouette mask (A); texels that no
+     * triangle covers are all zero. The result is planes(), ordered X+, X-, Y+, Y-, Z+, Z-,
+     * each `resolution` x `resolution`. The geometry is left untouched.
      *
-     * @param resolution Side length, in texels, of each planes map.
+     * @param resolution Side length, in texels, of each plane texture.
      */
     void bake(int resolution);
 
@@ -323,12 +298,7 @@ class Mesh {
     Texture colorTexture_;
     Texture normalTexture_;
     Texture heightTexture_;
-    Texture16 xPlanesMap_;
-    Texture16 yPlanesMap_;
-    Texture16 zPlanesMap_;
-    Texture16 xPlanesDepth_;
-    Texture16 yPlanesDepth_;
-    Texture16 zPlanesDepth_;
+    std::array<Texture16, 6> planes_;
 };
 
 }  // namespace mesh

@@ -19,13 +19,12 @@ constexpr int kAtlasCols = 3;
 constexpr int kAtlasRows = 2;
 
 /**
- * @brief Composes the box's color and height textures from a baked mesh's planes maps.
+ * @brief Composes the box's color and height textures from a baked mesh's planes.
  *
  * The result is a kAtlasCols x kAtlasRows atlas with one tile per box quad. A quad's color
- * tile shows its planes map as RGB = (u, v, 0), black where the mesh does not cover the
+ * tile shows its plane texture as RGB = (u, v, 0), black where the mesh does not cover the
  * texel (so the mesh's silhouette on that plane is visible). Its height tile holds the
- * planes depth map as R = G = B, 0 where uncovered. Both stay empty if `baked` has no
- * planes maps.
+ * plane's depth as R = G = B, 0 where uncovered. Both stay empty if `baked` has no planes.
  *
  * @param baked  Mesh on which Mesh::bake() has been run.
  * @param color  Receives the RGBA8 color atlas.
@@ -33,11 +32,9 @@ constexpr int kAtlasRows = 2;
  */
 void makePlanesAtlas(const mesh::Mesh& baked, mesh::Texture& color, mesh::Texture& height)
 {
-    const mesh::Texture16* maps[3] = {&baked.xPlanesMap(), &baked.yPlanesMap(), &baked.zPlanesMap()};
-    const mesh::Texture16* depths[3] = {&baked.xPlanesDepth(), &baked.yPlanesDepth(),
-                                        &baked.zPlanesDepth()};
-    const int size = maps[0]->width;
-    if (size <= 0 || maps[0]->data.empty()) return;
+    const auto& planes = baked.planes();
+    const int size = planes[0].width;
+    if (size <= 0 || planes[0].data.empty()) return;
 
     const int atlasW = kAtlasCols * size;
     const int atlasH = kAtlasRows * size;
@@ -50,19 +47,18 @@ void makePlanesAtlas(const mesh::Mesh& baked, mesh::Texture& color, mesh::Textur
 
     for (int axis = 0; axis < 3; axis++) {
         for (int row = 0; row < kAtlasRows; row++) {
-            const int uvChannel = row == 0 ? 0 : 2;     // +axis in RG, -axis in BA
-            const int depthChannel = row == 0 ? 0 : 1;  // +axis in R, -axis in G
+            // Planes are ordered X+, X-, Y+, Y-, Z+, Z-; row 0 is the + side.
+            const mesh::Texture16& plane = planes[axis * 2 + row];
             for (int y = 0; y < size; y++) {
                 for (int x = 0; x < size; x++) {
                     const size_t src = ((size_t)y * size + x) * 4;
                     const size_t dst = ((size_t)(row * size + y) * atlasW + axis * size + x) * 4;
 
-                    color.data[dst + 0] = to8(maps[axis]->data[src + uvChannel]);
-                    color.data[dst + 1] = to8(maps[axis]->data[src + uvChannel + 1]);
+                    color.data[dst + 0] = to8(plane.data[src + 0]);
+                    color.data[dst + 1] = to8(plane.data[src + 1]);
                     color.data[dst + 3] = 255;
 
-                    const uint16_t d = depths[axis]->data[src + depthChannel];
-                    const uint8_t value = d == 0 ? 0 : to8((uint16_t)(d - 1));
+                    const uint8_t value = to8(plane.data[src + 2]);
                     height.data[dst + 0] = height.data[dst + 1] = height.data[dst + 2] = value;
                     height.data[dst + 3] = 255;
                 }
@@ -76,8 +72,7 @@ void makePlanesAtlas(const mesh::Mesh& baked, mesh::Texture& color, mesh::Textur
  *        as 12 triangles (2 per face, unwelded across faces).
  *
  * Each face maps to its own tile of the atlas made by makePlanesAtlas(), and the
- * copy's color and height textures are that atlas (empty if `src` has no planes
- * maps). Its normal map and planes maps are dropped.
+ * copy's color and height textures are that atlas (empty if `src` has no planes). Its normal map and planes are dropped.
  *
  * @param src Mesh to bound, possibly baked.
  * @return The box mesh.
@@ -140,11 +135,7 @@ mesh::Mesh makeBoxMesh(const mesh::Mesh& src)
     box.setColorTexture(std::move(color));
     box.setHeightTexture(std::move(height));
     box.setNormalTexture({});
-    for (auto set : {&mesh::Mesh::setXPlanesMap, &mesh::Mesh::setYPlanesMap, &mesh::Mesh::setZPlanesMap,
-                     &mesh::Mesh::setXPlanesDepth, &mesh::Mesh::setYPlanesDepth,
-                     &mesh::Mesh::setZPlanesDepth}) {
-        (box.*set)({});
-    }
+    for (int i = 0; i < 6; i++) box.setPlane(i, {});
     return box;
 }
 
