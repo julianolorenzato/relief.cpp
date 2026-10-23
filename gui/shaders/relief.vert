@@ -2,33 +2,21 @@
 layout(location = 0) in vec3 position;
 layout(location = 1) in vec3 normal;
 layout(location = 2) in vec2 texCoord;
-layout(location = 3) in vec4 tangent; // xyz = tangent, w = handedness sign (±1)
+layout(location = 3) in vec4 tangent;
 
 uniform mat4 model;
 uniform mat4 view;
 uniform mat4 projection;
+uniform vec3 viewPosWorld;
 
-out vec3 FragPos;
-out vec3 Normal;
-out vec2 TexCoord;
-out vec3 Tangent;
-out float Handedness;
+// Object space is the space of the (bounding box) mesh's own vertices.
+out vec3 ObjPos;
+out vec3 CamObj;
 
 void main() {
-    FragPos = vec3(model * vec4(position, 1.0));
-    mat3 normalMat = mat3(transpose(inverse(model)));
-    vec3 N = normalize(normalMat * normal);
-    vec3 T = normalize(normalMat * tangent.xyz);
-    T = normalize(T - N * dot(N, T));
-
-    Normal = N;
-    Tangent = T;
-    // cross(N, T) alone only determines the bitangent up to sign — the actual
-    // sign depends on the mesh's UV winding (e.g. flipped for OBJ vs. glTF),
-    // which is why it's baked per-vertex on the CPU (see buildMeshVerts) and
-    // carried here as tangent.w rather than assumed to always be +1.
-    Handedness = tangent.w;
-    TexCoord = texCoord;
-
-    gl_Position = projection * view * vec4(FragPos, 1.0);
+    ObjPos = position;
+    // The model matrix is a uniform scale plus a translation, so inverting it
+    // per vertex is cheap and the result interpolates linearly.
+    CamObj = vec3(inverse(model) * vec4(viewPosWorld, 1.0));
+    gl_Position = projection * view * model * vec4(position, 1.0);
 }

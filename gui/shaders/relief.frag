@@ -1,311 +1,222 @@
 #version 330 core
-in vec3 FragPos;
-in vec3 Normal;
-in vec2 TexCoord;
-in vec3 Tangent;
-in float Handedness;
+in vec3 ObjPos;
+in vec3 CamObj;
 out vec4 FragColor;
 
-uniform vec3 viewPosWorld;
+uniform mat4 model;
+uniform mat4 view;
+uniform mat4 projection;
 uniform vec3 LightPosWorld;
+
+// The six baked planes, in layers X+, X-, Y+, Y-, Z+, Z- (layer = axis * 2 + (negative ? 1 : 0)).
+// Each texel is R = U, G = V (into Color_Map), B = depth from the plane as a fraction of the
+// box thickness along its axis, A = silhouette mask. Texel (s, t) spans the plane's local
+// coordinates ((axis + 1) % 3, (axis + 2) % 3) over the box extents.
+uniform sampler2DArray Plane_Maps;
 uniform sampler2D Color_Map;
-uniform sampler2D Relief_Map;
-uniform sampler2D Offset_Map;
-uniform sampler2D Normal_Map;
+
+uniform vec3 BoxMin;
+uniform vec3 BoxMax;
 
 uniform bool ReliefEnabled;
-uniform bool UseAtlas;
-uniform int ReliefTextureType;   // 0 = depth map (white=deep), 1 = height map (white=high)
 uniform int LinearSteps;
-uniform float DepthScale;
-uniform float LastMip;
-uniform int DebugView;                 // 0 Shaded, 1 Steps, 2 Leaps, 3 UV
+uniform int DebugView;  // 0 Shaded, 1 Steps, 2 Hit plane, 3 UV, 4 Flat color (wireframe overlay)
 
-// Matches relief.ush's `eps` — also used as the AABB epsilon and the
-// box-intersection threshold below.
-#define EPS 1e-3
+#define MASK_THRESHOLD 0.5
+#define DEPTH_EPS 2e-3
+#define REFINE_STEPS 10
 
-// GLSL port of relief.ush's IntersectTheBox. Reports whether the AABB exit
-// was through the bottom (depth) face rather than an XY wall, so the caller
-// can tell a "reached the surface" event apart from a "crossed into the next
-// texel" event.
-vec3 IntersectTheBox(vec3 rayOrigin, vec3 rayDir, vec3 invRayDir, vec3 aabbMin, vec3 aabbMax, out bool bottomHit) {
-    vec3 t0 = (aabbMin - rayOrigin) * invRayDir;
-    vec3 t1 = (aabbMax - rayOrigin) * invRayDir;
-    vec3 tSlabExit = max(t0, t1);
-
-    float tFar = min(tSlabExit.x, min(tSlabExit.y, tSlabExit.z));
-    bottomHit = (tSlabExit.z <= tSlabExit.x) && (tSlabExit.z <= tSlabExit.y);
-
-    return clamp(rayOrigin + tFar * rayDir, aabbMin, aabbMax);
+/**
+ * Samples plane `layer` at the projection of `q` (position in box-normalized [0,1]^3 space).
+ */
+vec4 samplePlane(int layer, vec3 q) {
+    int axis = layer / 2;
+    vec2 st = vec2(q[(axis + 1) % 3], q[(axis + 2) % 3]);
+    return textureLod(Plane_Maps, vec3(st, float(layer)), 0.0);
 }
 
-// GLSL port of relief.ush's BuildPixelAABB.
-void BuildPixelAABB(vec2 uv, float depth, float pixelSize, out vec3 aabbMin, out vec3 aabbMax) {
-    vec2 pixelCoord = floor(uv / pixelSize) * pixelSize;
-    aabbMin = vec3(pixelCoord - EPS, depth);
-    aabbMax = vec3(pixelCoord + pixelSize + EPS, 0.0);
+/**
+ * Distance of `q` from plane `layer`, as a fraction of the box thickness along its axis.
+ */
+float planeDepth(int layer, vec3 q) {
+    int axis = layer / 2;
+    return (layer % 2 == 0) ? 1.0 - q[axis] : q[axis];
 }
 
-// Equivalent to HLSL's mul(vec, RotationMatrix) with that function's row-major
-// rotation literal (verified by hand-expanding the row-vector multiply).
-vec2 rotateXY(vec2 v, float angle) {
-    float c = cos(angle), s = sin(angle);
-    return vec2(v.x * c + v.y * s, -v.x * s + v.y * c);
+/**
+ * Whether `q` lies inside the solid. Along each axis the solid spans from the nearest
+ * surface seen from the + plane to the nearest one seen from the - plane, where both planes
+ * cover the texel; the solid is the intersection of the three spans.
+ */
+bool insideSolid(vec3 q) {
+    for (int axis = 0; axis < 3; axis++) {
+        vec4 p = samplePlane(axis * 2, q);
+        vec4 m = samplePlane(axis * 2 + 1, q);
+        if (p.a < MASK_THRESHOLD || m.a < MASK_THRESHOLD)
+            return false;
+        if (planeDepth(axis * 2, q) < p.b || planeDepth(axis * 2 + 1, q) < m.b)
+            return false;
+    }
+    return true;
 }
 
-void PerformIslandLeap(
-    vec4 OffsetData,
-    inout vec3 tangent_direction,
-    inout vec3 Current_Position,
-    inout vec3 invDir,
-    inout vec2 leaping_point,
-    inout vec2 landing_point,
-    inout bool jumped,
-    inout int numLeaps,
-    inout float rotationAccum
-) {
-    float RotationAngle = OffsetData.z * 6.28319;
-    leaping_point = Current_Position.xy;
-    tangent_direction.xy = rotateXY(tangent_direction.xy, RotationAngle);
-    Current_Position.xy += OffsetData.xy;
-    invDir = 1.0 / tangent_direction;
-    landing_point = Current_Position.xy;
-    jumped = true;
-    numLeaps += 1;
-    // Landed island's Color_Map/Normal_Map texels are stored in a tangent
-    // frame rotated by RotationAngle relative to the departing island (that's
-    // what just got applied to tangent_direction above). Accumulate so the
-    // caller can rotate the sampled normal back into the mesh's original
-    // tangent space before applying TBN — 2D rotations commute, so summing
-    // angles across multiple leaps equals composing their matrices.
-    rotationAccum = mod(rotationAccum + RotationAngle, 6.28319);
+/**
+ * Ray / box slab test in object space.
+ * @return (tNear, tFar); tFar < tNear means a miss.
+ */
+vec2 intersectBox(vec3 origin, vec3 dir) {
+    vec3 inv = 1.0 / dir;
+    vec3 t0 = (BoxMin - origin) * inv;
+    vec3 t1 = (BoxMax - origin) * inv;
+    vec3 tmin = min(t0, t1);
+    vec3 tmax = max(t0, t1);
+    return vec2(max(max(tmin.x, tmin.y), tmin.z), min(min(tmax.x, tmax.y), tmax.z));
 }
 
-// Skips the ray across a UV-atlas seam/edge: rotates the tangent direction
-// and relocates the ray to the island's landing point using the offset
-// stored at the current position. Offset_Map.w > 0 confirms this texel is
-// really a leap point rather than a coarse-mip false positive from the seam
-// mask that gates the call site below (TCC Bonorino sec. 4.4, Alg. 10).
-void IslandLeap(
-    inout vec3 tangent_direction,
-    inout vec3 Current_Position,
-    inout vec3 invDir,
-    inout vec2 leaping_point,
-    inout vec2 landing_point,
-    inout bool jumped,
-    inout int OffsetMapTextureSamples,
-    inout int numLeaps,
-    inout float rotationAccum
-) {
-    vec4 OffsetData = textureLod(Offset_Map, Current_Position.xy, 0.0);
-    OffsetMapTextureSamples += 1;
-    if(OffsetData.w > 0.0)
-        PerformIslandLeap(OffsetData, tangent_direction, Current_Position, invDir, leaping_point, landing_point, jumped, numLeaps, rotationAccum);
-    else
-        jumped = false;
-}
-
-// GLSL port of relief.ush's CleanerRelief, with the project's UV-atlas
-// island-leap hook layered on top (relief.ush itself doesn't model atlas
-// seams: it works on a single, seamless depth channel). The relief map's R
-// channel (min depth) is the per-cell depth bound; G (max depth) is
-// reserved for a future conservative-stepping optimization. B is the
-// max-pooled seam mask (relief_sandbox_module.cpp's seamMip0/maskPyr): exact
-// per-texel at mip 0, and propagated (not averaged, per TCC Bonorino sec.
-// 4.4.1) into coarser mips, so a coarse cell reads nonzero whenever any
-// mip-0 texel beneath it touches a leap band.
-vec3 Mip_Relief(
-    vec3 Tangent_Direction,
-    vec2 UV,
-    int maxSteps,
-    out int leapCounter,
-    out int stepsOut,
-    out float totalRotation
-) {
-    float pixelSize = pow(2.0, -LastMip);
-    float mip = 0.0;
-
-    vec3 pos = vec3(UV, 0.0);
-    vec3 invDir = 1.0 / Tangent_Direction;
-    vec2 leapingPoint = vec2(0.0), landingPoint = vec2(0.0);
-    bool jumped = false;
-
-    int wallCount = 0, numLeaps = 0, offsetSamples = 0;
-    int stepsTaken = 0;
-    float rotationAccum = 0.0;
-
-    for(int i = 0; i < maxSteps; i++) {
-        stepsTaken = i + 1;
-
-        // Sampled first (rather than after the leap) so its B channel can
-        // gate the leap check itself — TCC Bonorino sec. 4.4, Alg. 10: only
-        // pay for the Offset_Map fetch when the current mip cell's seam
-        // mask says there might be an edge here. Confirmed by direct A/B
-        // test (this gate removed vs. present, both forced to mip 0) that
-        // this gate does not affect which pixels leap — B and Offset_Map.w
-        // come from the same source data, so at any mip they agree on
-        // whether a leap should fire; this is purely a texture-fetch-count
-        // optimization on top of that shared ground truth.
-        vec4 rm = textureLod(Relief_Map, pos.xy, mip);
-
-        // A coarse mip cell can be wider than the leap band it straddles: the
-        // box march below only samples once per cell (at pos.xy on entry),
-        // so a wide coarse cell can cross a seam without pos.xy ever landing
-        // on the narrow strip of texels whose Offset_Map.w is actually set,
-        // silently skipping the leap. B is max-pooled (sec. 4.4.1), so
-        // rm.z > 0 here is a reliable "a leap texel exists somewhere under
-        // this cell" signal even when mip is coarse — refine to mip 0 before
-        // treating this as a normal depth/AABB cell so the leap check and
-        // the box march both operate at full per-texel precision near seams.
-        if(UseAtlas && rm.z > 0.0 && mip > 0.0) {
-            mip = 0.0;
-            pixelSize = pow(2.0, -LastMip);
-            wallCount = 0;
-            rm = textureLod(Relief_Map, pos.xy, mip);
+/**
+ * Picks the plane that sees the surface point `q`: the covered plane whose stored depth best
+ * matches the point's own depth from that plane.
+ * @return The layer, or -1 if no plane covers the point.
+ */
+int bestPlane(vec3 q) {
+    int best = -1;
+    float bestErr = 1e9;
+    for (int layer = 0; layer < 6; layer++) {
+        vec4 s = samplePlane(layer, q);
+        if (s.a < MASK_THRESHOLD)
+            continue;
+        float err = abs(planeDepth(layer, q) - s.b);
+        if (err < bestErr) {
+            bestErr = err;
+            best = layer;
         }
+    }
+    return best;
+}
 
-        // A leap's offset transform maps a texel inside the departing island's
-        // band to a point inside the landing island's own band for that same
-        // seam (that's the whole point of the band), so checking IslandLeap
-        // unconditionally every iteration can leap straight back next
-        // iteration, then back again — an infinite-loop-shaped bug: bounded
-        // by maxSteps so it can't hang the GPU, but the ray can spend its
-        // entire step budget bouncing between the two islands without ever
-        // advancing in depth. `jumped` is a one-iteration cooldown: skip the
-        // check for exactly the iteration right after a leap, guaranteeing
-        // at least one real box-march step away from the seam before a leap
-        // is considered again.
-        if(UseAtlas) {
-            if(jumped) {
-                // jumped = false;
-            } else if(rm.z > 0.0) {
-                IslandLeap(Tangent_Direction, pos, invDir, leapingPoint, landingPoint, jumped, offsetSamples, numLeaps, rotationAccum);
-                // Re-sample: a successful leap just moved pos.xy onto the
-                // landing island, and depth/AABB below must match wherever
-                // the ray currently sits, not the island it left.
-                if(jumped)
-                    rm = textureLod(Relief_Map, pos.xy, mip);
-            }
-        }
+/**
+ * Surface normal (object space, pointing outward) from the depth gradient of plane `layer`
+ * around `q`. Neighbouring texels outside the silhouette fall back to the center depth.
+ */
+vec3 planeNormal(int layer, vec3 q) {
+    int axis = layer / 2;
+    int u = (axis + 1) % 3;
+    int v = (axis + 2) % 3;
+    float sgn = (layer % 2 == 0) ? 1.0 : -1.0;
+    vec3 ext = BoxMax - BoxMin;
 
-        float s = (ReliefTextureType == 1) ? rm.y : rm.x;
-        float depth = (ReliefTextureType == 1 ? s - 1.0 : -s) * DepthScale;
+    vec2 texel = 1.0 / vec2(textureSize(Plane_Maps, 0).xy);
+    vec2 st = vec2(q[u], q[v]);
+    vec4 c = textureLod(Plane_Maps, vec3(st, float(layer)), 0.0);
 
-        vec3 aabbMin, aabbMax;
-        BuildPixelAABB(pos.xy, depth, pixelSize, aabbMin, aabbMax);
-
-        // Not so deep, need to advance the ray
-        if(pos.z > depth + EPS) {
-            bool bottomHit;
-            pos = IntersectTheBox(pos, Tangent_Direction, invDir, aabbMin, aabbMax, bottomHit);
-
-            if(!bottomHit) {
-                wallCount++;
-                if(wallCount >= 3) {
-                    mip += 1.0;
-                    pixelSize *= 2.0;
-                }
-                continue;
-            }
-        }
-
-        // Mip-down (reached by: depth pass OR bottom hit)
-        if(mip <= 0.0)
-            break;
-        mip -= 1.0;
-        pixelSize *= 0.5;
-        wallCount = 0;
+    float d[4];
+    vec2 offs[4] = vec2[4](vec2(-1, 0), vec2(1, 0), vec2(0, -1), vec2(0, 1));
+    for (int i = 0; i < 4; i++) {
+        vec4 n = textureLod(Plane_Maps, vec3(st + offs[i] * texel, float(layer)), 0.0);
+        d[i] = n.a >= MASK_THRESHOLD ? n.b : c.b;
     }
 
-    leapCounter = numLeaps;
-    stepsOut = stepsTaken;
-    totalRotation = rotationAccum;
-    return pos;
-}
+    // Distance (in object units) of the surface from the plane, per unit of s and t.
+    float dds = (d[1] - d[0]) * ext[axis] / (2.0 * texel.x * ext[u]);
+    float ddt = (d[3] - d[2]) * ext[axis] / (2.0 * texel.y * ext[v]);
 
-vec2 ReliefMapping(vec3 Tangent_Direction, vec2 UV, out int leapCounter, out int stepsOut, out float totalRotation) {
-    int numLeaps = 0, numSteps = 0;
-    float rotation = 0.0;
-    vec3 StartingPoint = Mip_Relief(Tangent_Direction, UV, LinearSteps, numLeaps, numSteps, rotation);
-
-    leapCounter = numLeaps;
-    stepsOut = numSteps;
-    totalRotation = rotation;
-    return StartingPoint.xy;
+    // The surface is A(s, t) = c - sgn * depth along `axis`, so its outward normal is
+    // proportional to (dds, ddt) in (u, v) and sgn along `axis`.
+    vec3 n = vec3(0.0);
+    n[u] = dds;
+    n[v] = ddt;
+    n[axis] = sgn;
+    return normalize(n);
 }
 
 void main() {
-    vec3 N = normalize(Normal);
-    vec3 T = normalize(Tangent - N * dot(N, Tangent));
-    vec3 B = cross(N, T) * Handedness;
-    mat3 TBN = mat3(T, B, N);
+    if (DebugView == 4) {
+        FragColor = vec4(1.0, 0.9, 0.3, 1.0);
+        return;
+    }
 
-    vec2 finalUV = TexCoord;
-    int leapCounter = 0, stepsTaken = 0;
-    float totalRotation = 0.0;
+    vec3 dir = normalize(ObjPos - CamObj);
+    vec2 tt = intersectBox(CamObj, dir);
+    if (tt.y < max(tt.x, 0.0))
+        discard;
 
-    if(ReliefEnabled) {
-        // Reconstructed here (rather than interpolated from a per-vertex
-        // ViewDirTS varying) so the ray direction uses the same per-pixel,
-        // renormalized T/B/N as the shading normal below. Interpolating a
-        // pre-transformed per-vertex vector instead would only match across
-        // triangle edges in value, not in slope — adjacent triangles pull it
-        // toward different third vertices — and the box-march below is a
-        // nonlinear, branchy function of ray direction (which AABB wall gets
-        // hit, mip promote/demote, island leaps), so that slope kink turns
-        // into a visible seam right on triangle edges. It's masked at
-        // near-normal angles but blown up at grazing ones by the 1/|viewTS.z|
-        // below, which is exactly where the reported distortion shows up.
-        vec3 viewDirWorld = normalize(viewPosWorld - FragPos);
-        vec3 viewTS = normalize(vec3(dot(viewDirWorld, T), dot(viewDirWorld, B), dot(viewDirWorld, N)));
-        // Tangent-space ray marching into the surface: xy follows the view
-        // direction's projection (silhouette-correct parallax), z is negative
-        // because depth values are negative (z=0 is the untouched surface
-        // plane, more negative is deeper) — see relief.ush's `depth` sign.
-        // DepthScale scales the sampled height/depth values themselves (see
-        // Mip_Relief), not this ray's slope — matching the UE material, and
-        // keeping the mip-marching step dynamics independent of the depth slider.
-        vec3 tangentDir = vec3(-viewTS.xy / max(abs(viewTS.z), 1e-4), -1.0);
-        finalUV = ReliefMapping(tangentDir, TexCoord, leapCounter, stepsTaken, totalRotation);
+    float tStart = max(tt.x, 0.0);
+    float tEnd = tt.y;
+    vec3 extent = max(BoxMax - BoxMin, vec3(1e-9));
+    int steps = max(LinearSteps, 1);
 
-        // The ray can wander outside the texture's [0,1] bounds (e.g. an
-        // island leap that never fires near a UV-atlas seam, or a mesh
-        // border). GL_REPEAT would otherwise silently wrap this into an
-        // unrelated, wrong part of the atlas, so discard instead of showing
-        // incorrect texture data.
-        if(any(lessThan(finalUV, vec2(0.0))) || any(greaterThan(finalUV, vec2(1.0))))
+    float hitT = tStart;
+    bool hit = false;
+    int stepsTaken = 0;
+
+    if (ReliefEnabled) {
+        float dt = (tEnd - tStart) / float(steps);
+        float prevT = tStart;
+        for (int i = 0; i <= steps; i++) {
+            stepsTaken = i + 1;
+            float t = tStart + dt * float(i);
+            vec3 q = (CamObj + dir * t - BoxMin) / extent;
+            if (insideSolid(q)) {
+                // Binary search between the last outside sample and this one.
+                float lo = prevT, hi = t;
+                if (i == 0)
+                    lo = hi;
+                for (int k = 0; k < REFINE_STEPS && lo < hi; k++) {
+                    float mid = 0.5 * (lo + hi);
+                    vec3 qm = (CamObj + dir * mid - BoxMin) / extent;
+                    if (insideSolid(qm))
+                        hi = mid;
+                    else
+                        lo = mid;
+                }
+                hitT = hi;
+                hit = true;
+                break;
+            }
+            prevT = t;
+        }
+        if (!hit)
             discard;
+    } else {
+        hit = true;
     }
 
-    if(DebugView == 1) {
-        FragColor = vec4(vec3(float(stepsTaken) / float(max(LinearSteps, 1))), 1.0);
+    vec3 hitObj = CamObj + dir * hitT;
+    vec3 q = clamp((hitObj - BoxMin) / extent, 0.0, 1.0);
+
+    // Without relief this is the point where the ray enters the box. Either way, a point that
+    // falls outside every mask (e.g. right at a silhouette edge) is not drawn.
+    int layer = bestPlane(q);
+    if (layer < 0)
+        discard;
+
+    vec4 plane = samplePlane(layer, q);
+    vec2 uv = plane.rg;
+
+    vec4 hitWorld = model * vec4(hitObj, 1.0);
+    vec4 clip = projection * view * hitWorld;
+    gl_FragDepth = clamp(clip.z / clip.w * 0.5 + 0.5, 0.0, 1.0);
+
+    if (DebugView == 1) {
+        FragColor = vec4(vec3(float(stepsTaken) / float(steps + 1)), 1.0);
         return;
     }
-    if(DebugView == 2) {
-        FragColor = vec4(vec3(float(leapCounter) / 4.0), 1.0);
+    if (DebugView == 2) {
+        const vec3 colors[6] = vec3[6](vec3(1, 0.2, 0.2), vec3(0.5, 0.1, 0.1), vec3(0.2, 1, 0.2),
+                                       vec3(0.1, 0.5, 0.1), vec3(0.2, 0.4, 1), vec3(0.1, 0.2, 0.5));
+        FragColor = vec4(colors[layer], 1.0);
         return;
     }
-    if(DebugView == 3) {
-        FragColor = vec4(finalUV, 0.0, 1.0);
+    if (DebugView == 3) {
+        FragColor = vec4(uv, 0.0, 1.0);
         return;
     }
 
-    // Need to verify if fixed LOD is the best option here to
-    // avoid bleeding between two discontinuous fragments.
-    // The naive use of the 'texture' function to sample implies in bleeding.
-    vec3 albedo = textureLod(Color_Map, finalUV, 0.0).rgb;
-    vec3 nTS = textureLod(Normal_Map, finalUV, 0.0).rgb;
-    // The landing island's normal map is stored in a tangent frame rotated by
-    // totalRotation relative to the mesh's own tangent space (see
-    // PerformIslandLeap). Rotate the sampled normal back before applying TBN,
-    // or leaped regions read the wrong slope and look flat/off compared to
-    // the rest of the surface.
-    nTS.xy = rotateXY(nTS.xy, -totalRotation);
-    vec3 shadingNormal = normalize(TBN * nTS);
+    vec3 albedo = textureLod(Color_Map, uv, 0.0).rgb;
+    vec3 nObj = planeNormal(layer, q);
+    vec3 nWorld = normalize(mat3(model) * nObj);
 
-    vec3 lightDir = normalize(LightPosWorld - FragPos);
-    float diff = max(dot(shadingNormal, lightDir), 0.0);
-    vec3 result = albedo * (0.3 + 0.7 * diff);
-    FragColor = vec4(result, 1.0);
+    vec3 lightDir = normalize(LightPosWorld - hitWorld.xyz);
+    float diff = max(dot(nWorld, lightDir), 0.0);
+    FragColor = vec4(albedo * (0.3 + 0.7 * diff), 1.0);
 }

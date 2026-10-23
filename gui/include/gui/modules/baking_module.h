@@ -14,9 +14,9 @@
 /**
  * @brief Module hosting two linked viewports: a common view of the original
  *        mesh, and a relief view of the 12-triangle bounding box textured with
- *        the baked maps (when they exist). The baking itself is triggered from
- *        the Textures module; this module refreshes on onMeshUpdated(). Each of the box's six faces shows its own tile (the
- *        baked UV map as RGB = (u, v, 0), plus its depth) of a 3x2 atlas.
+ *        the baked planes (when they exist), ray-marched against all six of
+ *        them. The baking itself is triggered from the Textures module; this module
+ *        refreshes on onMeshUpdated().
  */
 class BakingModule : public Module {
     Q_OBJECT

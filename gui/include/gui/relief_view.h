@@ -17,9 +17,12 @@
 #include "relief/textures.h"
 #include "relief/uv_atlas.h"
 
-/// @brief Dedicated OpenGL widget for relief mapping. Receives a simplified
-///        mesh and its baked maps (color/relief/normal/offset), and renders
-///        with the mip-hierarchical relief mapping shader (relief.vert / relief.frag).
+/// @brief Dedicated OpenGL widget for relief mapping. Receives a mesh and renders it with
+///        one of two shader programs:
+///        - If the mesh carries baked planes (mesh::Mesh::planes), it is treated as the
+///          bounding box and ray-marched against the 6 plane textures (relief.vert / relief.frag).
+///        - Otherwise, with its baked maps (color/relief/normal/offset), the previous
+///          mip-hierarchical relief mapping shader (old_relief.vert / old_relief.frag).
 class ReliefView : public QOpenGLWidget, protected QOpenGLFunctions_3_3_Core
 {
     Q_OBJECT
@@ -40,8 +43,11 @@ public:
     void setNormalMap(const textures::MipPyramid& pyr);
     /// Uploads the cross-seam Offset_Map used to leap relief rays across UV islands.
     void setOffsetMap(const textures::MipPyramid& off);
-    /// @return true once all four textures (color/relief/normal/offset) have been uploaded.
-    bool hasTextures() const { return colorTex && reliefTex && normalTex && offsetTex; }
+    /// @return true once the textures of the active mode have been uploaded: color and the
+    ///         6-plane array when rendering baked planes, else color/relief/normal/offset.
+    bool hasTextures() const {
+        return usePlanes ? (colorTex && planesTex) : (colorTex && reliefTex && normalTex && offsetTex);
+    }
 
     /// Resets the orbit camera to its default position.
     void resetCamera();
@@ -119,8 +125,16 @@ private:
     /// True when `mesh` has changed since GPU buffers were last uploaded, signaling paintGL() to rebuild them.
     bool meshDirty = false;
 
+    /// True when `mesh` carries baked planes and is drawn with `prog` (the 6-plane shader)
+    /// instead of `oldProg`.
+    bool usePlanes = false;
+    /// Bounds of `mesh` in its own space (the box that the 6 planes project onto).
+    QVector3D boxMin{0.f, 0.f, 0.f};
+    QVector3D boxMax{0.f, 0.f, 0.f};
+
     // OpenGL resources
-    QOpenGLShaderProgram     prog;
+    QOpenGLShaderProgram     prog;     ///< 6-plane relief shader (relief.vert / relief.frag).
+    QOpenGLShaderProgram     oldProg;  ///< Previous relief shader (old_relief.vert / old_relief.frag).
     QOpenGLBuffer            vbo{QOpenGLBuffer::VertexBuffer};
     QOpenGLBuffer            ebo{QOpenGLBuffer::IndexBuffer};
     QOpenGLVertexArrayObject vao;
@@ -130,6 +144,8 @@ private:
     QOpenGLTexture *reliefTex  = nullptr;
     QOpenGLTexture *normalTex  = nullptr;
     QOpenGLTexture *offsetTex  = nullptr;
+    /// RGBA16 2D array of the 6 baked planes (layer = axis * 2 + (negative ? 1 : 0)).
+    QOpenGLTexture *planesTex  = nullptr;
 
     // Lighting orb GL resources (fresnel-shaded sphere glyph, built once).
     QOpenGLShaderProgram     orbProg;
@@ -151,6 +167,13 @@ private:
     /// Builds and uploads all four relief maps from `mesh` itself, using its
     /// height texture for the relief map. Needs a current GL context.
     void buildMapsFromMesh();
+    /// Builds and uploads the color map and the 6-plane array from `mesh`'s planes.
+    /// Needs a current GL context.
+    void buildPlanesFromMesh();
+    /// Binds the shader program of the active mode, its uniforms and textures.
+    /// @param debugView DebugView uniform value (e.g. 3 for the UV pick pass).
+    /// @return The bound program, to release after drawing.
+    QOpenGLShaderProgram *bindSurfaceProgram(int debugView);
     /// Builds and uploads the unit-radius sphere used to draw the light orb.
     void buildOrbMesh();
     /// Builds and uploads the unit quad used to draw the glow halo billboard.

@@ -240,6 +240,96 @@ void ReliefView::buildMapsFromMesh()
                   QOpenGLTexture::Nearest, QOpenGLTexture::Nearest);
 }
 
+void ReliefView::buildPlanesFromMesh()
+{
+    const mesh::Texture &color = this->mesh->colorTexture();
+    const auto &planes = this->mesh->planes();
+
+    constexpr int kMaxMapRes = 2048;
+    const int kRes = color.data.empty()
+                         ? 1
+                         : std::min(kMaxMapRes, textures::nextPowerOfTwo(std::max(color.width, color.height)));
+
+    // Without a color texture, fall back to a flat gray.
+    static const uint8_t kGray[4] = {128, 128, 128, 255};
+    const textures::RawImage rawColor =
+        color.data.empty() ? textures::RawImage{kGray, 1, 1, 4}
+                           : textures::RawImage{color.data.data(), color.width, color.height, 4};
+    const MipPyramid colorMap = textures::buildColorMap(rawColor, kRes, kRes);
+    uploadTexture(this->colorTex, colorMap, QOpenGLTexture::RGBA32F, QOpenGLTexture::RGBA,
+                  QOpenGLTexture::LinearMipMapLinear, QOpenGLTexture::Linear);
+
+    delete this->planesTex;
+    this->planesTex = nullptr;
+    const int w = planes[0].width, h = planes[0].height;
+    if (w <= 0 || h <= 0)
+        return;
+
+    // Nearest, no mips: the mask and depth must not be blended across the silhouette.
+    this->planesTex = new QOpenGLTexture(QOpenGLTexture::Target2DArray);
+    this->planesTex->setFormat(QOpenGLTexture::RGBA16_UNorm);
+    this->planesTex->setSize(w, h);
+    this->planesTex->setLayers(6);
+    this->planesTex->setMipLevels(1);
+    this->planesTex->allocateStorage();
+    for (int layer = 0; layer < 6; layer++)
+    {
+        if (planes[layer].data.size() != (size_t)w * h * 4)
+            continue;
+        this->planesTex->setData(0, layer, QOpenGLTexture::RGBA, QOpenGLTexture::UInt16,
+                                 planes[layer].data.data());
+    }
+    this->planesTex->setMinificationFilter(QOpenGLTexture::Nearest);
+    this->planesTex->setMagnificationFilter(QOpenGLTexture::Nearest);
+    this->planesTex->setWrapMode(QOpenGLTexture::ClampToEdge);
+}
+
+QOpenGLShaderProgram *ReliefView::bindSurfaceProgram(int debugView)
+{
+    float radX = qDegreesToRadians(this->rotX);
+    float radY = qDegreesToRadians(this->rotY);
+    QVector3D camPos(
+        this->zoom * sinf(radY) * cosf(radX),
+        this->zoom * sinf(radX),
+        this->zoom * cosf(radY) * cosf(radX));
+
+    QOpenGLShaderProgram &p = this->usePlanes ? this->prog : this->oldProg;
+    p.bind();
+    p.setUniformValue("projection", projMatrix());
+    p.setUniformValue("view", viewMatrix());
+    p.setUniformValue("model", modelMatrix());
+    p.setUniformValue("viewPosWorld", camPos);
+    p.setUniformValue("LightPosWorld", this->lightPos);
+    p.setUniformValue("ReliefEnabled", this->reliefEnabled);
+    p.setUniformValue("LinearSteps", this->steps);
+    p.setUniformValue("DebugView", debugView);
+
+    this->colorTex->bind(0);
+    p.setUniformValue("Color_Map", 0);
+
+    if (this->usePlanes)
+    {
+        p.setUniformValue("BoxMin", this->boxMin);
+        p.setUniformValue("BoxMax", this->boxMax);
+        this->planesTex->bind(1);
+        p.setUniformValue("Plane_Maps", 1);
+        return &p;
+    }
+
+    p.setUniformValue("UseAtlas", this->useAtlas);
+    p.setUniformValue("ReliefTextureType", this->reliefTextureType);
+    p.setUniformValue("DepthScale", this->depthScale);
+    float lastMip = std::log2((float)std::max(1, this->reliefTex->width()));
+    p.setUniformValue("LastMip", lastMip);
+    this->reliefTex->bind(1);
+    p.setUniformValue("Relief_Map", 1);
+    this->offsetTex->bind(2);
+    p.setUniformValue("Offset_Map", 2);
+    this->normalTex->bind(3);
+    p.setUniformValue("Normal_Map", 3);
+    return &p;
+}
+
 void ReliefView::setColorMap(const MipPyramid& pyr)
 {
     makeCurrent();
@@ -366,6 +456,13 @@ void ReliefView::initializeGL()
     if (!this->prog.link())
         std::cerr << "ReliefView link error: " << this->prog.log().toStdString() << "\n";
 
+    if (!this->oldProg.addShaderFromSourceFile(QOpenGLShader::Vertex, ":/shaders/old_relief.vert"))
+        std::cerr << "ReliefView old vert error: " << this->oldProg.log().toStdString() << "\n";
+    if (!this->oldProg.addShaderFromSourceFile(QOpenGLShader::Fragment, ":/shaders/old_relief.frag"))
+        std::cerr << "ReliefView old frag error: " << this->oldProg.log().toStdString() << "\n";
+    if (!this->oldProg.link())
+        std::cerr << "ReliefView old link error: " << this->oldProg.log().toStdString() << "\n";
+
     if (!this->orbProg.addShaderFromSourceFile(QOpenGLShader::Vertex, ":/shaders/orb.vert"))
         std::cerr << "ReliefView orb vert error: " << this->orbProg.log().toStdString() << "\n";
     if (!this->orbProg.addShaderFromSourceFile(QOpenGLShader::Fragment, ":/shaders/orb.frag"))
@@ -394,7 +491,10 @@ void ReliefView::paintGL()
     if (this->mesh && meshDirty)
     {
         buildMeshBuffers();
-        if (!this->mesh->heightTexture().data.empty())
+        this->usePlanes = !this->mesh->planes()[0].data.empty();
+        if (this->usePlanes)
+            buildPlanesFromMesh();
+        else if (!this->mesh->heightTexture().data.empty())
             buildMapsFromMesh();
         meshDirty = false;
     }
@@ -420,12 +520,11 @@ void ReliefView::paintGL()
     else
         glDisable(GL_CULL_FACE);
 
-    glPolygonMode(GL_FRONT_AND_BACK, this->wireframe ? GL_LINE : GL_FILL);
+    // The 6-plane shader ray-marches per fragment, so it can't be drawn as lines itself:
+    // its wireframe is an overlay of the box edges over the shaded frame (see below).
+    glPolygonMode(GL_FRONT_AND_BACK, this->wireframe && !this->usePlanes ? GL_LINE : GL_FILL);
 
-    this->prog.bind();
-    this->prog.setUniformValue("projection", projMatrix());
-    this->prog.setUniformValue("view", viewMatrix());
-    this->prog.setUniformValue("model", modelMatrix());
+    QOpenGLShaderProgram *surfaceProg = bindSurfaceProgram(this->debugView);
 
     float radX = qDegreesToRadians(this->rotX);
     float radY = qDegreesToRadians(this->rotY);
@@ -433,32 +532,21 @@ void ReliefView::paintGL()
         this->zoom * sinf(radY) * cosf(radX),
         this->zoom * sinf(radX),
         this->zoom * cosf(radY) * cosf(radX));
-    this->prog.setUniformValue("viewPosWorld", camPos);
-    this->prog.setUniformValue("LightPosWorld", this->lightPos);
-
-    this->prog.setUniformValue("ReliefEnabled", this->reliefEnabled);
-    this->prog.setUniformValue("UseAtlas", this->useAtlas);
-    this->prog.setUniformValue("ReliefTextureType", this->reliefTextureType);
-    this->prog.setUniformValue("LinearSteps", this->steps);
-    this->prog.setUniformValue("DepthScale", this->depthScale);
-    float lastMip = std::log2((float)std::max(1, this->reliefTex->width()));
-    this->prog.setUniformValue("LastMip", lastMip);
-    this->prog.setUniformValue("DebugView", this->debugView);
-
-    this->colorTex->bind(0);
-    this->prog.setUniformValue("Color_Map", 0);
-    this->reliefTex->bind(1);
-    this->prog.setUniformValue("Relief_Map", 1);
-    this->offsetTex->bind(2);
-    this->prog.setUniformValue("Offset_Map", 2);
-    this->normalTex->bind(3);
-    this->prog.setUniformValue("Normal_Map", 3);
 
     this->vao.bind();
     glDrawElements(GL_TRIANGLES, this->indexCount, GL_UNSIGNED_INT, nullptr);
+    if (this->wireframe && this->usePlanes)
+    {
+        // DebugView 4 makes relief.frag output a flat color without ray marching.
+        surfaceProg->setUniformValue("DebugView", 4);
+        glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);
+        glDepthFunc(GL_LEQUAL);
+        glDrawElements(GL_TRIANGLES, this->indexCount, GL_UNSIGNED_INT, nullptr);
+        glDepthFunc(GL_LESS);
+    }
     this->vao.release();
 
-    this->prog.release();
+    surfaceProg->release();
     glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
 
     // Light orb glyph: small unlit sphere at the light's world position,
@@ -602,41 +690,12 @@ void ReliefView::performPick(const QPoint &widgetPos)
         glDisable(GL_CULL_FACE);
     glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
 
-    this->prog.bind();
-    this->prog.setUniformValue("projection", projMatrix());
-    this->prog.setUniformValue("view", viewMatrix());
-    this->prog.setUniformValue("model", modelMatrix());
-
-    float radX = qDegreesToRadians(this->rotX);
-    float radY = qDegreesToRadians(this->rotY);
-    QVector3D camPos(
-        this->zoom * sinf(radY) * cosf(radX),
-        this->zoom * sinf(radX),
-        this->zoom * cosf(radY) * cosf(radX));
-    this->prog.setUniformValue("viewPosWorld", camPos);
-
-    this->prog.setUniformValue("ReliefEnabled", this->reliefEnabled);
-    this->prog.setUniformValue("UseAtlas", this->useAtlas);
-    this->prog.setUniformValue("ReliefTextureType", this->reliefTextureType);
-    this->prog.setUniformValue("LinearSteps", this->steps);
-    this->prog.setUniformValue("DepthScale", this->depthScale);
-    float lastMip = std::log2((float)std::max(1, this->reliefTex->width()));
-    this->prog.setUniformValue("LastMip", lastMip);
-    this->prog.setUniformValue("DebugView", 3);
-
-    this->colorTex->bind(0);
-    this->prog.setUniformValue("Color_Map", 0);
-    this->reliefTex->bind(1);
-    this->prog.setUniformValue("Relief_Map", 1);
-    this->offsetTex->bind(2);
-    this->prog.setUniformValue("Offset_Map", 2);
-    this->normalTex->bind(3);
-    this->prog.setUniformValue("Normal_Map", 3);
+    QOpenGLShaderProgram *surfaceProg = bindSurfaceProgram(3);
 
     this->vao.bind();
     glDrawElements(GL_TRIANGLES, this->indexCount, GL_UNSIGNED_INT, nullptr);
     this->vao.release();
-    this->prog.release();
+    surfaceProg->release();
     glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
 
     float pixel[4] = {0.f, 0.f, 0.f, 0.f};
@@ -673,6 +732,8 @@ void ReliefView::buildMeshBuffers()
         bmin = bmin.cwiseMin(v.pos);
         bmax = bmax.cwiseMax(v.pos);
     }
+    this->boxMin = QVector3D((float)bmin.x(), (float)bmin.y(), (float)bmin.z());
+    this->boxMax = QVector3D((float)bmax.x(), (float)bmax.y(), (float)bmax.z());
     Eigen::Vector3d center = (bmin + bmax) * 0.5;
     double radius = (bmax - bmin).norm() * 0.5;
     if (radius < 1e-9)
@@ -796,6 +857,7 @@ void ReliefView::deleteTextures()
     delete reliefTex; reliefTex = nullptr;
     delete normalTex; normalTex = nullptr;
     delete offsetTex; offsetTex = nullptr;
+    delete planesTex; planesTex = nullptr;
 }
 
 // ─── Camera matrices ──────────────────────────────────────────────────────────

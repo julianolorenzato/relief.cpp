@@ -6,6 +6,7 @@
 #include "gui/modules/baking_module.h"
 #include "gui/relief_controls.h"
 #include <QApplication>
+#include <QCheckBox>
 #include <QHBoxLayout>
 #include <QVBoxLayout>
 #include <algorithm>
@@ -14,65 +15,13 @@
 
 namespace {
 
-/// Atlas grid: one column per axis (X, Y, Z), one row per side (0 = +, 1 = -).
-constexpr int kAtlasCols = 3;
-constexpr int kAtlasRows = 2;
-
-/**
- * @brief Composes the box's color and height textures from a baked mesh's planes.
- *
- * The result is a kAtlasCols x kAtlasRows atlas with one tile per box quad. A quad's color
- * tile shows its plane texture as RGB = (u, v, 0), black where the mesh does not cover the
- * texel (so the mesh's silhouette on that plane is visible). Its height tile holds the
- * plane's depth as R = G = B, 0 where uncovered. Both stay empty if `baked` has no planes.
- *
- * @param baked  Mesh on which Mesh::bake() has been run.
- * @param color  Receives the RGBA8 color atlas.
- * @param height Receives the RGBA8 height atlas.
- */
-void makePlanesAtlas(const mesh::Mesh& baked, mesh::Texture& color, mesh::Texture& height)
-{
-    const auto& planes = baked.planes();
-    const int size = planes[0].width;
-    if (size <= 0 || planes[0].data.empty()) return;
-
-    const int atlasW = kAtlasCols * size;
-    const int atlasH = kAtlasRows * size;
-    color.width = height.width = atlasW;
-    color.height = height.height = atlasH;
-    color.data.assign((size_t)atlasW * atlasH * 4, 0);
-    height.data.assign((size_t)atlasW * atlasH * 4, 0);
-
-    auto to8 = [](uint16_t v) { return (uint8_t)((v + 128) / 257); };
-
-    for (int axis = 0; axis < 3; axis++) {
-        for (int row = 0; row < kAtlasRows; row++) {
-            // Planes are ordered X+, X-, Y+, Y-, Z+, Z-; row 0 is the + side.
-            const mesh::Texture16& plane = planes[axis * 2 + row];
-            for (int y = 0; y < size; y++) {
-                for (int x = 0; x < size; x++) {
-                    const size_t src = ((size_t)y * size + x) * 4;
-                    const size_t dst = ((size_t)(row * size + y) * atlasW + axis * size + x) * 4;
-
-                    color.data[dst + 0] = to8(plane.data[src + 0]);
-                    color.data[dst + 1] = to8(plane.data[src + 1]);
-                    color.data[dst + 3] = 255;
-
-                    const uint8_t value = to8(plane.data[src + 2]);
-                    height.data[dst + 0] = height.data[dst + 1] = height.data[dst + 2] = value;
-                    height.data[dst + 3] = 255;
-                }
-            }
-        }
-    }
-}
-
 /**
  * @brief Builds a copy of `src` whose geometry is its axis-aligned bounding box
  *        as 12 triangles (2 per face, unwelded across faces).
  *
- * Each face maps to its own tile of the atlas made by makePlanesAtlas(), and the
- * copy's color and height textures are that atlas (empty if `src` has no planes). Its normal map and planes are dropped.
+ * The copy keeps `src`'s color texture and baked planes (empty if `src` has not been
+ * baked), which ReliefView ray-marches inside the box. Its normal and height textures
+ * are dropped.
  *
  * @param src Mesh to bound, possibly baked.
  * @return The box mesh.
@@ -95,7 +44,6 @@ mesh::Mesh makeBoxMesh(const mesh::Mesh& src)
 
     for (const op::bboxproj::QuadInfo& quad : op::bboxproj::QUADS) {
         const int axis = quad.axis;
-        const int tileRow = quad.sign > 0 ? 0 : 1;
         const int u = (axis + 1) % 3;
         const int v = (axis + 2) % 3;
         const Eigen::Vector3d origin = center + quad.sign * half[axis] * Eigen::Vector3d::Unit(axis);
@@ -112,8 +60,7 @@ mesh::Mesh makeBoxMesh(const mesh::Mesh& src)
 
             mesh::Wedge wedge;
             wedge.vertex = (int)vertices.size() - 1;
-            wedge.uv = Eigen::Vector2d((axis + cornerX[i]) / (double)kAtlasCols,
-                                       (tileRow + cornerY[i]) / (double)kAtlasRows);
+            wedge.uv = Eigen::Vector2d(cornerX[i], cornerY[i]);
             wedges.push_back(wedge);
         }
 
@@ -127,15 +74,10 @@ mesh::Mesh makeBoxMesh(const mesh::Mesh& src)
         }
     }
 
-    mesh::Texture color, height;
-    makePlanesAtlas(src, color, height);
-
     mesh::Mesh box(src);
     box.replaceGeometry(std::move(vertices), std::move(wedges), std::move(faces));
-    box.setColorTexture(std::move(color));
-    box.setHeightTexture(std::move(height));
     box.setNormalTexture({});
-    for (int i = 0; i < 6; i++) box.setPlane(i, {});
+    box.setHeightTexture({});
     return box;
 }
 
@@ -169,6 +111,11 @@ QWidget* BakingModule::buildControls()
     QVBoxLayout* containerLayout = new QVBoxLayout(controlsContainer);
     containerLayout->setContentsMargins(4, 4, 4, 4);
     containerLayout->setSpacing(8);
+
+    QCheckBox* wireframeCheck = new QCheckBox("Wireframe", controlsContainer);
+    connect(wireframeCheck, &QCheckBox::toggled, orbitalWidget_, &Orbital3DView::setWireframe);
+    connect(wireframeCheck, &QCheckBox::toggled, reliefWidget_, &ReliefView::setWireframe);
+    containerLayout->addWidget(wireframeCheck);
 
     containerLayout->addWidget(relief_controls::makeParamsGroup(reliefWidget_, controlsContainer));
     containerLayout->addWidget(relief_controls::makeLightingGroup(reliefWidget_, controlsContainer));
