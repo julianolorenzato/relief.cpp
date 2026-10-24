@@ -5,12 +5,16 @@
  *        applying/undoing bounding-volume operations.
  */
 #include "gui/modules/bounding_module.h"
-#include "gui/relief_controls.h"
 #include <QCheckBox>
+#include <QComboBox>
+#include <QDoubleSpinBox>
 #include <QFont>
 #include <QGroupBox>
 #include <QHBoxLayout>
 #include <QLabel>
+#include <QPushButton>
+#include <QSlider>
+#include <QSpinBox>
 #include <QVBoxLayout>
 
 namespace {
@@ -118,8 +122,97 @@ QWidget* BoundingModule::buildControls()
     containerLayout->addLayout(btnRow);
 
     // ── Relief mapping controls (same as the relief sandbox) ────────────────
-    containerLayout->addWidget(relief_controls::makeParamsGroup(boundingReliefWidget_, controlsContainer));
-    containerLayout->addWidget(relief_controls::makeLightingGroup(boundingReliefWidget_, controlsContainer));
+    QGroupBox* paramsGroup = new QGroupBox("Relief Mapping Parameters", controlsContainer);
+    QVBoxLayout* paramsLayout = new QVBoxLayout(paramsGroup);
+
+    QCheckBox* enabledCheck = new QCheckBox("Enable Relief Mapping");
+    enabledCheck->setChecked(true);
+    connect(enabledCheck, &QCheckBox::toggled, boundingReliefWidget_, &ReliefView::setReliefEnabled);
+    paramsLayout->addWidget(enabledCheck);
+
+    QHBoxLayout* stepsRow = new QHBoxLayout();
+    stepsRow->addWidget(new QLabel("Steps:"));
+    QSpinBox* stepsSpin = new QSpinBox();
+    stepsSpin->setRange(1, 512);
+    stepsSpin->setValue(256);
+    connect(stepsSpin, QOverload<int>::of(&QSpinBox::valueChanged), boundingReliefWidget_, &ReliefView::setSteps);
+    stepsRow->addWidget(stepsSpin, 1);
+    paramsLayout->addLayout(stepsRow);
+
+    QHBoxLayout* depthRow = new QHBoxLayout();
+    depthRow->addWidget(new QLabel("Depth Scale:"));
+    QDoubleSpinBox* depthScaleSpin = new QDoubleSpinBox();
+    depthScaleSpin->setRange(0.0, 2.0);
+    depthScaleSpin->setSingleStep(0.01);
+    depthScaleSpin->setDecimals(4);
+    depthScaleSpin->setValue(0.05);
+    connect(depthScaleSpin, QOverload<double>::of(&QDoubleSpinBox::valueChanged), boundingReliefWidget_,
+            &ReliefView::setDepthScale);
+    depthRow->addWidget(depthScaleSpin, 1);
+    paramsLayout->addLayout(depthRow);
+
+    QCheckBox* useAtlasCheck = new QCheckBox("Use Atlas (Island Leaping)");
+    useAtlasCheck->setChecked(true);
+    connect(useAtlasCheck, &QCheckBox::toggled, boundingReliefWidget_, &ReliefView::setUseAtlas);
+    paramsLayout->addWidget(useAtlasCheck);
+
+    QHBoxLayout* texTypeRow = new QHBoxLayout();
+    texTypeRow->addWidget(new QLabel("Texture Type:"));
+    QComboBox* textureTypeCombo = new QComboBox();
+    textureTypeCombo->addItem("Depth Map", 0);
+    textureTypeCombo->addItem("Height Map", 1);
+    connect(textureTypeCombo, QOverload<int>::of(&QComboBox::currentIndexChanged), boundingReliefWidget_,
+            [this, textureTypeCombo](int) { boundingReliefWidget_->setReliefTextureType(textureTypeCombo->currentData().toInt()); });
+    texTypeRow->addWidget(textureTypeCombo, 1);
+    paramsLayout->addLayout(texTypeRow);
+
+    QHBoxLayout* debugRow = new QHBoxLayout();
+    debugRow->addWidget(new QLabel("Debug:"));
+    QComboBox* debugViewCombo = new QComboBox();
+    debugViewCombo->addItem("Shaded", 0);
+    debugViewCombo->addItem("Step Count", 1);
+    debugViewCombo->addItem("Leap Count", 2);
+    debugViewCombo->addItem("UV After Relief", 3);
+    connect(debugViewCombo, QOverload<int>::of(&QComboBox::currentIndexChanged), boundingReliefWidget_,
+            [this, debugViewCombo](int) { boundingReliefWidget_->setDebugView(debugViewCombo->currentData().toInt()); });
+    debugRow->addWidget(debugViewCombo, 1);
+    paramsLayout->addLayout(debugRow);
+
+    QPushButton* resetCamBtn = new QPushButton("Reset Camera");
+    connect(resetCamBtn, &QPushButton::clicked, boundingReliefWidget_, &ReliefView::resetCamera);
+    paramsLayout->addWidget(resetCamBtn);
+
+    containerLayout->addWidget(paramsGroup);
+
+    // ── Lighting ────────────────────────────────────────────────────────────
+    QGroupBox* lightingGroup = new QGroupBox("Lighting", controlsContainer);
+    QVBoxLayout* lightingLayout = new QVBoxLayout(lightingGroup);
+
+    // Each slider stores hundredths so it can offer 0.01 resolution over a
+    // floating-point range; the slot receives the descaled value.
+    auto addLightSlider = [this, lightingLayout](const char* label, int minHundredths, int maxHundredths,
+                                                 int defaultHundredths, void (ReliefView::*slot)(double)) {
+        QLabel* valueLbl = new QLabel(QString("%1: %2").arg(label).arg(defaultHundredths / 100.0, 0, 'f', 2));
+        lightingLayout->addWidget(valueLbl);
+
+        QSlider* slider = new QSlider(Qt::Horizontal);
+        slider->setMinimum(minHundredths);
+        slider->setMaximum(maxHundredths);
+        slider->setValue(defaultHundredths);
+        lightingLayout->addWidget(slider);
+
+        connect(slider, &QSlider::valueChanged, boundingReliefWidget_, [this, valueLbl, label, slot](int v) {
+            double value = v / 100.0;
+            valueLbl->setText(QString("%1: %2").arg(label).arg(value, 0, 'f', 2));
+            (boundingReliefWidget_->*slot)(value);
+        });
+    };
+    // Matches ReliefView's default lightPos{0.f, 2.f, 1.5f}.
+    addLightSlider("X", -300, 300, 0, &ReliefView::setLightX);
+    addLightSlider("Y", 50, 400, 200, &ReliefView::setLightY);
+    addLightSlider("Z", -300, 300, 150, &ReliefView::setLightZ);
+
+    containerLayout->addWidget(lightingGroup);
 
     return controlsContainer;
 }

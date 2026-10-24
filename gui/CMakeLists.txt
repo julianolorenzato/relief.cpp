@@ -22,7 +22,6 @@ add_executable(gui
     include/gui/modules/textures_module.h
     include/gui/modules/relief_module.h
     include/gui/relief_view.h
-    include/gui/relief_controls.h
     include/gui/modules/relief_sandbox_module.h
     include/gui/modules/normal_map_module.h
     include/gui/modules/bounding_module.h
@@ -36,7 +35,6 @@ add_executable(gui
     src/modules/textures_module.cpp
     src/modules/relief_module.cpp
     src/relief_view.cpp
-    src/relief_controls.cpp
     src/modules/relief_sandbox_module.cpp
     src/modules/normal_map_module.cpp
     src/modules/bounding_module.cpp
