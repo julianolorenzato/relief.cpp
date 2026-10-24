@@ -27,7 +27,6 @@ add_executable(gui
     include/gui/modules/normal_map_module.h
     include/gui/modules/bounding_module.h
     include/gui/modules/baking_module.h
-    include/gui/offscreen_mesh_renderer.h
     src/main.cpp
     src/mainwindow.cpp
     src/global_context.cpp
@@ -42,7 +41,6 @@ add_executable(gui
     src/modules/normal_map_module.cpp
     src/modules/bounding_module.cpp
     src/modules/baking_module.cpp
-    src/offscreen_mesh_renderer.cpp
     shaders/shaders.qrc
 )
 
