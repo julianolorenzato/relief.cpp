@@ -4,6 +4,7 @@
  *        construction, GL texture upload, and the pixel-picking pass.
  */
 #include "gui/relief_view.h"
+#include "gui/geometry.h"
 #include <QMouseEvent>
 #include <QWheelEvent>
 #include <QPainter>
@@ -115,42 +116,6 @@ namespace
             verts.push_back((float)handedness[i]);
         }
         idxs.assign(gpu.indices.begin(), gpu.indices.end());
-    }
-
-    /// @brief Builds a unit-radius lat/long sphere (positions only, unlit
-    ///        glyph) used to render the light orb.
-    void buildSphereVerts(int lonSegments, int latSegments,
-                          std::vector<float> &verts,
-                          std::vector<unsigned int> &idxs)
-    {
-        for (int lat = 0; lat <= latSegments; lat++)
-        {
-            float theta = float(lat) * float(M_PI) / float(latSegments);
-            float sinTheta = sinf(theta), cosTheta = cosf(theta);
-            for (int lon = 0; lon <= lonSegments; lon++)
-            {
-                float phi = float(lon) * 2.0f * float(M_PI) / float(lonSegments);
-                float sinPhi = sinf(phi), cosPhi = cosf(phi);
-                verts.push_back(sinTheta * cosPhi);
-                verts.push_back(cosTheta);
-                verts.push_back(sinTheta * sinPhi);
-            }
-        }
-        int stride = lonSegments + 1;
-        for (int lat = 0; lat < latSegments; lat++)
-        {
-            for (int lon = 0; lon < lonSegments; lon++)
-            {
-                unsigned int a = lat * stride + lon;
-                unsigned int b = a + stride;
-                idxs.push_back(a);
-                idxs.push_back(b);
-                idxs.push_back(a + 1);
-                idxs.push_back(a + 1);
-                idxs.push_back(b);
-                idxs.push_back(b + 1);
-            }
-        }
     }
 
 } // namespace
@@ -847,7 +812,7 @@ void ReliefView::buildOrbMesh()
 {
     std::vector<float> verts;
     std::vector<unsigned int> idxs;
-    buildSphereVerts(12, 8, verts, idxs);
+    geometry::buildSphereVerts(12, 8, verts, idxs);
 
     this->orbIndexCount = (int)idxs.size();
     if (!this->orbVao.isCreated())

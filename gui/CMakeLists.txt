@@ -17,6 +17,7 @@ add_executable(gui
     include/gui/mainwindow.h
     include/gui/global_context.h
     include/gui/module.h
+    include/gui/geometry.h
     include/gui/orbital3dview.h
     include/gui/modules/editor_module.h
     include/gui/modules/textures_module.h
@@ -30,6 +31,7 @@ add_executable(gui
     src/mainwindow.cpp
     src/global_context.cpp
     src/module.cpp
+    src/geometry.cpp
     src/orbital3dview.cpp
     src/modules/editor_module.cpp
     src/modules/textures_module.cpp
