@@ -18,6 +18,8 @@
 #include "relief/mesh.h"
 #include "relief/textures.h"
 
+class QLabel;
+
 /**
  * @brief Abstract orbital-camera 3D viewport.
  *
@@ -64,6 +66,10 @@ protected:
     void mousePressEvent(QMouseEvent *e) override;
     void mouseMoveEvent(QMouseEvent *e) override;
     void wheelEvent(QWheelEvent *e) override;
+    void resizeEvent(QResizeEvent *e) override;
+
+    /// Repositions the stats label above bottomOverlayHeight().
+    void layoutStatsLabel();
 
     /// Compiles the subclass's own shader programs. Called once from initializeGL().
     virtual void initPrograms() = 0;
@@ -73,9 +79,6 @@ protected:
     /// Draws the mesh. Called from paintGL() only when there is geometry and isReady().
     virtual void paintScene() = 0;
 
-    /// Hook run by setMesh() right after the mesh pointer changed, without a GL context
-    /// (e.g. to refresh a stats label).
-    virtual void onMeshAssigned() {}
     /// Hook for other deferred uploads, run every frame after the mesh buffers are up to date.
     virtual void prepareFrame() {}
     /// Hook run at the very end of every frame that drew the scene (e.g. pixel picking).
@@ -107,6 +110,10 @@ protected:
     /// Converts a column-major glm::mat4 to the equivalent QMatrix4x4.
     static QMatrix4x4 toQt(const glm::mat4 &m);
 
+    /// Height of the stats label, which is pinned to the bottom edge of the view.
+    static constexpr int kStatsHeight = 22;
+    QLabel *statsLabel_ = nullptr;
+
     // Render state
     bool wireframe_ = false;
     bool cullFace_ = true;
@@ -135,6 +142,8 @@ protected:
     int meshIndexCount_ = 0;
 
 private:
+    /// Refreshes the "N faces / N vertices" stats label from mesh_. Called by setMesh().
+    void updateStatsLabel();
     /// Uploads mesh_'s vertex/index buffers and recomputes its bounds and normalization.
     /// @return false if there is nothing to draw.
     bool buildMeshBuffers();

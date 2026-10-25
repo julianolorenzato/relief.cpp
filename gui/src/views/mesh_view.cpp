@@ -93,21 +93,15 @@ void MeshView::initPrograms() {
     createShaders();
 }
 
-void MeshView::onMeshAssigned() {
-    updateStatsLabel();
-}
-
 void MeshView::resizeEvent(QResizeEvent* e) {
-    QOpenGLWidget::resizeEvent(e);
+    Orbital3DView::resizeEvent(e);
     if (titleLabel_)
         titleLabel_->setGeometry(0, 0, width(), titleLabel_->height());
-    int bottomY = height();
+    int bottomY = height() - kStatsHeight;  // color row sits just above the stats label
     if (colorRow_) {
         bottomY -= colorRow_->height();
         colorRow_->setGeometry(0, bottomY, width(), colorRow_->height());
     }
-    if (statsLabel_)
-        statsLabel_->setGeometry(0, bottomY - statsLabel_->height(), width(), statsLabel_->height());
 }
 
 void MeshView::applyColorBtnStyle(QPushButton* btn, const QColor& c) {
@@ -155,32 +149,6 @@ void MeshView::createColorRow() {
 
     colorRow_->raise();
     colorRow_->show();
-}
-
-void MeshView::updateStatsLabel() {
-    if (!mesh_) return;
-
-    if (!statsLabel_) {
-        statsLabel_ = new QLabel(this);
-        statsLabel_->setAlignment(Qt::AlignCenter);
-        statsLabel_->setFixedHeight(22);
-        statsLabel_->setAttribute(Qt::WA_TransparentForMouseEvents);
-        statsLabel_->setStyleSheet(
-            "QLabel {"
-            "  background: rgba(20, 20, 20, 180);"
-            "  color: #a0a0a0;"
-            "  font-size: 10px;"
-            "  padding: 0 8px;"
-            "}"
-        );
-    }
-    statsLabel_->setText(QString("%1 faces  ·  %2 vertices")
-                              .arg(mesh_->faceCount())
-                              .arg(mesh_->vertexCount()));
-    int bottomY = height() - (colorRow_ ? colorRow_->height() : 0);
-    statsLabel_->setGeometry(0, bottomY - statsLabel_->height(), width(), statsLabel_->height());
-    statsLabel_->raise();
-    statsLabel_->show();
 }
 
 void MeshView::setTitle(const QString& title) {

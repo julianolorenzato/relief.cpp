@@ -5,6 +5,7 @@
  */
 #include "gui/views/orbital3dview.h"
 #include "gui/geometry.h"
+#include <QLabel>
 #include <QMouseEvent>
 #include <QPainter>
 #include <QWheelEvent>
@@ -41,9 +42,47 @@ Orbital3DView::~Orbital3DView() {
 void Orbital3DView::setMesh(const mesh::Mesh* mesh) {
     mesh_      = mesh;
     meshDirty_ = true;
-    onMeshAssigned();
+    updateStatsLabel();
     update();
     resetCamera();
+}
+
+void Orbital3DView::updateStatsLabel() {
+    if (!mesh_) {
+        if (statsLabel_) statsLabel_->hide();
+        return;
+    }
+
+    if (!statsLabel_) {
+        statsLabel_ = new QLabel(this);
+        statsLabel_->setAlignment(Qt::AlignCenter);
+        statsLabel_->setFixedHeight(kStatsHeight);
+        statsLabel_->setAttribute(Qt::WA_TransparentForMouseEvents);
+        statsLabel_->setStyleSheet(
+            "QLabel {"
+            "  background: rgba(20, 20, 20, 180);"
+            "  color: #a0a0a0;"
+            "  font-size: 10px;"
+            "  padding: 0 8px;"
+            "}"
+        );
+    }
+    statsLabel_->setText(QString("%1 faces  ·  %2 vertices")
+                              .arg(mesh_->faceCount())
+                              .arg(mesh_->vertexCount()));
+    layoutStatsLabel();
+    statsLabel_->raise();
+    statsLabel_->show();
+}
+
+void Orbital3DView::layoutStatsLabel() {
+    if (!statsLabel_) return;
+    statsLabel_->setGeometry(0, height() - kStatsHeight, width(), kStatsHeight);
+}
+
+void Orbital3DView::resizeEvent(QResizeEvent* e) {
+    QOpenGLWidget::resizeEvent(e);
+    layoutStatsLabel();
 }
 
 void Orbital3DView::resetCamera() {

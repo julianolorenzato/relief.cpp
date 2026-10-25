@@ -80,7 +80,6 @@ public slots:
 protected:
     void initPrograms() override;
     void onMeshChanged() override;
-    void onMeshAssigned() override;
     void prepareFrame() override;
     void paintScene() override;
     void resizeEvent(QResizeEvent *e) override;
@@ -90,7 +89,6 @@ protected:
 private:
     RenderMode mode_;
     QLabel *titleLabel_ = nullptr;
-    QLabel *statsLabel_ = nullptr;
     QWidget *colorRow_ = nullptr;
     QPushButton *primaryColorBtn_ = nullptr;
     QPushButton *secondaryColorBtn_ = nullptr;
@@ -100,9 +98,6 @@ private:
 
     void createColorRow();
     void applyColorBtnStyle(QPushButton *btn, const QColor &c);
-    /// Refreshes the "N faces / N vertices" stats label from mesh_. Called
-    /// whenever the primary mesh pointer changes (setMesh()/setMeshes()).
-    void updateStatsLabel();
 
     // Render options
     bool textured_ = false;
