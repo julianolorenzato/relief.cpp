@@ -16,7 +16,7 @@ class ReliefView : public Orbital3DView
     Q_OBJECT
 
 public:
-    explicit ReliefView(QWidget *parent = nullptr);
+    using Orbital3DView::Orbital3DView;
     ~ReliefView() override;
 
     /// @return true once the color map and the 6-plane arrays have been uploaded.

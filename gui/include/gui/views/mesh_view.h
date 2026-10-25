@@ -6,8 +6,6 @@
  */
 #pragma once
 #include <QColor>
-#include <QLabel>
-#include <QPushButton>
 #include <glm/glm.hpp>
 #include <set>
 #include "gui/views/orbital3dview.h"
@@ -38,14 +36,11 @@ class MeshView : public Orbital3DView
     Q_OBJECT
 
 public:
-    explicit MeshView(RenderMode mode = RenderMode::Solid, const QString &title = {}, QWidget *parent = nullptr);
+    explicit MeshView(RenderMode mode, const QString &title, QWidget *parent = nullptr);
     ~MeshView() override;
 
-    /// Switches render mode (and rebuilds the color-swatch row visibility for Overlay).
+    /// Switches render mode .
     void setMode(RenderMode mode);
-
-    /// Sets the title label shown above the viewport.
-    void setTitle(const QString &title);
 
     /// Sets both meshes for Overlay mode (primary = blue, secondary = orange).
     void setMeshes(const mesh::Mesh *primary, const mesh::Mesh *secondary);
@@ -82,22 +77,14 @@ protected:
     void onMeshChanged() override;
     void prepareFrame() override;
     void paintScene() override;
-    void resizeEvent(QResizeEvent *e) override;
     void mousePressEvent(QMouseEvent *) override;
     void mouseMoveEvent(QMouseEvent *) override;
 
 private:
     RenderMode mode_;
-    QLabel *titleLabel_ = nullptr;
-    QWidget *colorRow_ = nullptr;
-    QPushButton *primaryColorBtn_ = nullptr;
-    QPushButton *secondaryColorBtn_ = nullptr;
 
     QColor primaryColor_{89, 140, 242};
     QColor secondaryColor_{242, 127, 25};
-
-    void createColorRow();
-    void applyColorBtnStyle(QPushButton *btn, const QColor &c);
 
     // Render options
     bool textured_ = false;

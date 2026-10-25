@@ -90,7 +90,7 @@ void makeLightSliderRow(QVBoxLayout* layout, const char* label, int minHundredth
 
 QWidget* ReliefSandboxModule::buildContent() {
     // Viewport widget
-    this->reliefView = new OldReliefView();
+    this->reliefView = new OldReliefView("Relief");
     connect(this->reliefView, &OldReliefView::pixelPicked, this,
             &ReliefSandboxModule::onPixelPicked);
 

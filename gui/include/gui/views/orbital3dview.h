@@ -35,7 +35,8 @@ class Orbital3DView : public QOpenGLWidget, protected QOpenGLFunctions_3_3_Core
     Q_OBJECT
 
 public:
-    explicit Orbital3DView(QWidget *parent = nullptr);
+    /// @param title Title shown along the top edge of the viewport.
+    explicit Orbital3DView(const QString &title, QWidget *parent = nullptr);
     ~Orbital3DView() override;
 
     /// Sets the mesh to render (not owned) and resets the camera.
@@ -68,7 +69,7 @@ protected:
     void wheelEvent(QWheelEvent *e) override;
     void resizeEvent(QResizeEvent *e) override;
 
-    /// Repositions the stats label above bottomOverlayHeight().
+    /// Pins the stats label to the bottom edge and the title label to the top edge.
     void layoutStatsLabel();
 
     /// Compiles the subclass's own shader programs. Called once from initializeGL().
@@ -142,6 +143,8 @@ protected:
     int meshIndexCount_ = 0;
 
 private:
+    QLabel *titleLabel_ = nullptr;
+    void layoutTitleLabel();
     /// Refreshes the "N faces / N vertices" stats label from mesh_. Called by setMesh().
     void updateStatsLabel();
     /// Uploads mesh_'s vertex/index buffers and recomputes its bounds and normalization.

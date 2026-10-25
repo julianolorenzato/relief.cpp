@@ -4,8 +4,6 @@
  *        and the per-mode paint routines (Solid, Overlay, UV).
  */
 #include "gui/views/mesh_view.h"
-#include <QColorDialog>
-#include <QHBoxLayout>
 #include <QMouseEvent>
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
@@ -16,12 +14,8 @@
 // ─── Constructor / destructor ─────────────────────────────────────────────────
 
 MeshView::MeshView(RenderMode mode, const QString& title, QWidget* parent)
-    : Orbital3DView(parent), mode_(mode)
+    : Orbital3DView(title, parent), mode_(mode)
 {
-    if (!title.isEmpty())
-        setTitle(title);
-    if (mode_ == RenderMode::Overlay)
-        createColorRow();
 }
 
 MeshView::~MeshView() {
@@ -62,12 +56,10 @@ void MeshView::setInteractionMode(InteractionMode m) {
 
 void MeshView::setPrimaryColor(const QColor& c) {
     primaryColor_ = c;
-    if (primaryColorBtn_) applyColorBtnStyle(primaryColorBtn_, c);
     update();
 }
 void MeshView::setSecondaryColor(const QColor& c) {
     secondaryColor_ = c;
-    if (secondaryColorBtn_) applyColorBtnStyle(secondaryColorBtn_, c);
     update();
 }
 
@@ -91,87 +83,6 @@ void MeshView::clearBrushSelection() {
 
 void MeshView::initPrograms() {
     createShaders();
-}
-
-void MeshView::resizeEvent(QResizeEvent* e) {
-    Orbital3DView::resizeEvent(e);
-    if (titleLabel_)
-        titleLabel_->setGeometry(0, 0, width(), titleLabel_->height());
-    int bottomY = height() - kStatsHeight;  // color row sits just above the stats label
-    if (colorRow_) {
-        bottomY -= colorRow_->height();
-        colorRow_->setGeometry(0, bottomY, width(), colorRow_->height());
-    }
-}
-
-void MeshView::applyColorBtnStyle(QPushButton* btn, const QColor& c) {
-    btn->setStyleSheet(QString(
-        "QPushButton {"
-        "  background: rgba(20,20,20,200);"
-        "  color: %1;"
-        "  border: none;"
-        "  font-size: 11px;"
-        "  font-weight: bold;"
-        "  padding: 2px 10px;"
-        "}"
-        "QPushButton:hover { background: rgba(40,40,40,220); }"
-    ).arg(c.name()));
-}
-
-void MeshView::createColorRow() {
-    colorRow_ = new QWidget(this);
-    colorRow_->setAttribute(Qt::WA_TranslucentBackground);
-    colorRow_->setFixedHeight(28);
-
-    auto* layout = new QHBoxLayout(colorRow_);
-    layout->setContentsMargins(6, 0, 6, 0);
-    layout->setSpacing(4);
-
-    primaryColorBtn_ = new QPushButton("● Primary", colorRow_);
-    secondaryColorBtn_ = new QPushButton("● Secondary", colorRow_);
-
-    applyColorBtnStyle(primaryColorBtn_,   primaryColor_);
-    applyColorBtnStyle(secondaryColorBtn_, secondaryColor_);
-
-    layout->addStretch();
-    layout->addWidget(primaryColorBtn_);
-    layout->addWidget(secondaryColorBtn_);
-    layout->addStretch();
-
-    connect(primaryColorBtn_, &QPushButton::clicked, this, [this] {
-        QColor c = QColorDialog::getColor(primaryColor_, this, "Primary mesh color");
-        if (c.isValid()) setPrimaryColor(c);
-    });
-    connect(secondaryColorBtn_, &QPushButton::clicked, this, [this] {
-        QColor c = QColorDialog::getColor(secondaryColor_, this, "Secondary mesh color");
-        if (c.isValid()) setSecondaryColor(c);
-    });
-
-    colorRow_->raise();
-    colorRow_->show();
-}
-
-void MeshView::setTitle(const QString& title) {
-    if (!titleLabel_) {
-        titleLabel_ = new QLabel(this);
-        titleLabel_->setAlignment(Qt::AlignCenter);
-        titleLabel_->setFixedHeight(28);
-        titleLabel_->setAttribute(Qt::WA_TransparentForMouseEvents);
-        titleLabel_->setStyleSheet(
-            "QLabel {"
-            "  background: rgba(20, 20, 20, 210);"
-            "  color: #d0d0d0;"
-            "  font-weight: bold;"
-            "  font-size: 11px;"
-            "  letter-spacing: 1px;"
-            "  padding: 0 8px;"
-            "}"
-        );
-    }
-    titleLabel_->setText(title.toUpper());
-    titleLabel_->setGeometry(0, 0, width(), titleLabel_->height());
-    titleLabel_->raise();
-    titleLabel_->show();
 }
 
 // ─── Shader creation ──────────────────────────────────────────────────────────

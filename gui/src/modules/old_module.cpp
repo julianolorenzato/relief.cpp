@@ -30,7 +30,7 @@ QWidget* OldModule::buildContent()
     reliefCompareWidget_->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
     viewportsLayout->addWidget(reliefCompareWidget_);
 
-    reliefWidget_ = new OldReliefView();
+    reliefWidget_ = new OldReliefView("Relief");
     viewportsLayout->addWidget(reliefWidget_);
 
     // Cameras stay in sync across the three viewports so they can be compared directly.

@@ -11,12 +11,6 @@ using namespace textures;
 
 // ─── Constructor / Destructor ─────────────────────────────────────────────────
 
-ReliefView::ReliefView(QWidget *parent)
-    : Orbital3DView(parent)
-{
-    setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
-}
-
 ReliefView::~ReliefView()
 {
     makeCurrent();

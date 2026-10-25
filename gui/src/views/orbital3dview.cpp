@@ -17,10 +17,27 @@
 
 // ─── Constructor / destructor ─────────────────────────────────────────────────
 
-Orbital3DView::Orbital3DView(QWidget* parent)
+Orbital3DView::Orbital3DView(const QString& title, QWidget* parent)
     : QOpenGLWidget(parent)
 {
     setFocusPolicy(Qt::StrongFocus);
+    setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
+
+    titleLabel_ = new QLabel(title.toUpper(), this);
+    titleLabel_->setAlignment(Qt::AlignCenter);
+    titleLabel_->setFixedHeight(28);
+    titleLabel_->setAttribute(Qt::WA_TransparentForMouseEvents);
+    titleLabel_->setStyleSheet(
+        "QLabel {"
+        "  background: rgba(20, 20, 20, 210);"
+        "  color: #d0d0d0;"
+        "  font-weight: bold;"
+        "  font-size: 11px;"
+        "  letter-spacing: 1px;"
+        "  padding: 0 8px;"
+        "}"
+    );
+    layoutTitleLabel();
 }
 
 Orbital3DView::~Orbital3DView() {
@@ -80,9 +97,15 @@ void Orbital3DView::layoutStatsLabel() {
     statsLabel_->setGeometry(0, height() - kStatsHeight, width(), kStatsHeight);
 }
 
+void Orbital3DView::layoutTitleLabel() {
+    if (!titleLabel_) return;
+    titleLabel_->setGeometry(0, 0, width(), titleLabel_->height());
+}
+
 void Orbital3DView::resizeEvent(QResizeEvent* e) {
     QOpenGLWidget::resizeEvent(e);
     layoutStatsLabel();
+    layoutTitleLabel();
 }
 
 void Orbital3DView::resetCamera() {

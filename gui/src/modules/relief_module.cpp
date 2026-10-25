@@ -97,11 +97,11 @@ QWidget* ReliefModule::buildContent()
     QHBoxLayout* viewportsLayout = new QHBoxLayout(viewportsWidget);
     viewportsLayout->setContentsMargins(0, 0, 0, 0);
 
-    orbitalWidget_ = new MeshView(RenderMode::Textured, "Baking");
+    orbitalWidget_ = new MeshView(RenderMode::Textured, "Original");
     orbitalWidget_->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
     viewportsLayout->addWidget(orbitalWidget_);
 
-    reliefWidget_ = new ReliefView();
+    reliefWidget_ = new ReliefView("Relief");
     viewportsLayout->addWidget(reliefWidget_);
 
     // Cameras stay in sync across the two viewports so they can be compared directly.

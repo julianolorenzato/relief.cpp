@@ -22,7 +22,7 @@ class OldReliefView : public Orbital3DView
     Q_OBJECT
 
 public:
-    explicit OldReliefView(QWidget *parent = nullptr);
+    using Orbital3DView::Orbital3DView;
     ~OldReliefView() override;
 
     /// Uploads the relief-mapping color map.
