@@ -23,7 +23,6 @@
 #include <cmath>
 
 #include "relief/textures.h"
-#include "relief/uv_atlas.h"
 
 using namespace mesh;
 using namespace textures;
@@ -397,7 +396,7 @@ void ReliefSandboxModule::recomputeDepthTextures() {
 
     constexpr int kSeam = 16;
     if (this->mesh) {
-        this->offsetMap = uv_atlas::buildOffsetMap(*this->mesh, kRes, kRes, kSeam);
+        this->offsetMap = this->mesh->buildOffsetMap(kRes, kRes, kSeam);
         this->reliefView->setOffsetMap(this->offsetMap);
     }
 

@@ -15,7 +15,7 @@
 #include <QMatrix4x4>
 #include "relief/mesh.h"
 #include "relief/textures.h"
-#include "relief/uv_atlas.h"
+#include "relief/textures.h"
 
 /// @brief Dedicated OpenGL widget for relief mapping. Receives a mesh and renders it with
 ///        one of two shader programs:

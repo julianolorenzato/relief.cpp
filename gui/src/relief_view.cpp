@@ -227,7 +227,7 @@ void ReliefView::buildMapsFromMesh()
         normal.data.empty()
             ? textures::buildNormalMapFromHeight(rawHeight, kRes, kRes, 0.1f, 1.0f)
             : textures::buildNormalMap({normal.data.data(), normal.width, normal.height, 4}, kRes, kRes);
-    const MipPyramid offsetMap = uv_atlas::buildOffsetMap(*this->mesh, kRes, kRes, 16);
+    const MipPyramid offsetMap = this->mesh->buildOffsetMap(kRes, kRes, 16);
     const MipPyramid reliefMap = textures::buildReliefMap(rawHeight, kRes, kRes, offsetMap);
 
     uploadTexture(this->colorTex, colorMap, QOpenGLTexture::RGBA32F, QOpenGLTexture::RGBA,

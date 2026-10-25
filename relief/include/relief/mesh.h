@@ -14,6 +14,8 @@
 #include <utility>
 #include <vector>
 
+#include "relief/textures.h"
+
 namespace mesh {
 
 /// A single mesh vertex: position and accumulated quadric.
@@ -226,6 +228,19 @@ class Mesh {
     ///         directly edge-connected to vertex i, derived from buildEdgeToFaces().
     std::vector<std::set<int>> buildVertexToVertices() const;
 
+    /**
+     * @brief Finds edges that lie on a UV seam: shared by exactly two faces
+     *        whose UV islands differ (the same edges buildOffsetMap bakes leap
+     *        data for). An edge whose vertices both carry multiple UVs isn't
+     *        necessarily a seam itself (e.g. the diagonal of a quad split into
+     *        two triangles of the same island) — this checks the actual UV
+     *        agreement between the two incident faces, not just vertex UV count.
+     *        Relies on the face islands (see computeIslands()).
+     * @return One (v1, v2) position-vertex-index pair per seam edge, each
+     *         sorted (v1 <= v2).
+     */
+    std::vector<Edge> findSeamEdges() const;
+
     // ---- Mutation ----
 
     /// Moves vertex `index` to `pos`, unless it has been removed (e.g. by
@@ -274,6 +289,32 @@ class Mesh {
      */
     void bake(int resolution);
 
+    /**
+     * @brief Bakes the offset (atlas-leap) map: for texels within
+     *        `seamBandTexels` of a UV seam edge that crosses an island boundary,
+     *        encodes the translation/rotation/scale needed to continue a
+     *        relief-mapping ray into the neighboring island. The per-edge
+     *        transform is a similarity (rotation + uniform scale, fit to the two
+     *        islands' respective UV texel density along that edge), not a pure
+     *        rigid rotation, so both endpoints of the seam edge land exactly
+     *        even when the islands don't share the same UV scale.
+     *
+     *        Matches the layout expected by RTMA_Functions.ush's Offset_Map /
+     *        PerformIslandLeap:
+     *          - xy = UV-space translation to add to the ray's current position
+     *                 to jump into the neighboring island
+     *          - z  = rotation (in turns, i.e. angle / (2*pi)) to apply to the
+     *                 tangent direction
+     *          - w  = validity flag (> 0 means a leap is defined at this texel)
+     * @param width Output map width in texels.
+     * @param height Output map height in texels.
+     * @param seamBandTexels Half-width, in texels, of the band around each seam
+     *        edge within which leap data is baked.
+     * @return A single-level (never downsampled), 4-channel MipPyramid holding
+     *         the baked offset map.
+     */
+    textures::MipPyramid buildOffsetMap(int width, int height, int seamBandTexels) const;
+
     // ---- GPU export ----
 
     /// Flattened, GPU-friendly form of the mesh: one entry per distinct
@@ -298,6 +339,19 @@ class Mesh {
     void logSummary() const;
 
    private:
+    /**
+     * @brief Looks up the UV a face uses at one of its vertices.
+     *
+     * A vertex may have several UVs (one per wedge) when it lies on a UV seam,
+     * so the face is needed to disambiguate.
+     *
+     * @param face Index of the face.
+     * @param vertexId Index of the vertex, which must belong to `face`.
+     * @return The UV at the corner of `face` whose vertex is `vertexId`, or
+     *         (0, 0) if the face does not contain that vertex.
+     */
+    Eigen::Vector2d vertexUV(int face, int vertexId) const;
+
     std::vector<Vertex> vertices_;
     std::vector<Wedge> wedges_;
     std::vector<Face> faces_;

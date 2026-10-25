@@ -14,7 +14,6 @@
 #include "gui/relief_view.h"
 #include "relief/mesh.h"
 #include "relief/textures.h"
-#include "relief/uv_atlas.h"
 
 class ReliefSandboxModule;
 

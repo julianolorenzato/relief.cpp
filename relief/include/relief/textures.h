@@ -94,7 +94,7 @@ MipPyramid buildNormalMapFromHeight(
  * @param depthImg Source depth/heightmap image.
  * @param width Target base-level width.
  * @param height Target base-level height.
- * @param offsetMap Previously baked offset map (see uv_atlas::buildOffsetMap);
+ * @param offsetMap Previously baked offset map (see mesh::Mesh::buildOffsetMap);
  *        its w (validity) channel is used as the seam mask. Pass an empty
  *        MipPyramid{} if no offset map is available yet — the seam mask then
  *        defaults to all-zero (no island leaping).

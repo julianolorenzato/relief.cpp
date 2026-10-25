@@ -4,7 +4,6 @@
  *        and the per-mode paint routines (Solid, Overlay, UV).
  */
 #include "gui/orbital3dview.h"
-#include "relief/uv_atlas.h"
 #include <QColorDialog>
 #include <QHBoxLayout>
 #include <QMouseEvent>
@@ -16,9 +15,6 @@
 #include <algorithm>
 #include <iostream>
 #include <set>
-
-using namespace mesh;
-using namespace uv_atlas;
 
 // ─── Anonymous helpers ────────────────────────────────────────────────────────
 
@@ -33,7 +29,7 @@ namespace {
 ///        actual V axis points.
 /// @param[out] verts Interleaved vertex data, 12 floats per vertex.
 /// @param[out] idxs Triangle indices into `verts`.
-void buildMeshVerts(const Mesh* mesh,
+void buildMeshVerts(const mesh::Mesh* mesh,
                     std::vector<float>& verts,
                     std::vector<unsigned int>& idxs)
 {
@@ -42,7 +38,7 @@ void buildMeshVerts(const Mesh* mesh,
     // A Mesh::Vertex may carry multiple UVs (one per seam shell), so the GPU
     // buffer needs one entry per distinct (vertex, uv) pair actually used by
     // a face corner, not one per Mesh::Vertex.
-    Mesh::GPUMesh gpu = mesh->explodeForGPU();
+    mesh::Mesh::GPUMesh gpu = mesh->explodeForGPU();
     if (gpu.positions.empty()) return;
 
     std::vector<Eigen::Vector3d> normals(gpu.positions.size(), Eigen::Vector3d::Zero());
@@ -179,7 +175,7 @@ void Orbital3DView::setMode(RenderMode mode) {
     update();
 }
 
-void Orbital3DView::setMesh(const Mesh* mesh, const Mesh* normalizationSource) {
+void Orbital3DView::setMesh(const mesh::Mesh* mesh, const mesh::Mesh* normalizationSource) {
     primaryMesh_       = mesh;
     normalizationMesh_ = normalizationSource;
     primaryMeshDirty_  = true;
@@ -188,7 +184,7 @@ void Orbital3DView::setMesh(const Mesh* mesh, const Mesh* normalizationSource) {
     resetCamera();
 }
 
-void Orbital3DView::setMeshes(const Mesh* primary, const Mesh* secondary, const Mesh* normalizationSource) {
+void Orbital3DView::setMeshes(const mesh::Mesh* primary, const mesh::Mesh* secondary, const mesh::Mesh* normalizationSource) {
     primaryMesh_         = primary;
     secondaryMesh_       = secondary;
     normalizationMesh_   = normalizationSource;
@@ -544,7 +540,7 @@ void Orbital3DView::buildPrimaryBuffers() {
 
     // Compute bounding box for the model matrix normalization, from
     // normalizationMesh_ when set so linked viewports share one scale.
-    const Mesh* normMesh = normalizationMesh_ ? normalizationMesh_ : primaryMesh_;
+    const mesh::Mesh* normMesh = normalizationMesh_ ? normalizationMesh_ : primaryMesh_;
     if (normMesh->vertices().empty()) normMesh = primaryMesh_;
     Eigen::Vector3d bmin( 1e18,  1e18,  1e18);
     Eigen::Vector3d bmax(-1e18, -1e18, -1e18);
@@ -591,7 +587,7 @@ void Orbital3DView::buildEdgeBuffers() {
     static const float kInternal[3] = {0.8f, 0.8f,  0.8f};
 
     auto edgeToFaces = primaryMesh_->buildEdgeToFaces();
-    auto seamPairs = uv_atlas::findSeamEdges(*primaryMesh_);
+    auto seamPairs = primaryMesh_->findSeamEdges();
     std::set<mesh::Edge> seamSet(seamPairs.begin(), seamPairs.end());
 
     std::vector<float> lineVerts;
@@ -664,7 +660,7 @@ void Orbital3DView::buildUVBuffers() {
 
     // Must match buildMeshVerts' vertex ordering exactly (same exploded
     // (vertex, uv) pairs, since this buffer shares primaryEbo_ with it).
-    Mesh::GPUMesh gpu = primaryMesh_->explodeForGPU();
+    mesh::Mesh::GPUMesh gpu = primaryMesh_->explodeForGPU();
     std::vector<float> uvPos;
     uvPos.reserve(gpu.uvs.size() * 2);
     for (const auto& uv : gpu.uvs) {

@@ -10,7 +10,6 @@
 #include <iostream>
 #include <limits>
 
-#include "relief/uv_atlas.h"
 
 namespace op::simplification {
 
@@ -165,7 +164,7 @@ std::vector<std::pair<int, int>> SimplifyOp::edgeUVPairs(int v1, int v2) const {
 // Desde que vértices passaram a ser únicos por posição, uma aresta de seam
 // não é mais topológica (é referenciada por 2 faces, uma de cada lado, que
 // hoje compartilham vértice de posição) — então precisa ser detectada à
-// parte via uv_atlas::findSeamEdges, não aparece em mesh_->buildEdgeToFaces().
+// parte via Mesh::findSeamEdges, não aparece em mesh_->buildEdgeToFaces().
 void SimplifyOp::markBoundaryVertices() const {
     boundaryVertex_.assign(mesh_->vertices().size(), false);
     for (const auto &[edge, faceIds] : mesh_->buildEdgeToFaces()) {
@@ -173,7 +172,7 @@ void SimplifyOp::markBoundaryVertices() const {
         boundaryVertex_[edge.first] = true;
         boundaryVertex_[edge.second] = true;
     }
-    for (const auto &[v1, v2] : uv_atlas::findSeamEdges(*mesh_)) {
+    for (const auto &[v1, v2] : mesh_->findSeamEdges()) {
         boundaryVertex_[v1] = true;
         boundaryVertex_[v2] = true;
     }
@@ -251,7 +250,7 @@ void SimplifyOp::addBoundaryConstraints(double weight) const {
 
     if (boundaryMode_ == BoundaryMode::ConstrainSeams) {
         int seamCount = 0;
-        for (const auto &edge : uv_atlas::findSeamEdges(*mesh_)) {
+        for (const auto &edge : mesh_->findSeamEdges()) {
             auto it = edgeToFaces.find(edge);
             if (it == edgeToFaces.end() || it->second.empty()) continue;
             if (applyEdgeConstraint(edge.first, edge.second, it->second[0])) ++seamCount;
