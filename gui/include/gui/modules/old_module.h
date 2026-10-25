@@ -1,5 +1,5 @@
 /**
- * @file relief_module.h
+ * @file old_module.h
  * @brief Pipeline stage that previews the relief-mapped simplified mesh
  *        against the original, high-detail mesh side by side.
  */
@@ -19,7 +19,7 @@
 /// @brief Widget hosting the relief-mapped preview, a textured comparison of
 ///        the original mesh, and the relief-mapping controls (steps, depth
 ///        scale, atlas leaping, debug view).
-class ReliefModule : public Module {
+class OldModule : public Module {
     Q_OBJECT
 
 public:

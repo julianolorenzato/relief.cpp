@@ -21,7 +21,7 @@ add_executable(gui
     include/gui/orbital3dview.h
     include/gui/modules/editor_module.h
     include/gui/modules/textures_module.h
-    include/gui/modules/relief_module.h
+    include/gui/modules/old_module.h
     include/gui/relief_view.h
     include/gui/modules/relief_sandbox_module.h
     include/gui/modules/normal_map_module.h
@@ -34,7 +34,7 @@ add_executable(gui
     src/orbital3dview.cpp
     src/modules/editor_module.cpp
     src/modules/textures_module.cpp
-    src/modules/relief_module.cpp
+    src/modules/old_module.cpp
     src/relief_view.cpp
     src/modules/relief_sandbox_module.cpp
     src/modules/normal_map_module.cpp

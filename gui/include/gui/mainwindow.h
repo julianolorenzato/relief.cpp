@@ -15,7 +15,7 @@
 #include "gui/module.h"
 #include "gui/modules/editor_module.h"
 #include "gui/modules/textures_module.h"
-#include "gui/modules/relief_module.h"
+#include "gui/modules/old_module.h"
 #include "gui/modules/relief_sandbox_module.h"
 #include "gui/modules/normal_map_module.h"
 #include "gui/modules/baking_module.h"

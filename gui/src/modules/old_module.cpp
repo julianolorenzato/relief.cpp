@@ -1,9 +1,9 @@
 /**
- * @file relief_module.cpp
- * @brief ReliefModule implementation: builds the relief-preview UI and
+ * @file old_module.cpp
+ * @brief OldModule implementation: builds the relief-preview UI and
  *        pushes pending mesh/texture data into the viewports once ready.
  */
-#include "gui/modules/relief_module.h"
+#include "gui/modules/old_module.h"
 #include <QVBoxLayout>
 #include <QHBoxLayout>
 #include <QGroupBox>
@@ -15,7 +15,7 @@ using namespace mesh;
 
 // ─── buildContent / buildControls ──────────────────────────────────────────
 
-QWidget* ReliefModule::buildContent()
+QWidget* OldModule::buildContent()
 {
     // ── 3 Orbital3DViews side by side ─────────────────────────────────────
     QWidget* viewportsWidget = new QWidget();
@@ -44,7 +44,7 @@ QWidget* ReliefModule::buildContent()
     return viewportsWidget;
 }
 
-QWidget* ReliefModule::buildControls()
+QWidget* OldModule::buildControls()
 {
     // Called after buildContent(), so reliefWidget_/Compare_/Original_ are valid.
     QGroupBox* ctrlGroup = new QGroupBox("Relief Mapping Parameters");
@@ -138,7 +138,7 @@ QWidget* ReliefModule::buildControls()
 
 // ─── buildLightingGroup ────────────────────────────────────────────────────────
 
-void ReliefModule::buildLightingGroup(QWidget* outerControls)
+void OldModule::buildLightingGroup(QWidget* outerControls)
 {
     QGroupBox* group = new QGroupBox("Lighting");
     QVBoxLayout* lightLayout = new QVBoxLayout(group);
@@ -186,14 +186,14 @@ void ReliefModule::buildLightingGroup(QWidget* outerControls)
 
 // ─── Public slots ─────────────────────────────────────────────────────────────
 
-void ReliefModule::onMeshLoaded(Mesh* original, Mesh* simplified)
+void OldModule::onMeshLoaded(Mesh* original, Mesh* simplified)
 {
     Module::onMeshLoaded(original, simplified);
     meshPending_ = true;
     syncIfReady();
 }
 
-void ReliefModule::onMeshUpdated()
+void OldModule::onMeshUpdated()
 {
     meshPending_ = true;
     syncIfReady();
@@ -201,13 +201,13 @@ void ReliefModule::onMeshUpdated()
 
 // ─── Private methods ──────────────────────────────────────────────────────────
 
-void ReliefModule::showEvent(QShowEvent* event)
+void OldModule::showEvent(QShowEvent* event)
 {
     Module::showEvent(event);
     syncIfReady();
 }
 
-void ReliefModule::syncIfReady()
+void OldModule::syncIfReady()
 {
     if (meshPending_ && simplifiedMesh_ && simplifiedMesh_->faceCount() > 0)
     {
