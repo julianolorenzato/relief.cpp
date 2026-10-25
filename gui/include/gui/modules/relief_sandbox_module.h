@@ -11,7 +11,7 @@
 #include <memory>
 
 #include "gui/module.h"
-#include "gui/relief_view.h"
+#include "gui/views/old_relief_view.h"
 #include "relief/mesh.h"
 #include "relief/textures.h"
 
@@ -62,7 +62,7 @@ struct PixelPickControls {
  * @brief Standalone context for testing relief mapping in isolation.
  *        Loads a mesh and three textures (color, depth, normal) via file
  *        dialogs, bakes synchronously, and inspects the result in a single
- *        ReliefView.
+ *        OldReliefView.
  */
 class ReliefSandboxModule : public Module {
     Q_OBJECT
@@ -89,7 +89,7 @@ class ReliefSandboxModule : public Module {
     void onLoadNormal();
 
     /**
-     * Handles a pick result forwarded from ReliefView, updating the pick
+     * Handles a pick result forwarded from OldReliefView, updating the pick
      * preview panel.
      */
     void onPixelPicked(QPointF uv, bool hit);
@@ -139,7 +139,7 @@ class ReliefSandboxModule : public Module {
      * The widget that renders the mesh
      * using the Relief Mapping technique.
      */
-    ReliefView *reliefView = nullptr;
+    OldReliefView *reliefView = nullptr;
 
     /** Images used as input. */
     QImage colorImg, depthImg, normalImg;
@@ -149,7 +149,7 @@ class ReliefSandboxModule : public Module {
     QPointF lastPickUv;
     bool lastPickHit = false;
 
-    /** Baked pyramids fed to ReliefView. */
+    /** Baked pyramids fed to OldReliefView. */
     textures::MipPyramid colorMap, reliefMap, normalMap, offsetMap;
 
     MeshControls meshControls;

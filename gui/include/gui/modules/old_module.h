@@ -12,8 +12,8 @@
 #include <QPushButton>
 #include "relief/mesh.h"
 #include "gui/module.h"
-#include "gui/orbital3dview.h"
-#include "gui/relief_view.h"
+#include "gui/views/mesh_view.h"
+#include "gui/views/old_relief_view.h"
 #include "relief/textures.h"
 
 /// @brief Widget hosting the relief-mapped preview, a textured comparison of
@@ -46,9 +46,9 @@ private:
     void syncIfReady();
 
     // ── Viewports ─────────────────────────────────────────────────────────────
-    ReliefView*    reliefWidget_          = nullptr;
-    Orbital3DView* reliefCompareWidget_  = nullptr;  // mode: Textured
-    Orbital3DView* reliefOriginalWidget_ = nullptr;  // mode: Textured
+    OldReliefView*    reliefWidget_          = nullptr;
+    MeshView* reliefCompareWidget_  = nullptr;  // mode: Textured
+    MeshView* reliefOriginalWidget_ = nullptr;  // mode: Textured
 
     // ── Controls ──────────────────────────────────────────────────────────────
     QCheckBox*      reliefEnabledCheck_       = nullptr;

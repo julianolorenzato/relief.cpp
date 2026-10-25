@@ -97,7 +97,7 @@ QWidget* ReliefModule::buildContent()
     QHBoxLayout* viewportsLayout = new QHBoxLayout(viewportsWidget);
     viewportsLayout->setContentsMargins(0, 0, 0, 0);
 
-    orbitalWidget_ = new Orbital3DView(RenderMode::Textured, "Baking");
+    orbitalWidget_ = new MeshView(RenderMode::Textured, "Baking");
     orbitalWidget_->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
     viewportsLayout->addWidget(orbitalWidget_);
 
@@ -105,8 +105,8 @@ QWidget* ReliefModule::buildContent()
     viewportsLayout->addWidget(reliefWidget_);
 
     // Cameras stay in sync across the two viewports so they can be compared directly.
-    connect(reliefWidget_, &ReliefView::cameraChanged, orbitalWidget_, &Orbital3DView::syncCamera);
-    connect(orbitalWidget_, &Orbital3DView::cameraChanged, reliefWidget_, &ReliefView::syncCamera);
+    connect(reliefWidget_, &ReliefView::cameraChanged, orbitalWidget_, &MeshView::syncCamera);
+    connect(orbitalWidget_, &MeshView::cameraChanged, reliefWidget_, &ReliefView::syncCamera);
 
     return viewportsWidget;
 }
@@ -119,7 +119,7 @@ QWidget* ReliefModule::buildControls()
     containerLayout->setSpacing(8);
 
     QCheckBox* wireframeCheck = new QCheckBox("Wireframe", controlsContainer);
-    connect(wireframeCheck, &QCheckBox::toggled, orbitalWidget_, &Orbital3DView::setWireframe);
+    connect(wireframeCheck, &QCheckBox::toggled, orbitalWidget_, &MeshView::setWireframe);
     connect(wireframeCheck, &QCheckBox::toggled, reliefWidget_, &ReliefView::setWireframe);
     containerLayout->addWidget(wireframeCheck);
 
@@ -147,33 +147,6 @@ QWidget* ReliefModule::buildControls()
     stepsRow->addWidget(stepsSpin, 1);
     paramsLayout->addLayout(stepsRow);
 
-    QHBoxLayout* depthRow = new QHBoxLayout();
-    depthRow->addWidget(new QLabel("Depth Scale:"));
-    QDoubleSpinBox* depthScaleSpin = new QDoubleSpinBox();
-    depthScaleSpin->setRange(0.0, 2.0);
-    depthScaleSpin->setSingleStep(0.01);
-    depthScaleSpin->setDecimals(4);
-    depthScaleSpin->setValue(0.05);
-    connect(depthScaleSpin, QOverload<double>::of(&QDoubleSpinBox::valueChanged), reliefWidget_,
-            &ReliefView::setDepthScale);
-    depthRow->addWidget(depthScaleSpin, 1);
-    paramsLayout->addLayout(depthRow);
-
-    QCheckBox* useAtlasCheck = new QCheckBox("Use Atlas (Island Leaping)");
-    useAtlasCheck->setChecked(true);
-    connect(useAtlasCheck, &QCheckBox::toggled, reliefWidget_, &ReliefView::setUseAtlas);
-    paramsLayout->addWidget(useAtlasCheck);
-
-    QHBoxLayout* texTypeRow = new QHBoxLayout();
-    texTypeRow->addWidget(new QLabel("Texture Type:"));
-    QComboBox* textureTypeCombo = new QComboBox();
-    textureTypeCombo->addItem("Depth Map", 0);
-    textureTypeCombo->addItem("Height Map", 1);
-    connect(textureTypeCombo, QOverload<int>::of(&QComboBox::currentIndexChanged), reliefWidget_,
-            [this, textureTypeCombo](int) { reliefWidget_->setReliefTextureType(textureTypeCombo->currentData().toInt()); });
-    texTypeRow->addWidget(textureTypeCombo, 1);
-    paramsLayout->addLayout(texTypeRow);
-
     QHBoxLayout* debugRow = new QHBoxLayout();
     debugRow->addWidget(new QLabel("Debug:"));
     QComboBox* debugViewCombo = new QComboBox();
@@ -199,7 +172,7 @@ QWidget* ReliefModule::buildControls()
     // Each slider stores hundredths so it can offer 0.01 resolution over a
     // floating-point range; the slot receives the descaled value.
     auto addLightSlider = [this, lightingLayout](const char* label, int minHundredths, int maxHundredths,
-                                                 int defaultHundredths, void (ReliefView::*slot)(double)) {
+                                                 int defaultHundredths, void (Orbital3DView::*slot)(double)) {
         QLabel* valueLbl = new QLabel(QString("%1: %2").arg(label).arg(defaultHundredths / 100.0, 0, 'f', 2));
         lightingLayout->addWidget(valueLbl);
 
@@ -213,9 +186,10 @@ QWidget* ReliefModule::buildControls()
             double value = v / 100.0;
             valueLbl->setText(QString("%1: %2").arg(label).arg(value, 0, 'f', 2));
             (reliefWidget_->*slot)(value);
+            (orbitalWidget_->*slot)(value);
         });
     };
-    // Matches ReliefView's default lightPos{0.f, 2.f, 1.5f}.
+    // Matches Orbital3DView's default lightPos_{0.f, 2.f, 1.5f}.
     addLightSlider("X", -300, 300, 0, &ReliefView::setLightX);
     addLightSlider("Y", 50, 400, 200, &ReliefView::setLightY);
     addLightSlider("Z", -300, 300, 150, &ReliefView::setLightZ);

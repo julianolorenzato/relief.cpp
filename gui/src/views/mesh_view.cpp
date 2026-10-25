@@ -1,158 +1,31 @@
 /**
- * @file orbital3dview.cpp
- * @brief Orbital3DView implementation: GL buffer construction, shader setup,
+ * @file mesh_view.cpp
+ * @brief MeshView implementation: GL buffer construction, shader setup,
  *        and the per-mode paint routines (Solid, Overlay, UV).
  */
-#include "gui/orbital3dview.h"
+#include "gui/views/mesh_view.h"
 #include <QColorDialog>
 #include <QHBoxLayout>
 #include <QMouseEvent>
-#include <QWheelEvent>
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
-#include <glm/gtc/type_ptr.hpp>
-#include <cmath>
 #include <algorithm>
 #include <iostream>
 #include <set>
 
-// ─── Anonymous helpers ────────────────────────────────────────────────────────
-
-namespace {
-
-/// @brief Builds the 12-float interleaved vertex array
-///        [pos|normal|uv|tangent(vec4, w = handedness)] and an index array
-///        for a Mesh mesh. Tangents are Gram-Schmidt-orthogonalized
-///        against the normal using per-face UV deltas; the accumulated
-///        bitangent is used only to derive each vertex's handedness sign
-///        (Lengyel), since cross(N,T) alone can't tell which way the mesh's
-///        actual V axis points.
-/// @param[out] verts Interleaved vertex data, 12 floats per vertex.
-/// @param[out] idxs Triangle indices into `verts`.
-void buildMeshVerts(const mesh::Mesh* mesh,
-                    std::vector<float>& verts,
-                    std::vector<unsigned int>& idxs)
-{
-    if (!mesh || mesh->vertices().empty()) return;
-
-    // A Mesh::Vertex may carry multiple UVs (one per seam shell), so the GPU
-    // buffer needs one entry per distinct (vertex, uv) pair actually used by
-    // a face corner, not one per Mesh::Vertex.
-    mesh::Mesh::GPUMesh gpu = mesh->explodeForGPU();
-    if (gpu.positions.empty()) return;
-
-    std::vector<Eigen::Vector3d> normals(gpu.positions.size(), Eigen::Vector3d::Zero());
-    std::vector<Eigen::Vector3d> tangents(gpu.positions.size(), Eigen::Vector3d::Zero());
-    std::vector<Eigen::Vector3d> bitangents(gpu.positions.size(), Eigen::Vector3d::Zero());
-
-    for (size_t i = 0; i + 2 < gpu.indices.size(); i += 3) {
-        unsigned int i0 = gpu.indices[i], i1 = gpu.indices[i + 1], i2 = gpu.indices[i + 2];
-        const Eigen::Vector3d& p0 = gpu.positions[i0];
-        const Eigen::Vector3d& p1 = gpu.positions[i1];
-        const Eigen::Vector3d& p2 = gpu.positions[i2];
-        const Eigen::Vector2d& u0 = gpu.uvs[i0];
-        const Eigen::Vector2d& u1 = gpu.uvs[i1];
-        const Eigen::Vector2d& u2 = gpu.uvs[i2];
-
-        Eigen::Vector3d n = (p1 - p0).cross(p2 - p0);
-        normals[i0] += n; normals[i1] += n; normals[i2] += n;
-
-        Eigen::Vector3d e1 = p1 - p0, e2 = p2 - p0;
-        Eigen::Vector2d d1 = u1 - u0, d2 = u2 - u0;
-        double det = d1.x() * d2.y() - d2.x() * d1.y();
-        if (std::abs(det) > 1e-12) {
-            double r = 1.0 / det;
-            Eigen::Vector3d T = r * (d2.y() * e1 - d1.y() * e2);
-            Eigen::Vector3d B = r * (d1.x() * e2 - d2.x() * e1);
-            tangents[i0] += T; tangents[i1] += T; tangents[i2] += T;
-            bitangents[i0] += B; bitangents[i1] += B; bitangents[i2] += B;
-        }
-    }
-
-    for (auto& n : normals) n = n.normalized();
-    std::vector<double> handedness(gpu.positions.size(), 1.0);
-    for (size_t i = 0; i < tangents.size(); i++) {
-        const Eigen::Vector3d& n = normals[i];
-        Eigen::Vector3d t = tangents[i] - n * n.dot(tangents[i]);
-        double len = t.norm();
-        t = len > 1e-8 ? t / len : Eigen::Vector3d(1.0, 0.0, 0.0);
-        tangents[i] = t;
-        handedness[i] = (n.cross(t).dot(bitangents[i]) < 0.0) ? -1.0 : 1.0;
-    }
-
-    for (size_t i = 0; i < gpu.positions.size(); i++) {
-        const auto& p = gpu.positions[i];
-        const auto& uv = gpu.uvs[i];
-        const auto& n = normals[i];
-        const auto& t = tangents[i];
-        verts.push_back((float)p.x());  verts.push_back((float)p.y());  verts.push_back((float)p.z());
-        verts.push_back((float)n.x());  verts.push_back((float)n.y());  verts.push_back((float)n.z());
-        verts.push_back((float)uv.x()); verts.push_back((float)uv.y());
-        verts.push_back((float)t.x());  verts.push_back((float)t.y());  verts.push_back((float)t.z());
-        verts.push_back((float)handedness[i]);
-    }
-    idxs.assign(gpu.indices.begin(), gpu.indices.end());
-}
-
-/// Uploads interleaved vertex data to a VAO with the standard 12-float
-/// attribute layout. Caller must have already created `vao`, `vbo`, `ebo`.
-/// @param[out] indexCount Set to the number of indices uploaded.
-void setupMeshVAO(QOpenGLFunctions_3_3_Core* gl,
-                  const std::vector<float>& verts,
-                  const std::vector<unsigned int>& idxs,
-                  QOpenGLBuffer& vbo,
-                  QOpenGLBuffer& ebo,
-                  QOpenGLVertexArrayObject& vao,
-                  int& indexCount)
-{
-    indexCount = (int)idxs.size();
-    if (!vao.isCreated()) vao.create();
-    if (!vbo.isCreated()) vbo.create();
-    if (!ebo.isCreated()) ebo.create();
-
-    vao.bind();
-    vbo.bind();
-    vbo.allocate(verts.data(), (int)(verts.size() * sizeof(float)));
-    ebo.bind();
-    ebo.allocate(idxs.data(), (int)(idxs.size() * sizeof(unsigned int)));
-
-    constexpr GLsizei stride = 12 * sizeof(float);
-    gl->glEnableVertexAttribArray(0);
-    gl->glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, stride, (void*)0);
-    gl->glEnableVertexAttribArray(1);
-    gl->glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, stride, (void*)(3 * sizeof(float)));
-    gl->glEnableVertexAttribArray(2);
-    gl->glVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE, stride, (void*)(6 * sizeof(float)));
-    gl->glEnableVertexAttribArray(3);
-    gl->glVertexAttribPointer(3, 4, GL_FLOAT, GL_FALSE, stride, (void*)(8 * sizeof(float)));
-
-    vao.release();
-}
-
-/// Converts a column-major glm::mat4 to the equivalent QMatrix4x4.
-QMatrix4x4 toQt(const glm::mat4& m) {
-    return QMatrix4x4(glm::value_ptr(m)).transposed();
-}
-
-} // namespace
-
 // ─── Constructor / destructor ─────────────────────────────────────────────────
 
-Orbital3DView::Orbital3DView(RenderMode mode, const QString& title, QWidget* parent)
-    : QOpenGLWidget(parent), mode_(mode)
+MeshView::MeshView(RenderMode mode, const QString& title, QWidget* parent)
+    : Orbital3DView(parent), mode_(mode)
 {
-    setFocusPolicy(Qt::StrongFocus);
     if (!title.isEmpty())
         setTitle(title);
     if (mode_ == RenderMode::Overlay)
         createColorRow();
 }
 
-Orbital3DView::~Orbital3DView() {
+MeshView::~MeshView() {
     makeCurrent();
-    if (primaryVbo_.isCreated())   primaryVbo_.destroy();
-    if (primaryEbo_.isCreated())   primaryEbo_.destroy();
-    if (primaryVao_.isCreated())   primaryVao_.destroy();
     if (secondaryVbo_.isCreated()) secondaryVbo_.destroy();
     if (secondaryEbo_.isCreated()) secondaryEbo_.destroy();
     if (secondaryVao_.isCreated()) secondaryVao_.destroy();
@@ -170,76 +43,44 @@ Orbital3DView::~Orbital3DView() {
 
 // ─── Public API ───────────────────────────────────────────────────────────────
 
-void Orbital3DView::setMode(RenderMode mode) {
+void MeshView::setMode(RenderMode mode) {
     mode_ = mode;
     update();
 }
 
-void Orbital3DView::setMesh(const mesh::Mesh* mesh, const mesh::Mesh* normalizationSource) {
-    primaryMesh_       = mesh;
-    normalizationMesh_ = normalizationSource;
-    primaryMeshDirty_  = true;
-    updateStatsLabel();
-    update();
-    resetCamera();
-}
-
-void Orbital3DView::setMeshes(const mesh::Mesh* primary, const mesh::Mesh* secondary, const mesh::Mesh* normalizationSource) {
-    primaryMesh_         = primary;
+void MeshView::setMeshes(const mesh::Mesh* primary, const mesh::Mesh* secondary) {
     secondaryMesh_       = secondary;
-    normalizationMesh_   = normalizationSource;
-    primaryMeshDirty_    = true;
     secondaryMeshDirty_  = true;
-    updateStatsLabel();
-    update();
-    resetCamera();
+    setMesh(primary);
 }
 
-void Orbital3DView::resetCamera() {
-    rotX_ = 0.f; rotY_ = 0.f; zoom_ = 3.f;
-    update();
-    emit cameraChanged(rotX_, rotY_, zoom_);
-}
-
-void Orbital3DView::syncCamera(float rotX, float rotY, float z) {
-    rotX_ = rotX; rotY_ = rotY; zoom_ = z;
-    update();
-    // No re-emit to avoid feedback loops
-}
-
-void Orbital3DView::setInteractionMode(InteractionMode m) {
+void MeshView::setInteractionMode(InteractionMode m) {
     interactionMode_ = m;
 }
 
 // ─── Slots ────────────────────────────────────────────────────────────────────
 
-void Orbital3DView::setPrimaryColor(const QColor& c) {
+void MeshView::setPrimaryColor(const QColor& c) {
     primaryColor_ = c;
     if (primaryColorBtn_) applyColorBtnStyle(primaryColorBtn_, c);
     update();
 }
-void Orbital3DView::setSecondaryColor(const QColor& c) {
+void MeshView::setSecondaryColor(const QColor& c) {
     secondaryColor_ = c;
     if (secondaryColorBtn_) applyColorBtnStyle(secondaryColorBtn_, c);
     update();
 }
 
-void Orbital3DView::setWireframe(bool v)         { wireframe_    = v; update(); }
-void Orbital3DView::setCullFace(bool v)           { cullFace_     = v; update(); }
-void Orbital3DView::setTextured(bool v)           { textured_     = v; update(); }
-void Orbital3DView::setUVMode(bool v)             { uvMode_       = v; update(); }
-void Orbital3DView::setShowInternalEdges(bool v)  { showInternal_ = v; update(); }
-void Orbital3DView::setShowSeamEdges(bool v)      { showSeam_ = v; update(); }
+void MeshView::setTextured(bool v)           { textured_     = v; update(); }
+void MeshView::setUVMode(bool v)             { uvMode_       = v; update(); }
+void MeshView::setShowInternalEdges(bool v)  { showInternal_ = v; update(); }
+void MeshView::setShowSeamEdges(bool v)      { showSeam_ = v; update(); }
 
-void Orbital3DView::setLightX(double v) { lightPos_.x = (float)v; update(); }
-void Orbital3DView::setLightY(double v) { lightPos_.y = (float)v; update(); }
-void Orbital3DView::setLightZ(double v) { lightPos_.z = (float)v; update(); }
+void MeshView::setBrushRadius(double normalizedRadius) { brushRadius_ = normalizedRadius; }
+void MeshView::setBrushAngleThresholdDeg(double degrees) { brushAngleThresholdDeg_ = degrees; }
+void MeshView::setBrushPropagationMode(mesh::edgesel::PropagationMode mode) { brushPropagationMode_ = mode; }
 
-void Orbital3DView::setBrushRadius(double normalizedRadius) { brushRadius_ = normalizedRadius; }
-void Orbital3DView::setBrushAngleThresholdDeg(double degrees) { brushAngleThresholdDeg_ = degrees; }
-void Orbital3DView::setBrushPropagationMode(mesh::edgesel::PropagationMode mode) { brushPropagationMode_ = mode; }
-
-void Orbital3DView::clearBrushSelection() {
+void MeshView::clearBrushSelection() {
     brushSelection_.clear();
     highlightDirty_ = true;
     emit selectionChanged((int)brushSelection_.size());
@@ -248,19 +89,15 @@ void Orbital3DView::clearBrushSelection() {
 
 // ─── GL lifecycle ─────────────────────────────────────────────────────────────
 
-void Orbital3DView::initializeGL() {
-    initializeOpenGLFunctions();
-    glClearColor(0.12f, 0.12f, 0.12f, 1.0f);
-    glEnable(GL_DEPTH_TEST);
-
+void MeshView::initPrograms() {
     createShaders();
 }
 
-void Orbital3DView::resizeGL(int w, int h) {
-    glViewport(0, 0, w, h);
+void MeshView::onMeshAssigned() {
+    updateStatsLabel();
 }
 
-void Orbital3DView::resizeEvent(QResizeEvent* e) {
+void MeshView::resizeEvent(QResizeEvent* e) {
     QOpenGLWidget::resizeEvent(e);
     if (titleLabel_)
         titleLabel_->setGeometry(0, 0, width(), titleLabel_->height());
@@ -273,7 +110,7 @@ void Orbital3DView::resizeEvent(QResizeEvent* e) {
         statsLabel_->setGeometry(0, bottomY - statsLabel_->height(), width(), statsLabel_->height());
 }
 
-void Orbital3DView::applyColorBtnStyle(QPushButton* btn, const QColor& c) {
+void MeshView::applyColorBtnStyle(QPushButton* btn, const QColor& c) {
     btn->setStyleSheet(QString(
         "QPushButton {"
         "  background: rgba(20,20,20,200);"
@@ -287,7 +124,7 @@ void Orbital3DView::applyColorBtnStyle(QPushButton* btn, const QColor& c) {
     ).arg(c.name()));
 }
 
-void Orbital3DView::createColorRow() {
+void MeshView::createColorRow() {
     colorRow_ = new QWidget(this);
     colorRow_->setAttribute(Qt::WA_TranslucentBackground);
     colorRow_->setFixedHeight(28);
@@ -320,8 +157,8 @@ void Orbital3DView::createColorRow() {
     colorRow_->show();
 }
 
-void Orbital3DView::updateStatsLabel() {
-    if (!primaryMesh_) return;
+void MeshView::updateStatsLabel() {
+    if (!mesh_) return;
 
     if (!statsLabel_) {
         statsLabel_ = new QLabel(this);
@@ -338,15 +175,15 @@ void Orbital3DView::updateStatsLabel() {
         );
     }
     statsLabel_->setText(QString("%1 faces  ·  %2 vertices")
-                              .arg(primaryMesh_->faceCount())
-                              .arg(primaryMesh_->vertexCount()));
+                              .arg(mesh_->faceCount())
+                              .arg(mesh_->vertexCount()));
     int bottomY = height() - (colorRow_ ? colorRow_->height() : 0);
     statsLabel_->setGeometry(0, bottomY - statsLabel_->height(), width(), statsLabel_->height());
     statsLabel_->raise();
     statsLabel_->show();
 }
 
-void Orbital3DView::setTitle(const QString& title) {
+void MeshView::setTitle(const QString& title) {
     if (!titleLabel_) {
         titleLabel_ = new QLabel(this);
         titleLabel_->setAlignment(Qt::AlignCenter);
@@ -371,7 +208,7 @@ void Orbital3DView::setTitle(const QString& title) {
 
 // ─── Shader creation ──────────────────────────────────────────────────────────
 
-void Orbital3DView::createShaders() {
+void MeshView::createShaders() {
     // Solid / Textured — Phong shading with optional texture
     {
         const char* vert = R"(
@@ -531,63 +368,34 @@ void Orbital3DView::createShaders() {
 
 // ─── Buffer builders ──────────────────────────────────────────────────────────
 
-void Orbital3DView::buildPrimaryBuffers() {
-    if (!primaryMesh_) return;
-    if (primaryMesh_->vertices().empty()) {
-        primaryIndexCount_ = 0;  // nothing to draw; drop the previous mesh
-        return;
-    }
-
-    // Compute bounding box for the model matrix normalization, from
-    // normalizationMesh_ when set so linked viewports share one scale.
-    const mesh::Mesh* normMesh = normalizationMesh_ ? normalizationMesh_ : primaryMesh_;
-    if (normMesh->vertices().empty()) normMesh = primaryMesh_;
-    Eigen::Vector3d bmin( 1e18,  1e18,  1e18);
-    Eigen::Vector3d bmax(-1e18, -1e18, -1e18);
-    for (const auto& v : normMesh->vertices()) {
-        if (v.removed) continue;
-        bmin = bmin.cwiseMin(v.pos);
-        bmax = bmax.cwiseMax(v.pos);
-    }
-    Eigen::Vector3d center = (bmin + bmax) * 0.5;
-    double radius = (bmax - bmin).norm() * 0.5;
-    if (radius < 1e-9) radius = 1.0;
-    meshCenter_    = glm::vec3((float)center.x(), (float)center.y(), (float)center.z());
-    meshNormScale_ = 1.0f / (float)radius;
-
-    std::vector<float> verts;
-    std::vector<unsigned int> idxs;
-    buildMeshVerts(primaryMesh_, verts, idxs);
-    setupMeshVAO(this, verts, idxs, primaryVbo_, primaryEbo_, primaryVao_, primaryIndexCount_);
-
+void MeshView::onMeshChanged() {
+    // The base class has already uploaded the mesh and its normalization; what is
+    // left are the MeshView-only buffers and textures derived from it.
     buildEdgeBuffers();
     buildUVBuffers();
     uploadColorFromMesh();
     uploadNormalFromMesh();
 
     // Brush-selection topology is only valid for the mesh it was built from.
-    brushAdjacency_ = mesh::edgesel::FaceAdjacency::build(*primaryMesh_);
-    brushFaceNormals_ = mesh::edgesel::computeFaceNormals(*primaryMesh_);
+    brushAdjacency_ = mesh::edgesel::FaceAdjacency::build(*mesh_);
+    brushFaceNormals_ = mesh::edgesel::computeFaceNormals(*mesh_);
     brushSelection_.clear();
     highlightDirty_ = true;
 }
 
-void Orbital3DView::buildSecondaryBuffers() {
+void MeshView::buildSecondaryBuffers() {
     if (!secondaryMesh_ || secondaryMesh_->vertices().empty()) return;
-    std::vector<float> verts;
-    std::vector<unsigned int> idxs;
-    buildMeshVerts(secondaryMesh_, verts, idxs);
-    setupMeshVAO(this, verts, idxs, secondaryVbo_, secondaryEbo_, secondaryVao_, secondaryIndexCount_);
+    buildVertexArray(secondaryMesh_, secondaryVbo_, secondaryEbo_, secondaryVao_, secondaryIndexCount_);
 }
 
-void Orbital3DView::buildEdgeBuffers() {
-    if (!primaryMesh_) return;
+void MeshView::buildEdgeBuffers() {
+    if (!mesh_) return;
 
     static const float kSeam[3]     = {1.0f, 0.1f,  0.85f};
     static const float kInternal[3] = {0.8f, 0.8f,  0.8f};
 
-    auto edgeToFaces = primaryMesh_->buildEdgeToFaces();
-    auto seamPairs = primaryMesh_->findSeamEdges();
+    auto edgeToFaces = mesh_->buildEdgeToFaces();
+    auto seamPairs = mesh_->findSeamEdges();
     std::set<mesh::Edge> seamSet(seamPairs.begin(), seamPairs.end());
 
     std::vector<float> lineVerts;
@@ -602,13 +410,13 @@ void Orbital3DView::buildEdgeBuffers() {
 
     for (const auto& [edge, faceIds] : edgeToFaces) {
         if (faceIds.size() == 1 || !seamSet.count(edge)) continue;
-        append(primaryMesh_->vertices()[edge.first].pos, primaryMesh_->vertices()[edge.second].pos, kSeam);
+        append(mesh_->vertices()[edge.first].pos, mesh_->vertices()[edge.second].pos, kSeam);
     }
     seamEdgeEnd_ = (int)(lineVerts.size() / 6);
 
     for (const auto& [edge, faceIds] : edgeToFaces) {
         if (faceIds.size() == 1 || seamSet.count(edge)) continue;
-        append(primaryMesh_->vertices()[edge.first].pos, primaryMesh_->vertices()[edge.second].pos, kInternal);
+        append(mesh_->vertices()[edge.first].pos, mesh_->vertices()[edge.second].pos, kInternal);
     }
     edgeVertexCount_ = (int)(lineVerts.size() / 6);
 
@@ -625,15 +433,15 @@ void Orbital3DView::buildEdgeBuffers() {
     edgeVao_.release();
 }
 
-void Orbital3DView::rebuildHighlightBuffer() {
+void MeshView::rebuildHighlightBuffer() {
     static const float kHighlight[3] = {1.0f, 0.6f, 0.0f};
 
     std::vector<float> lineVerts;
-    if (primaryMesh_) {
+    if (mesh_) {
         lineVerts.reserve(brushSelection_.edges().size() * 2 * 6);
         for (const auto &edge : brushSelection_.edges()) {
-            const auto &a = primaryMesh_->vertices()[edge.first].pos;
-            const auto &b = primaryMesh_->vertices()[edge.second].pos;
+            const auto &a = mesh_->vertices()[edge.first].pos;
+            const auto &b = mesh_->vertices()[edge.second].pos;
             lineVerts.push_back((float)a.x()); lineVerts.push_back((float)a.y()); lineVerts.push_back((float)a.z());
             lineVerts.push_back(kHighlight[0]); lineVerts.push_back(kHighlight[1]); lineVerts.push_back(kHighlight[2]);
             lineVerts.push_back((float)b.x()); lineVerts.push_back((float)b.y()); lineVerts.push_back((float)b.z());
@@ -655,12 +463,12 @@ void Orbital3DView::rebuildHighlightBuffer() {
     highlightVao_.release();
 }
 
-void Orbital3DView::buildUVBuffers() {
-    if (!primaryMesh_) return;
+void MeshView::buildUVBuffers() {
+    if (!mesh_) return;
 
-    // Must match buildMeshVerts' vertex ordering exactly (same exploded
-    // (vertex, uv) pairs, since this buffer shares primaryEbo_ with it).
-    mesh::Mesh::GPUMesh gpu = primaryMesh_->explodeForGPU();
+    // Must match buildVertexArray's vertex ordering exactly (same exploded
+    // (vertex, uv) pairs, since this buffer shares meshEbo_ with it).
+    mesh::Mesh::GPUMesh gpu = mesh_->explodeForGPU();
     std::vector<float> uvPos;
     uvPos.reserve(gpu.uvs.size() * 2);
     for (const auto& uv : gpu.uvs) {
@@ -674,7 +482,7 @@ void Orbital3DView::buildUVBuffers() {
     uvVao_.bind();
     uvVbo_.bind();
     uvVbo_.allocate(uvPos.data(), (int)(uvPos.size() * sizeof(float)));
-    primaryEbo_.bind();  // Share index buffer — same vertex ordering as buildMeshVerts
+    meshEbo_.bind();  // Share index buffer — same vertex ordering as buildVertexArray
     glEnableVertexAttribArray(0);
     glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 2 * sizeof(float), nullptr);
     uvVao_.release();
@@ -693,15 +501,15 @@ void Orbital3DView::buildUVBuffers() {
 
 // ─── Texture helpers ──────────────────────────────────────────────────────────
 
-void Orbital3DView::uploadColorFromMesh() {
+void MeshView::uploadColorFromMesh() {
     if (colorTex_) { glDeleteTextures(1, &colorTex_); colorTex_ = 0; }
-    if (!primaryMesh_ || primaryMesh_->colorTexture().data.empty()) return;
+    if (!mesh_ || mesh_->colorTexture().data.empty()) return;
 
     glGenTextures(1, &colorTex_);
     glBindTexture(GL_TEXTURE_2D, colorTex_);
     glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA,
-                 primaryMesh_->colorTexture().width, primaryMesh_->colorTexture().height,
-                 0, GL_RGBA, GL_UNSIGNED_BYTE, primaryMesh_->colorTexture().data.data());
+                 mesh_->colorTexture().width, mesh_->colorTexture().height,
+                 0, GL_RGBA, GL_UNSIGNED_BYTE, mesh_->colorTexture().data.data());
     glGenerateMipmap(GL_TEXTURE_2D);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
@@ -710,15 +518,15 @@ void Orbital3DView::uploadColorFromMesh() {
     glBindTexture(GL_TEXTURE_2D, 0);
 }
 
-void Orbital3DView::uploadNormalFromMesh() {
+void MeshView::uploadNormalFromMesh() {
     if (normalTex_) { glDeleteTextures(1, &normalTex_); normalTex_ = 0; }
-    if (!primaryMesh_ || primaryMesh_->normalTexture().data.empty()) return;
+    if (!mesh_ || mesh_->normalTexture().data.empty()) return;
 
     glGenTextures(1, &normalTex_);
     glBindTexture(GL_TEXTURE_2D, normalTex_);
     glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA,
-                 primaryMesh_->normalTexture().width, primaryMesh_->normalTexture().height,
-                 0, GL_RGBA, GL_UNSIGNED_BYTE, primaryMesh_->normalTexture().data.data());
+                 mesh_->normalTexture().width, mesh_->normalTexture().height,
+                 0, GL_RGBA, GL_UNSIGNED_BYTE, mesh_->normalTexture().data.data());
     glGenerateMipmap(GL_TEXTURE_2D);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
@@ -727,40 +535,14 @@ void Orbital3DView::uploadNormalFromMesh() {
     glBindTexture(GL_TEXTURE_2D, 0);
 }
 
-void Orbital3DView::deleteTextures() {
+void MeshView::deleteTextures() {
     if (colorTex_)  { glDeleteTextures(1, &colorTex_);  colorTex_  = 0; }
     if (normalTex_) { glDeleteTextures(1, &normalTex_); normalTex_ = 0; }
 }
 
-// ─── Camera matrices ──────────────────────────────────────────────────────────
+// ─── Deferred uploads and dispatch ────────────────────────────────────────────
 
-glm::mat4 Orbital3DView::projMatrix() const {
-    return glm::perspective(glm::radians(45.0f),
-                            (float)width() / std::max(1, height()),
-                            0.1f, 100.0f);
-}
-
-glm::mat4 Orbital3DView::viewMatrix() const {
-    glm::vec3 pos(
-        zoom_ * sinf(glm::radians(rotY_)) * cosf(glm::radians(rotX_)),
-        zoom_ * sinf(glm::radians(rotX_)),
-        zoom_ * cosf(glm::radians(rotY_)) * cosf(glm::radians(rotX_)));
-    return glm::lookAt(pos, glm::vec3(0.f), glm::vec3(0.f, 1.f, 0.f));
-}
-
-glm::mat4 Orbital3DView::modelMatrix() const {
-    return glm::scale(glm::mat4(1.f), glm::vec3(meshNormScale_))
-         * glm::translate(glm::mat4(1.f), -meshCenter_);
-}
-
-// ─── paintGL — deferred uploads then dispatch ─────────────────────────────────
-
-void Orbital3DView::paintGL() {
-    // Deferred GL uploads (safe: we are now inside a valid GL context)
-    if (primaryMeshDirty_ && primaryMesh_) {
-        buildPrimaryBuffers();
-        primaryMeshDirty_ = false;
-    }
+void MeshView::prepareFrame() {
     if (secondaryMeshDirty_ && secondaryMesh_) {
         buildSecondaryBuffers();
         secondaryMeshDirty_ = false;
@@ -769,11 +551,9 @@ void Orbital3DView::paintGL() {
         rebuildHighlightBuffer();
         highlightDirty_ = false;
     }
+}
 
-    glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-
-    if (!primaryVao_.isCreated() || primaryIndexCount_ == 0) return;
-
+void MeshView::paintScene() {
     // UV mode overrides Solid/Textured
     if (uvMode_ && (mode_ == RenderMode::Solid || mode_ == RenderMode::Textured)) {
         paintUV();
@@ -793,7 +573,7 @@ void Orbital3DView::paintGL() {
 
 // ─── Paint routines ───────────────────────────────────────────────────────────
 
-void Orbital3DView::paintSolid() {
+void MeshView::paintSolid() {
     if (cullFace_) glEnable(GL_CULL_FACE); else glDisable(GL_CULL_FACE);
     glPolygonMode(GL_FRONT_AND_BACK, wireframe_ ? GL_LINE : GL_FILL);
 
@@ -819,9 +599,9 @@ void Orbital3DView::paintSolid() {
         solidProg_.setUniformValue("normalSampler", 1);
     }
 
-    primaryVao_.bind();
-    glDrawElements(GL_TRIANGLES, primaryIndexCount_, GL_UNSIGNED_INT, nullptr);
-    primaryVao_.release();
+    meshVao_.bind();
+    glDrawElements(GL_TRIANGLES, meshIndexCount_, GL_UNSIGNED_INT, nullptr);
+    meshVao_.release();
     if (useNormalMap) { glActiveTexture(GL_TEXTURE1); glBindTexture(GL_TEXTURE_2D, 0); }
     if (useTexture)   { glActiveTexture(GL_TEXTURE0); glBindTexture(GL_TEXTURE_2D, 0); }
     solidProg_.release();
@@ -865,7 +645,7 @@ void Orbital3DView::paintSolid() {
     }
 }
 
-void Orbital3DView::paintOverlay() {
+void MeshView::paintOverlay() {
     if (cullFace_) glEnable(GL_CULL_FACE); else glDisable(GL_CULL_FACE);
     glPolygonMode(GL_FRONT_AND_BACK, wireframe_ ? GL_LINE : GL_FILL);
 
@@ -879,9 +659,9 @@ void Orbital3DView::paintOverlay() {
     };
 
     overlayProg_.setUniformValue("meshColor", toVec3(primaryColor_));
-    primaryVao_.bind();
-    glDrawElements(GL_TRIANGLES, primaryIndexCount_, GL_UNSIGNED_INT, nullptr);
-    primaryVao_.release();
+    meshVao_.bind();
+    glDrawElements(GL_TRIANGLES, meshIndexCount_, GL_UNSIGNED_INT, nullptr);
+    meshVao_.release();
 
     if (secondaryVao_.isCreated() && secondaryIndexCount_ > 0) {
         glEnable(GL_BLEND);
@@ -897,7 +677,7 @@ void Orbital3DView::paintOverlay() {
     glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
 }
 
-void Orbital3DView::paintUV() {
+void MeshView::paintUV() {
     glDisable(GL_DEPTH_TEST);
     glDisable(GL_CULL_FACE);
     glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
@@ -915,13 +695,13 @@ void Orbital3DView::paintUV() {
     if (colorTex_) glBindTexture(GL_TEXTURE_2D, 0);
     uvBgProg_.release();
 
-    if (uvVao_.isCreated() && primaryIndexCount_ > 0) {
+    if (uvVao_.isCreated() && meshIndexCount_ > 0) {
         glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);
         glLineWidth(1.2f);
         uvLineProg_.bind();
         uvLineProg_.setUniformValue("wireColor", QVector4D(0.05f, 0.9f, 0.4f, 1.0f));
         uvVao_.bind();
-        glDrawElements(GL_TRIANGLES, primaryIndexCount_, GL_UNSIGNED_INT, nullptr);
+        glDrawElements(GL_TRIANGLES, meshIndexCount_, GL_UNSIGNED_INT, nullptr);
         uvVao_.release();
         uvLineProg_.release();
         glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
@@ -933,7 +713,7 @@ void Orbital3DView::paintUV() {
 
 // ─── Brush selection ──────────────────────────────────────────────────────────
 
-Orbital3DView::Ray Orbital3DView::screenRay(const QPoint& p) const {
+MeshView::Ray MeshView::screenRay(const QPoint& p) const {
     // Unprojecting through inverse(proj*view*model) lands the ray directly in
     // raw (unnormalized) mesh space, matching mesh::Mesh vertex positions —
     // the same space mesh::edgesel::raycastMesh operates in.
@@ -954,17 +734,17 @@ Orbital3DView::Ray Orbital3DView::screenRay(const QPoint& p) const {
     return ray;
 }
 
-void Orbital3DView::brushTouchAt(const QPoint& p, bool erase) {
-    if (!primaryMesh_ || brushFaceNormals_.empty()) return;
+void MeshView::brushTouchAt(const QPoint& p, bool erase) {
+    if (!mesh_ || brushFaceNormals_.empty()) return;
 
     Ray ray = screenRay(p);
-    mesh::edgesel::RayHit hit = mesh::edgesel::raycastMesh(*primaryMesh_, ray.origin, ray.dir);
+    mesh::edgesel::RayHit hit = mesh::edgesel::raycastMesh(*mesh_, ray.origin, ray.dir);
     if (!hit.found) return;
 
     double rawRadius = brushRadius_ / std::max(1e-6f, meshNormScale_);
     double angleRad = brushAngleThresholdDeg_ * (3.14159265358979323846 / 180.0);
 
-    brushSelection_.applyBrush(*primaryMesh_, brushAdjacency_, brushFaceNormals_,
+    brushSelection_.applyBrush(*mesh_, brushAdjacency_, brushFaceNormals_,
                                 hit.faceIdx, hit.point, rawRadius, angleRad,
                                 brushPropagationMode_, erase);
     highlightDirty_ = true;
@@ -974,15 +754,15 @@ void Orbital3DView::brushTouchAt(const QPoint& p, bool erase) {
 
 // ─── Mouse / camera ───────────────────────────────────────────────────────────
 
-void Orbital3DView::mousePressEvent(QMouseEvent* event) {
-    lastMouse_ = event->pos();
+void MeshView::mousePressEvent(QMouseEvent* event) {
+    Orbital3DView::mousePressEvent(event);
     if (interactionMode_ == InteractionMode::BrushSelect) {
         if (event->button() == Qt::LeftButton) brushTouchAt(event->pos(), false);
         else if (event->button() == Qt::RightButton) brushTouchAt(event->pos(), true);
     }
 }
 
-void Orbital3DView::mouseMoveEvent(QMouseEvent* event) {
+void MeshView::mouseMoveEvent(QMouseEvent* event) {
     if (interactionMode_ == InteractionMode::BrushSelect) {
         if (event->buttons() & Qt::LeftButton) brushTouchAt(event->pos(), false);
         else if (event->buttons() & Qt::RightButton) brushTouchAt(event->pos(), true);
@@ -990,19 +770,5 @@ void Orbital3DView::mouseMoveEvent(QMouseEvent* event) {
         return;
     }
 
-    if (!(event->buttons() & Qt::LeftButton)) return;
-    int dx = event->pos().x() - lastMouse_.x();
-    int dy = event->pos().y() - lastMouse_.y();
-    rotY_ += dx * 0.5f;
-    rotX_ += dy * 0.5f;
-    lastMouse_ = event->pos();
-    update();
-    emit cameraChanged(rotX_, rotY_, zoom_);
-}
-
-void Orbital3DView::wheelEvent(QWheelEvent* event) {
-    zoom_ -= event->angleDelta().y() * 0.001f;
-    zoom_ = std::clamp(zoom_, 0.1f, 20.0f);
-    update();
-    emit cameraChanged(rotX_, rotY_, zoom_);
+    Orbital3DView::mouseMoveEvent(event);
 }

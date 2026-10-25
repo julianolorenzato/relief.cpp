@@ -66,8 +66,8 @@ void setThumb(QLabel* label, const QImage& img) {
  * every change.
  */
 void makeLightSliderRow(QVBoxLayout* layout, const char* label, int minHundredths,
-                        int maxHundredths, int defaultHundredths, ReliefView* view,
-                        void (ReliefView::*slot)(double)) {
+                        int maxHundredths, int defaultHundredths, Orbital3DView* view,
+                        void (Orbital3DView::*slot)(double)) {
     QLabel* valueLbl = new QLabel(
         QString("%1: %2").arg(label).arg(defaultHundredths / 100.0, 0, 'f', 2));
     layout->addWidget(valueLbl);
@@ -90,8 +90,8 @@ void makeLightSliderRow(QVBoxLayout* layout, const char* label, int minHundredth
 
 QWidget* ReliefSandboxModule::buildContent() {
     // Viewport widget
-    this->reliefView = new ReliefView();
-    connect(this->reliefView, &ReliefView::pixelPicked, this,
+    this->reliefView = new OldReliefView();
+    connect(this->reliefView, &OldReliefView::pixelPicked, this,
             &ReliefSandboxModule::onPixelPicked);
 
     return this->reliefView;
@@ -181,7 +181,7 @@ void ReliefSandboxModule::buildReliefParamsGroup(QWidget* outerControls) {
     QCheckBox* reliefEnabledCheck = new QCheckBox("Enable Relief Mapping");
     reliefEnabledCheck->setChecked(true);
     connect(reliefEnabledCheck, &QCheckBox::toggled, this->reliefView,
-            &ReliefView::setReliefEnabled);
+            &OldReliefView::setReliefEnabled);
     ctrlLayout->addWidget(reliefEnabledCheck);
 
     // Steps
@@ -191,7 +191,7 @@ void ReliefSandboxModule::buildReliefParamsGroup(QWidget* outerControls) {
     stepsSpin->setRange(1, 512);
     stepsSpin->setValue(256);
     connect(stepsSpin, QOverload<int>::of(&QSpinBox::valueChanged),
-            this->reliefView, &ReliefView::setSteps);
+            this->reliefView, &OldReliefView::setSteps);
     stepsRow->addWidget(stepsSpin, 1);
     ctrlLayout->addLayout(stepsRow);
 
@@ -205,7 +205,7 @@ void ReliefSandboxModule::buildReliefParamsGroup(QWidget* outerControls) {
     depthScaleSpin->setValue(0.05);
     connect(depthScaleSpin,
             QOverload<double>::of(&QDoubleSpinBox::valueChanged),
-            this->reliefView, &ReliefView::setDepthScale);
+            this->reliefView, &OldReliefView::setDepthScale);
     depthRow->addWidget(depthScaleSpin, 1);
     ctrlLayout->addLayout(depthRow);
 
@@ -213,7 +213,7 @@ void ReliefSandboxModule::buildReliefParamsGroup(QWidget* outerControls) {
     QCheckBox* useAtlasCheck = new QCheckBox("Use Atlas (Island Leaping)");
     useAtlasCheck->setChecked(true);
     connect(useAtlasCheck, &QCheckBox::toggled, this->reliefView,
-            &ReliefView::setUseAtlas);
+            &OldReliefView::setUseAtlas);
     ctrlLayout->addWidget(useAtlasCheck);
 
     // Texture Type
@@ -251,18 +251,18 @@ void ReliefSandboxModule::buildReliefParamsGroup(QWidget* outerControls) {
     QHBoxLayout* viewRow = new QHBoxLayout();
     QCheckBox* wireframeCheck = new QCheckBox("Wireframe");
     connect(wireframeCheck, &QCheckBox::toggled, this->reliefView,
-            &ReliefView::setWireframe);
+            &OldReliefView::setWireframe);
     viewRow->addWidget(wireframeCheck);
     QCheckBox* cullFaceCheck = new QCheckBox("Backface Cull");
     cullFaceCheck->setChecked(true);
     connect(cullFaceCheck, &QCheckBox::toggled, this->reliefView,
-            &ReliefView::setCullFace);
+            &OldReliefView::setCullFace);
     viewRow->addWidget(cullFaceCheck);
     ctrlLayout->addLayout(viewRow);
 
     QPushButton* resetCamBtn = new QPushButton("Reset Camera");
     connect(resetCamBtn, &QPushButton::clicked, this->reliefView,
-            &ReliefView::resetCamera);
+            &OldReliefView::resetCamera);
     ctrlLayout->addWidget(resetCamBtn);
 
     outerControls->layout()->addWidget(ctrlGroup);
@@ -272,13 +272,13 @@ void ReliefSandboxModule::buildLightingGroup(QWidget* outerControls) {
     QGroupBox* group = new QGroupBox("Lighting");
     QVBoxLayout* lightLayout = new QVBoxLayout(group);
 
-    // Matches ReliefView's default lightPos{0.f, 2.f, 1.5f}.
+    // Matches Orbital3DView's default lightPos_{0.f, 2.f, 1.5f}.
     makeLightSliderRow(lightLayout, "X", -300, 300, 0, this->reliefView,
-                       &ReliefView::setLightX);
+                       &OldReliefView::setLightX);
     makeLightSliderRow(lightLayout, "Y", 50, 400, 200, this->reliefView,
-                       &ReliefView::setLightY);
+                       &OldReliefView::setLightY);
     makeLightSliderRow(lightLayout, "Z", -300, 300, 150, this->reliefView,
-                       &ReliefView::setLightZ);
+                       &OldReliefView::setLightZ);
 
     outerControls->layout()->addWidget(group);
 }

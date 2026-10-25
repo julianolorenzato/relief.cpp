@@ -8,8 +8,8 @@
 #include <memory>
 #include "relief/mesh.h"
 #include "gui/module.h"
-#include "gui/orbital3dview.h"
-#include "gui/relief_view.h"
+#include "gui/views/mesh_view.h"
+#include "gui/views/relief_view.h"
 
 /**
  * @brief Module hosting two linked viewports: a common view of the original
@@ -53,7 +53,7 @@ protected:
     QWidget* buildControls() override;
 
 private:
-    Orbital3DView* orbitalWidget_ = nullptr;
+    MeshView* orbitalWidget_ = nullptr;
     ReliefView* reliefWidget_ = nullptr;
 
     /// Box shown in the relief view; owns the textures it displays.

@@ -386,6 +386,57 @@ Mesh::GPUMesh Mesh::explodeForGPU() const {
             out.indices.push_back((uint32_t)wedgeToIdx[wi]);
         }
     }
+
+    // Normals and tangents are accumulated per exploded vertex from the faces sharing it.
+    const size_t n = out.positions.size();
+    std::vector<Eigen::Vector3d> normals(n, Eigen::Vector3d::Zero());
+    std::vector<Eigen::Vector3d> tangents(n, Eigen::Vector3d::Zero());
+    std::vector<Eigen::Vector3d> bitangents(n, Eigen::Vector3d::Zero());
+
+    for (size_t i = 0; i + 2 < out.indices.size(); i += 3) {
+        const uint32_t i0 = out.indices[i], i1 = out.indices[i + 1], i2 = out.indices[i + 2];
+        const Eigen::Vector3d e1 = out.positions[i1] - out.positions[i0];
+        const Eigen::Vector3d e2 = out.positions[i2] - out.positions[i0];
+        const Eigen::Vector2d d1 = out.uvs[i1] - out.uvs[i0];
+        const Eigen::Vector2d d2 = out.uvs[i2] - out.uvs[i0];
+
+        const Eigen::Vector3d fn = e1.cross(e2);
+        normals[i0] += fn;
+        normals[i1] += fn;
+        normals[i2] += fn;
+
+        const double det = d1.x() * d2.y() - d2.x() * d1.y();
+        if (std::abs(det) > 1e-12) {
+            const double r = 1.0 / det;
+            const Eigen::Vector3d T = r * (d2.y() * e1 - d1.y() * e2);
+            const Eigen::Vector3d B = r * (d1.x() * e2 - d2.x() * e1);
+            tangents[i0] += T;
+            tangents[i1] += T;
+            tangents[i2] += T;
+            bitangents[i0] += B;
+            bitangents[i1] += B;
+            bitangents[i2] += B;
+        }
+    }
+
+    out.normals.resize(n);
+    out.tangents.resize(n);
+    for (size_t i = 0; i < n; i++) {
+        const Eigen::Vector3d normal = normals[i].normalized();
+        out.normals[i] = normal;
+
+        // Gram-Schmidt against the normal.
+        Eigen::Vector3d t = tangents[i] - normal * normal.dot(tangents[i]);
+        const double len = t.norm();
+        t = len > 1e-8 ? Eigen::Vector3d(t / len) : Eigen::Vector3d(1.0, 0.0, 0.0);
+
+        // Per-vertex handedness (Lengyel): the accumulated tangent only fixes T up to sign,
+        // so cross(N, T) must be compared with the real bitangent from the UV gradient.
+        // Otherwise the "V" axis of the tangent frame silently flips for meshes whose UV
+        // winding differs (e.g. an OBJ mesh, whose V axis is flipped on load vs. glTF's).
+        const double handedness = (normal.cross(t).dot(bitangents[i]) < 0.0) ? -1.0 : 1.0;
+        out.tangents[i] = Eigen::Vector4d(t.x(), t.y(), t.z(), handedness);
+    }
     return out;
 }
 

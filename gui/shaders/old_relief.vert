@@ -25,7 +25,7 @@ void main() {
     Tangent = T;
     // cross(N, T) alone only determines the bitangent up to sign — the actual
     // sign depends on the mesh's UV winding (e.g. flipped for OBJ vs. glTF),
-    // which is why it's baked per-vertex on the CPU (see buildMeshVerts) and
+    // which is why it's baked per-vertex on the CPU (see Mesh::explodeForGPU) and
     // carried here as tangent.w rather than assumed to always be +1.
     Handedness = tangent.w;
     TexCoord = texCoord;

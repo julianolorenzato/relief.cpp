@@ -18,7 +18,7 @@
 #include "relief/op/inflation.h"
 #include "relief/op/smoothing.h"
 #include "relief/op/bvol.h"
-#include "gui/orbital3dview.h"
+#include "gui/views/mesh_view.h"
 
 class QPushButton;
 class QLabel;
@@ -74,9 +74,9 @@ private:
     QWidget* buildControls() override;
 
     // ── Viewports ─────────────────────────────────────────────────────────────
-    Orbital3DView* glWidgetOriginal   = nullptr;
-    Orbital3DView* glWidgetSimplified = nullptr;
-    Orbital3DView* glWidgetOverlay    = nullptr;
+    MeshView* glWidgetOriginal   = nullptr;
+    MeshView* glWidgetSimplified = nullptr;
+    MeshView* glWidgetOverlay    = nullptr;
 
     // ── Simplification controls ───────────────────────────────────────────────
     QSlider* simplificationSlider      = nullptr;

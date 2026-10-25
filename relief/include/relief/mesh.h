@@ -319,7 +319,12 @@ class Mesh {
     /// may carry multiple UVs across a seam.
     struct GPUMesh {
         std::vector<Eigen::Vector3d> positions;
+        /// Area-weighted smooth normals, unit length.
+        std::vector<Eigen::Vector3d> normals;
         std::vector<Eigen::Vector2d> uvs;
+        /// Unit tangents orthogonal to the normal (xyz); w is the handedness sign (+1 or -1)
+        /// such that the bitangent is cross(normal, tangent.xyz) * tangent.w.
+        std::vector<Eigen::Vector4d> tangents;
         std::vector<uint32_t> indices;  ///< 3 per non-removed face.
     };
 

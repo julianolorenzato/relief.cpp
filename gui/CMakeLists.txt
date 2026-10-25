@@ -18,11 +18,13 @@ add_executable(gui
     include/gui/global_context.h
     include/gui/module.h
     include/gui/geometry.h
-    include/gui/orbital3dview.h
+    include/gui/views/orbital3dview.h
+    include/gui/views/mesh_view.h
+    include/gui/views/old_relief_view.h
     include/gui/modules/editor_module.h
     include/gui/modules/textures_module.h
     include/gui/modules/old_module.h
-    include/gui/relief_view.h
+    include/gui/views/relief_view.h
     include/gui/modules/relief_sandbox_module.h
     include/gui/modules/normal_map_module.h
     include/gui/modules/relief_module.h
@@ -31,11 +33,13 @@ add_executable(gui
     src/global_context.cpp
     src/module.cpp
     src/geometry.cpp
-    src/orbital3dview.cpp
+    src/views/orbital3dview.cpp
+    src/views/mesh_view.cpp
+    src/views/old_relief_view.cpp
     src/modules/editor_module.cpp
     src/modules/textures_module.cpp
     src/modules/old_module.cpp
-    src/relief_view.cpp
+    src/views/relief_view.cpp
     src/modules/relief_sandbox_module.cpp
     src/modules/normal_map_module.cpp
     src/modules/relief_module.cpp

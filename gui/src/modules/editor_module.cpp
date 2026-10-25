@@ -22,7 +22,7 @@
 // ─── buildContent / buildControls ──────────────────────────────────────────
 
 QWidget* EditorModule::buildContent() {
-    // ── Viewport area (3 Orbital3DViews side by side) ────────────────────────
+    // ── Viewport area (3 MeshViews side by side) ────────────────────────
     QWidget *viewportArea = new QWidget();
     QHBoxLayout *viewportsLayout = new QHBoxLayout(viewportArea);
     viewportsLayout->setContentsMargins(0, 0, 0, 0);
@@ -31,7 +31,7 @@ QWidget* EditorModule::buildContent() {
     originalGroup->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
     QVBoxLayout *leftLayout = new QVBoxLayout(originalGroup);
     leftLayout->setContentsMargins(0, 0, 0, 0);
-    this->glWidgetOriginal = new Orbital3DView(RenderMode::Solid, "Original Mesh");
+    this->glWidgetOriginal = new MeshView(RenderMode::Solid, "Original Mesh");
     this->glWidgetOriginal->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
     leftLayout->addWidget(this->glWidgetOriginal, 1);
     viewportsLayout->addWidget(originalGroup);
@@ -40,29 +40,29 @@ QWidget* EditorModule::buildContent() {
     simplifiedGroup->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
     QVBoxLayout *rightLayout = new QVBoxLayout(simplifiedGroup);
     rightLayout->setContentsMargins(0, 0, 0, 0);
-    this->glWidgetSimplified = new Orbital3DView(RenderMode::Solid, "Simplified Mesh");
+    this->glWidgetSimplified = new MeshView(RenderMode::Solid, "Simplified Mesh");
     this->glWidgetSimplified->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
     rightLayout->addWidget(this->glWidgetSimplified, 1);
     viewportsLayout->addWidget(simplifiedGroup);
 
-    this->glWidgetOverlay = new Orbital3DView(RenderMode::Overlay, "Overlay");
+    this->glWidgetOverlay = new MeshView(RenderMode::Overlay, "Overlay");
     this->glWidgetOverlay->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
     viewportsLayout->addWidget(this->glWidgetOverlay);
 
     viewportArea->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
 
-    connect(this->glWidgetOriginal, &Orbital3DView::cameraChanged, this->glWidgetSimplified,
-            &Orbital3DView::syncCamera);
-    connect(this->glWidgetOriginal, &Orbital3DView::cameraChanged, this->glWidgetOverlay,
-            &Orbital3DView::syncCamera);
-    connect(this->glWidgetSimplified, &Orbital3DView::cameraChanged, this->glWidgetOriginal,
-            &Orbital3DView::syncCamera);
-    connect(this->glWidgetSimplified, &Orbital3DView::cameraChanged, this->glWidgetOverlay,
-            &Orbital3DView::syncCamera);
-    connect(this->glWidgetOverlay, &Orbital3DView::cameraChanged, this->glWidgetOriginal,
-            &Orbital3DView::syncCamera);
-    connect(this->glWidgetOverlay, &Orbital3DView::cameraChanged, this->glWidgetSimplified,
-            &Orbital3DView::syncCamera);
+    connect(this->glWidgetOriginal, &MeshView::cameraChanged, this->glWidgetSimplified,
+            &MeshView::syncCamera);
+    connect(this->glWidgetOriginal, &MeshView::cameraChanged, this->glWidgetOverlay,
+            &MeshView::syncCamera);
+    connect(this->glWidgetSimplified, &MeshView::cameraChanged, this->glWidgetOriginal,
+            &MeshView::syncCamera);
+    connect(this->glWidgetSimplified, &MeshView::cameraChanged, this->glWidgetOverlay,
+            &MeshView::syncCamera);
+    connect(this->glWidgetOverlay, &MeshView::cameraChanged, this->glWidgetOriginal,
+            &MeshView::syncCamera);
+    connect(this->glWidgetOverlay, &MeshView::cameraChanged, this->glWidgetSimplified,
+            &MeshView::syncCamera);
 
     return viewportArea;
 }
@@ -100,33 +100,33 @@ QWidget* EditorModule::buildControls() {
 
     this->wireframeCheck = new QCheckBox("Wireframe");
     connect(this->wireframeCheck, &QCheckBox::toggled, this->glWidgetOriginal,
-            &Orbital3DView::setWireframe);
+            &MeshView::setWireframe);
     connect(this->wireframeCheck, &QCheckBox::toggled, this->glWidgetSimplified,
-            &Orbital3DView::setWireframe);
+            &MeshView::setWireframe);
     controlsRows->addWidget(this->wireframeCheck);
 
     this->texturedCheck = new QCheckBox("Textured");
     this->texturedCheck->setEnabled(false);
     connect(this->texturedCheck, &QCheckBox::toggled, this->glWidgetOriginal,
-            &Orbital3DView::setTextured);
+            &MeshView::setTextured);
     connect(this->texturedCheck, &QCheckBox::toggled, this->glWidgetSimplified,
-            &Orbital3DView::setTextured);
+            &MeshView::setTextured);
     controlsRows->addWidget(this->texturedCheck);
 
     this->cullFaceCheck = new QCheckBox("Backface Cull");
     this->cullFaceCheck->setChecked(true);
     connect(this->cullFaceCheck, &QCheckBox::toggled, this->glWidgetOriginal,
-            &Orbital3DView::setCullFace);
+            &MeshView::setCullFace);
     connect(this->cullFaceCheck, &QCheckBox::toggled, this->glWidgetSimplified,
-            &Orbital3DView::setCullFace);
+            &MeshView::setCullFace);
     controlsRows->addWidget(this->cullFaceCheck);
 
     this->uvViewCheck = new QCheckBox("UV View");
     this->uvViewCheck->setEnabled(false);
     connect(this->uvViewCheck, &QCheckBox::toggled, this->glWidgetOriginal,
-            &Orbital3DView::setUVMode);
+            &MeshView::setUVMode);
     connect(this->uvViewCheck, &QCheckBox::toggled, this->glWidgetSimplified,
-            &Orbital3DView::setUVMode);
+            &MeshView::setUVMode);
     controlsRows->addWidget(this->uvViewCheck);
 
     QHBoxLayout *boundaryRow = new QHBoxLayout();
@@ -150,16 +150,16 @@ QWidget* EditorModule::buildControls() {
 
     this->showInternalEdgesCheck = new QCheckBox("Show Internal Edges");
     connect(this->showInternalEdgesCheck, &QCheckBox::toggled, this->glWidgetOriginal,
-            &Orbital3DView::setShowInternalEdges);
+            &MeshView::setShowInternalEdges);
     connect(this->showInternalEdgesCheck, &QCheckBox::toggled, this->glWidgetSimplified,
-            &Orbital3DView::setShowInternalEdges);
+            &MeshView::setShowInternalEdges);
     controlsRows->addWidget(this->showInternalEdgesCheck);
 
     this->showSeamEdgesCheck = new QCheckBox("Show Seam Edges");
     connect(this->showSeamEdgesCheck, &QCheckBox::toggled, this->glWidgetOriginal,
-            &Orbital3DView::setShowSeamEdges);
+            &MeshView::setShowSeamEdges);
     connect(this->showSeamEdgesCheck, &QCheckBox::toggled, this->glWidgetSimplified,
-            &Orbital3DView::setShowSeamEdges);
+            &MeshView::setShowSeamEdges);
     controlsRows->addWidget(this->showSeamEdgesCheck);
 
     layout->addWidget(controlsGroup);
@@ -185,7 +185,7 @@ QWidget* EditorModule::buildControls() {
     this->brushRadiusSpin->setDecimals(3);
     this->brushRadiusSpin->setValue(0.05);
     connect(this->brushRadiusSpin, &QDoubleSpinBox::valueChanged, this->glWidgetOriginal,
-            &Orbital3DView::setBrushRadius);
+            &MeshView::setBrushRadius);
     radiusRow->addWidget(this->brushRadiusSpin, 1);
     brushRows->addLayout(radiusRow);
 
@@ -196,7 +196,7 @@ QWidget* EditorModule::buildControls() {
     this->brushAngleSpin->setSingleStep(1.0);
     this->brushAngleSpin->setValue(35.0);
     connect(this->brushAngleSpin, &QDoubleSpinBox::valueChanged, this->glWidgetOriginal,
-            &Orbital3DView::setBrushAngleThresholdDeg);
+            &MeshView::setBrushAngleThresholdDeg);
     angleRow->addWidget(this->brushAngleSpin, 1);
     brushRows->addLayout(angleRow);
 
@@ -218,13 +218,13 @@ QWidget* EditorModule::buildControls() {
 
     this->clearSelectionBtn = new QPushButton("Clear Selection");
     connect(this->clearSelectionBtn, &QPushButton::clicked, this->glWidgetOriginal,
-            &Orbital3DView::clearBrushSelection);
+            &MeshView::clearBrushSelection);
     brushRows->addWidget(this->clearSelectionBtn);
 
     this->selectedEdgeCountLabel = new QLabel("Locked edges: 0");
     brushRows->addWidget(this->selectedEdgeCountLabel);
 
-    connect(this->glWidgetOriginal, &Orbital3DView::selectionChanged, this,
+    connect(this->glWidgetOriginal, &MeshView::selectionChanged, this,
             &EditorModule::onSelectionChanged);
 
     layout->addWidget(brushGroup);
@@ -317,9 +317,9 @@ void EditorModule::onMeshLoaded(mesh::Mesh *original, mesh::Mesh *simplified) {
 
     this->originalFaceCount = this->originalMesh_->faceCount();
 
-    this->glWidgetOriginal->setMesh(this->originalMesh_, this->originalMesh_);
-    this->glWidgetSimplified->setMesh(this->simplifiedMesh_, this->originalMesh_);
-    this->glWidgetOverlay->setMeshes(this->originalMesh_, this->simplifiedMesh_, this->originalMesh_);
+    this->glWidgetOriginal->setMesh(this->originalMesh_);
+    this->glWidgetSimplified->setMesh(this->simplifiedMesh_);
+    this->glWidgetOverlay->setMeshes(this->originalMesh_, this->simplifiedMesh_);
 
     bool hasTexture = !this->originalMesh_->colorTexture().data.empty();
     this->texturedCheck->setEnabled(hasTexture);
@@ -336,8 +336,8 @@ void EditorModule::onMeshLoaded(mesh::Mesh *original, mesh::Mesh *simplified) {
 }
 
 void EditorModule::onMeshUpdated() {
-    this->glWidgetSimplified->setMesh(this->simplifiedMesh_, this->originalMesh_);
-    this->glWidgetOverlay->setMeshes(this->originalMesh_, this->simplifiedMesh_, this->originalMesh_);
+    this->glWidgetSimplified->setMesh(this->simplifiedMesh_);
+    this->glWidgetOverlay->setMeshes(this->originalMesh_, this->simplifiedMesh_);
 }
 
 bool EditorModule::saveSimplified(const QString &path) {
