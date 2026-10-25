@@ -151,8 +151,6 @@ private:
     GLuint colorTex_ = 0;
     GLuint normalTex_ = 0;
 
-    /// Compiles/links all shader programs used by the different render modes.
-    void createShaders();
     void buildSecondaryBuffers(); ///< Uploads the secondary mesh; reuses the primary's meshCenter_/meshNormScale_.
     /// Rebuilds the seam/internal edge overlay buffer from the primary mesh.
     void buildEdgeBuffers();

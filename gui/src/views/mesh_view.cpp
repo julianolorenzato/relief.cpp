@@ -82,12 +82,6 @@ void MeshView::clearBrushSelection() {
 // ─── GL lifecycle ─────────────────────────────────────────────────────────────
 
 void MeshView::initPrograms() {
-    createShaders();
-}
-
-// ─── Shader creation ──────────────────────────────────────────────────────────
-
-void MeshView::createShaders() {
     // Solid / Textured — Phong shading with optional texture
     {
         const char* vert = R"(

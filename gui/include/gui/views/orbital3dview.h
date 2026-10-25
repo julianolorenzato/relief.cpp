@@ -69,9 +69,6 @@ protected:
     void wheelEvent(QWheelEvent *e) override;
     void resizeEvent(QResizeEvent *e) override;
 
-    /// Pins the stats label to the bottom edge and the title label to the top edge.
-    void layoutStatsLabel();
-
     /// Compiles the subclass's own shader programs. Called once from initializeGL().
     virtual void initPrograms() = 0;
     /// Uploads the subclass's mesh-dependent resources (textures, edge buffers, ...). Called
@@ -111,8 +108,6 @@ protected:
     /// Converts a column-major glm::mat4 to the equivalent QMatrix4x4.
     static QMatrix4x4 toQt(const glm::mat4 &m);
 
-    /// Height of the stats label, which is pinned to the bottom edge of the view.
-    static constexpr int kStatsHeight = 22;
     QLabel *statsLabel_ = nullptr;
 
     // Render state
@@ -144,7 +139,6 @@ protected:
 
 private:
     QLabel *titleLabel_ = nullptr;
-    void layoutTitleLabel();
     /// Refreshes the "N faces / N vertices" stats label from mesh_. Called by setMesh().
     void updateStatsLabel();
     /// Uploads mesh_'s vertex/index buffers and recomputes its bounds and normalization.
