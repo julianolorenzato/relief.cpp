@@ -36,7 +36,7 @@ void MainWindow::setupUI() {
         {"Old", createModule<OldModule>(this->globalContext, this)},
         {"Relief Sandbox", createModule<ReliefSandboxModule>(this->globalContext, this)},
         {"Normal Map", createModule<NormalMapModule>(this->globalContext, this)},
-        {"Baking", createModule<BakingModule>(this->globalContext, this)},
+        {"Relief", createModule<ReliefModule>(this->globalContext, this)},
     };
 
     // ── Context toolbar ────────────────────────────────────────────────────

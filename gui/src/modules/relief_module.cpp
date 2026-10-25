@@ -1,9 +1,9 @@
 /**
- * @file baking_module.cpp
- * @brief BakingModule implementation: common and relief views side by side, and
+ * @file relief_module.cpp
+ * @brief ReliefModule implementation: common and relief views side by side, and
  *        a Bake button feeding the relief view.
  */
-#include "gui/modules/baking_module.h"
+#include "gui/modules/relief_module.h"
 #include <QApplication>
 #include <QCheckBox>
 #include <QComboBox>
@@ -91,7 +91,7 @@ mesh::Mesh makeBoxMesh(const mesh::Mesh& src)
 
 // ─── buildContent / buildControls ──────────────────────────────────────────
 
-QWidget* BakingModule::buildContent()
+QWidget* ReliefModule::buildContent()
 {
     QWidget* viewportsWidget = new QWidget();
     QHBoxLayout* viewportsLayout = new QHBoxLayout(viewportsWidget);
@@ -111,7 +111,7 @@ QWidget* BakingModule::buildContent()
     return viewportsWidget;
 }
 
-QWidget* BakingModule::buildControls()
+QWidget* ReliefModule::buildControls()
 {
     QWidget* controlsContainer = new QWidget();
     QVBoxLayout* containerLayout = new QVBoxLayout(controlsContainer);
@@ -228,7 +228,7 @@ QWidget* BakingModule::buildControls()
 
 // ─── Slots ──────────────────────────────────────────────────────────────────
 
-void BakingModule::onMeshLoaded(mesh::Mesh* original, mesh::Mesh* simplified)
+void ReliefModule::onMeshLoaded(mesh::Mesh* original, mesh::Mesh* simplified)
 {
     Module::onMeshLoaded(original, simplified);
 
@@ -238,7 +238,7 @@ void BakingModule::onMeshLoaded(mesh::Mesh* original, mesh::Mesh* simplified)
     reliefWidget_->setMesh(boxMesh_.get());
 }
 
-void BakingModule::onMeshUpdated()
+void ReliefModule::onMeshUpdated()
 {
     if (!originalMesh_) return;
 

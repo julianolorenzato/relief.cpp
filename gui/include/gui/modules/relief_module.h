@@ -1,5 +1,5 @@
 /**
- * @file baking_module.h
+ * @file relief_module.h
  * @brief Pipeline stage that shows the loaded mesh next to a 12-triangle box
  *        rendered with relief mapping from the baked textures.
  */
@@ -18,7 +18,7 @@
  *        them. The baking itself is triggered from the Textures module; this module
  *        refreshes on onMeshUpdated().
  */
-class BakingModule : public Module {
+class ReliefModule : public Module {
     Q_OBJECT
 
 public:
