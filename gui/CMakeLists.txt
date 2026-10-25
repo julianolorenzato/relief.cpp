@@ -25,7 +25,6 @@ add_executable(gui
     include/gui/relief_view.h
     include/gui/modules/relief_sandbox_module.h
     include/gui/modules/normal_map_module.h
-    include/gui/modules/bounding_module.h
     include/gui/modules/baking_module.h
     src/main.cpp
     src/mainwindow.cpp
@@ -39,7 +38,6 @@ add_executable(gui
     src/relief_view.cpp
     src/modules/relief_sandbox_module.cpp
     src/modules/normal_map_module.cpp
-    src/modules/bounding_module.cpp
     src/modules/baking_module.cpp
     shaders/shaders.qrc
 )
