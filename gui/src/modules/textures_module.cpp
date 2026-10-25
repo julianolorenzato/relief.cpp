@@ -191,7 +191,7 @@ void TexturesModule::rebuildMaps() {
         return v;
     };
 
-    auto add8 = [&](const QString& label, const mesh::Texture& t) {
+    auto add8 = [&](const QString& label, const mesh::Texture<uint8_t> &t) {
         if (t.data.empty() || t.width <= 0 || t.height <= 0)
             return;
         MapSource m;
@@ -202,7 +202,7 @@ void TexturesModule::rebuildMaps() {
         m.views = standardViews();
         maps_.push_back(std::move(m));
     };
-    auto add16 = [&](const QString& label, const mesh::Texture16& t) {
+    auto add16 = [&](const QString& label, const mesh::Texture<uint16_t>& t) {
         if (t.data.empty() || t.width <= 0 || t.height <= 0)
             return;
         MapSource m;

@@ -61,16 +61,11 @@ struct Edge {
     bool operator==(const Edge& o) const { return first == o.first && second == o.second; }
 };
 
-/// An RGBA8 (row-major) image attached to a mesh. Empty `data` means "no texture".
+/// A row-major RGBA image attached to a mesh, with channels of type `T` (`uint8_t` for RGBA8,
+/// `uint16_t` for RGBA16). Empty `data` means "no texture".
+template <typename T>
 struct Texture {
-    std::vector<uint8_t> data;
-    int width = 0;
-    int height = 0;
-};
-
-/// An RGBA16 (row-major) image attached to a mesh. Empty `data` means "no texture".
-struct Texture16 {
-    std::vector<uint16_t> data;
+    std::vector<T> data;
     int width = 0;
     int height = 0;
 };
@@ -90,13 +85,13 @@ class Mesh {
     const std::vector<Face>& faces() const { return faces_; }
 
     /// @return The color texture extracted from the source file (empty if none).
-    const Texture& colorTexture() const { return colorTexture_; }
+    const Texture<uint8_t>& colorTexture() const { return colorTexture_; }
     /// @return The normal-map texture extracted from the source file (empty if none).
-    const Texture& normalTexture() const { return normalTexture_; }
+    const Texture<uint8_t>& normalTexture() const { return normalTexture_; }
     /// @return The relief height map (empty if none). Same UV layout as the color texture;
     ///         R holds the normalized depth in [0, 1] (0 on the surface, 1 at the deepest
     ///         point), G/B repeat it and A is 255.
-    const Texture& heightTexture() const { return heightTexture_; }
+    const Texture<uint8_t>& heightTexture() const { return heightTexture_; }
 
     /// @return The baked plane textures (empty textures if not baked), ordered X+, X-, Y+, Y-,
     ///         Z+, Z- (index `axis * 2 + (negative ? 1 : 0)`). Each is RGBA16 with
@@ -106,23 +101,23 @@ class Mesh {
     ///         mesh covers the texel, 0 elsewhere, in which case R, G and B are 0). Texels span
     ///         the plane's local coordinates ((axis + 1) % 3, (axis + 2) % 3) over the box
     ///         extents (see op::bboxproj).
-    const std::array<Texture16, 6>& planes() const { return planes_; }
+    const std::array<Texture<uint16_t>, 6>& planes() const { return planes_; }
 
     /// @return The baked smooth normals of the planes, same ordering and layout as planes().
     ///         Each is RGBA16 with RGB = the object-space unit normal interpolated from the
     ///         vertex normals, mapped from [-1, 1] to [0, 65535], and A = silhouette mask.
-    const std::array<Texture16, 6>& normalPlanes() const { return normalPlanes_; }
+    const std::array<Texture<uint16_t>, 6>& normalPlanes() const { return normalPlanes_; }
 
     // ---- Texture mutation ----
 
     /// Replaces the color texture.
-    void setColorTexture(Texture texture) { colorTexture_ = std::move(texture); }
+    void setColorTexture(Texture<uint8_t> texture) { colorTexture_ = std::move(texture); }
     /// Replaces the normal-map texture.
-    void setNormalTexture(Texture texture) { normalTexture_ = std::move(texture); }
+    void setNormalTexture(Texture<uint8_t> texture) { normalTexture_ = std::move(texture); }
     /// Replaces the relief height map.
-    void setHeightTexture(Texture texture) { heightTexture_ = std::move(texture); }
+    void setHeightTexture(Texture<uint8_t> texture) { heightTexture_ = std::move(texture); }
     /// Replaces the baked plane texture at `index` (see planes()).
-    void setPlane(int index, Texture16 texture) { planes_[index] = std::move(texture); }
+    void setPlane(int index, Texture<uint16_t> texture) { planes_[index] = std::move(texture); }
 
     // ---- Construction, I/O and geometry replacement ----
 
@@ -355,11 +350,11 @@ class Mesh {
     std::vector<Vertex> vertices_;
     std::vector<Wedge> wedges_;
     std::vector<Face> faces_;
-    Texture colorTexture_;
-    Texture normalTexture_;
-    Texture heightTexture_;
-    std::array<Texture16, 6> planes_;
-    std::array<Texture16, 6> normalPlanes_;
+    Texture<uint8_t> colorTexture_;
+    Texture<uint8_t> normalTexture_;
+    Texture<uint8_t> heightTexture_;
+    std::array<Texture<uint16_t>, 6> planes_;
+    std::array<Texture<uint16_t>, 6> normalPlanes_;
 };
 
 }  // namespace mesh

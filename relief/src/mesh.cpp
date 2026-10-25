@@ -203,11 +203,11 @@ void Mesh::bake(int resolution) {
 
         for (int side = 0; side < 2; side++) {
             // Planes are ordered X+, X-, Y+, Y-, Z+, Z-.
-            Texture16 &plane = planes_[axis * 2 + (side ? 0 : 1)];
+            Texture<uint16_t> &plane = planes_[axis * 2 + (side ? 0 : 1)];
             plane.width = resolution;
             plane.height = resolution;
             plane.data.assign((size_t)resolution * resolution * 4, 0);
-            Texture16 &normalPlane = normalPlanes_[axis * 2 + (side ? 0 : 1)];
+            Texture<uint16_t> &normalPlane = normalPlanes_[axis * 2 + (side ? 0 : 1)];
             normalPlane.width = resolution;
             normalPlane.height = resolution;
             normalPlane.data.assign((size_t)resolution * resolution * 4, 0);
@@ -218,8 +218,8 @@ void Mesh::bake(int resolution) {
 
         for (int side = 0; side < 2; side++) {
             const double sign = side ? 1.0 : -1.0;
-            Texture16 &plane = planes_[axis * 2 + (side ? 0 : 1)];
-            Texture16 &normalPlane = normalPlanes_[axis * 2 + (side ? 0 : 1)];
+            Texture<uint16_t> &plane = planes_[axis * 2 + (side ? 0 : 1)];
+            Texture<uint16_t> &normalPlane = normalPlanes_[axis * 2 + (side ? 0 : 1)];
             const double thickness = 2 * half[axis];
             std::vector<float> depth((size_t)resolution * resolution,
                                      std::numeric_limits<float>::infinity());

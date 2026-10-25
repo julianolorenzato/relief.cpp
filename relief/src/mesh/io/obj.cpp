@@ -81,7 +81,7 @@ bool loadOBJ(Mesh &mesh, const std::string &path) {
     std::vector<Vertex> vertices;
     std::vector<Wedge> wedges;
     std::vector<Face> faces;
-    Texture colorTexture, normalTexture;
+    Texture<uint8_t> colorTexture, normalTexture;
 
     fs::path dir = fs::path(path).parent_path();
 

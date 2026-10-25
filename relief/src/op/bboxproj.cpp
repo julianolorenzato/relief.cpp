@@ -364,7 +364,7 @@ void BBoxProjectionOp::apply(mesh::Mesh& mesh) const {
     const int res = GRID_RES;
 
     // Relief height map, in the UV layout of the color texture.
-    const mesh::Texture& color = mesh.colorTexture();
+    const mesh::Texture<uint8_t> &color = mesh.colorTexture();
     const int mapW = color.data.empty() ? DEFAULT_HEIGHTMAP_SIZE : color.width;
     const int mapH = color.data.empty() ? DEFAULT_HEIGHTMAP_SIZE : color.height;
     std::vector<float> depthMap((size_t)mapW * mapH, -1.f);
@@ -503,7 +503,7 @@ void BBoxProjectionOp::apply(mesh::Mesh& mesh) const {
     box.exportTo(mesh);
 
     // Uncovered texels (unused atlas space, fill regions) stay on the surface, at depth 0.
-    mesh::Texture height;
+    mesh::Texture<uint8_t> height;
     height.width = mapW;
     height.height = mapH;
     height.data.resize(depthMap.size() * 4);

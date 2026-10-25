@@ -202,9 +202,9 @@ void ReliefView::setMesh(const Mesh *mesh)
 
 void ReliefView::buildMapsFromMesh()
 {
-    const mesh::Texture &color = this->mesh->colorTexture();
-    const mesh::Texture &normal = this->mesh->normalTexture();
-    const mesh::Texture &height = this->mesh->heightTexture();
+    const mesh::Texture<uint8_t> &color = this->mesh->colorTexture();
+    const mesh::Texture<uint8_t> &normal = this->mesh->normalTexture();
+    const mesh::Texture<uint8_t> &height = this->mesh->heightTexture();
 
     // The maps are float pyramids padded to a square power of two, so their size grows
     // fast (an 8192 map is ~1 GB per texture and fails to allocate): cap it, and let
@@ -242,7 +242,7 @@ void ReliefView::buildMapsFromMesh()
 
 void ReliefView::buildPlanesFromMesh()
 {
-    const mesh::Texture &color = this->mesh->colorTexture();
+    const mesh::Texture<uint8_t> &color = this->mesh->colorTexture();
     const auto &planes = this->mesh->planes();
 
     constexpr int kMaxMapRes = 2048;
