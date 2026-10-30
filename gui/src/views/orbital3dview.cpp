@@ -5,6 +5,7 @@
  */
 #include "gui/views/orbital3dview.h"
 #include "gui/geometry.h"
+#include "gui/gl_format.h"
 #include <QLabel>
 #include <QMouseEvent>
 #include <QPainter>
@@ -263,36 +264,6 @@ void Orbital3DView::uploadTexture(QOpenGLTexture*& tex, const textures::MipPyram
     tex->setWrapMode(QOpenGLTexture::Repeat);
 }
 
-namespace {
-
-/// GL internal format, pixel format and component type matching a tex::PixelFormat.
-struct GlFormat {
-    QOpenGLTexture::TextureFormat internal;
-    QOpenGLTexture::PixelFormat pixel;
-    QOpenGLTexture::PixelType type;
-};
-
-GlFormat glFormatOf(tex::PixelFormat f) {
-    using T = QOpenGLTexture;
-    switch (f) {
-        case tex::PixelFormat::R8: return {T::R8_UNorm, T::Red, T::UInt8};
-        case tex::PixelFormat::RG8: return {T::RG8_UNorm, T::RG, T::UInt8};
-        case tex::PixelFormat::RGB8: return {T::RGB8_UNorm, T::RGB, T::UInt8};
-        case tex::PixelFormat::RGBA8: return {T::RGBA8_UNorm, T::RGBA, T::UInt8};
-        case tex::PixelFormat::R16: return {T::R16_UNorm, T::Red, T::UInt16};
-        case tex::PixelFormat::RG16: return {T::RG16_UNorm, T::RG, T::UInt16};
-        case tex::PixelFormat::RGB16: return {T::RGB16_UNorm, T::RGB, T::UInt16};
-        case tex::PixelFormat::RGBA16: return {T::RGBA16_UNorm, T::RGBA, T::UInt16};
-        case tex::PixelFormat::R32F: return {T::R32F, T::Red, T::Float32};
-        case tex::PixelFormat::RG32F: return {T::RG32F, T::RG, T::Float32};
-        case tex::PixelFormat::RGB32F: return {T::RGB32F, T::RGB, T::Float32};
-        case tex::PixelFormat::RGBA32F: return {T::RGBA32F, T::RGBA, T::Float32};
-    }
-    return {T::RGBA8_UNorm, T::RGBA, T::UInt8};
-}
-
-}  // namespace
-
 void Orbital3DView::uploadTexture(QOpenGLTexture*& tex, const tex::Texture& t,
                                   QOpenGLTexture::Filter minFilter,
                                   QOpenGLTexture::Filter magFilter)
@@ -301,17 +272,18 @@ void Orbital3DView::uploadTexture(QOpenGLTexture*& tex, const tex::Texture& t,
     tex = nullptr;
     if (!t.valid()) return;
 
-    const GlFormat gl = glFormatOf(t.format);
     QOpenGLPixelTransferOptions opts;
     opts.setAlignment(1);
 
     tex = new QOpenGLTexture(QOpenGLTexture::Target2D);
-    tex->setFormat(gl.internal);
+    tex->setFormat(static_cast<QOpenGLTexture::TextureFormat>(glfmt::internalFormat(t.format)));
     tex->setSize(t.width(), t.height());
     tex->setMipLevels(t.mipCount());
     tex->allocateStorage();
     for (int lvl = 0; lvl < t.mipCount(); lvl++)
-        tex->setData(lvl, gl.pixel, gl.type, t.mips[lvl].pixels.data(), &opts);
+        tex->setData(lvl, static_cast<QOpenGLTexture::PixelFormat>(glfmt::pixelFormat(t.format)),
+                     static_cast<QOpenGLTexture::PixelType>(glfmt::pixelType(t.format)),
+                     t.mips[lvl].pixels.data(), &opts);
     tex->setMinificationFilter(minFilter);
     tex->setMagnificationFilter(magFilter);
     tex->setWrapMode(QOpenGLTexture::Repeat);

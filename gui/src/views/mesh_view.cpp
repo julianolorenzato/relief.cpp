@@ -4,6 +4,7 @@
  *        and the per-mode paint routines (Solid, Overlay, UV).
  */
 #include "gui/views/mesh_view.h"
+#include "gui/gl_format.h"
 #include <QMouseEvent>
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
@@ -374,27 +375,6 @@ void MeshView::buildUVBuffers() {
 
 // ─── Texture helpers ──────────────────────────────────────────────────────────
 
-namespace {
-
-/// @return The GL pixel format matching `t`'s channel layout.
-GLenum glFormat(const tex::Texture& t) {
-    switch (t.info().channels) {
-        case 1: return GL_RED;
-        case 2: return GL_RG;
-        case 3: return GL_RGB;
-        default: return GL_RGBA;
-    }
-}
-
-/// @return The GL component type matching `t`'s channel depth.
-GLenum glType(const tex::Texture& t) {
-    const tex::FormatInfo fi = t.info();
-    if (fi.isFloat) return GL_FLOAT;
-    return fi.channelBytes == 2 ? GL_UNSIGNED_SHORT : GL_UNSIGNED_BYTE;
-}
-
-}  // namespace
-
 
 void MeshView::uploadColorFromMesh() {
     if (colorTex_) { glDeleteTextures(1, &colorTex_); colorTex_ = 0; }
@@ -404,8 +384,8 @@ void MeshView::uploadColorFromMesh() {
     glGenTextures(1, &colorTex_);
     glBindTexture(GL_TEXTURE_2D, colorTex_);
     glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
-    glTexImage2D(GL_TEXTURE_2D, 0, glFormat(color), color.width(), color.height(), 0,
-                 glFormat(color), glType(color), color.data());
+    glTexImage2D(GL_TEXTURE_2D, 0, glfmt::internalFormat(color.format), color.width(), color.height(), 0,
+                 glfmt::pixelFormat(color.format), glfmt::pixelType(color.format), color.data());
     glGenerateMipmap(GL_TEXTURE_2D);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
@@ -422,8 +402,8 @@ void MeshView::uploadNormalFromMesh() {
     glGenTextures(1, &normalTex_);
     glBindTexture(GL_TEXTURE_2D, normalTex_);
     glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
-    glTexImage2D(GL_TEXTURE_2D, 0, glFormat(normal), normal.width(), normal.height(), 0,
-                 glFormat(normal), glType(normal), normal.data());
+    glTexImage2D(GL_TEXTURE_2D, 0, glfmt::internalFormat(normal.format), normal.width(), normal.height(), 0,
+                 glfmt::pixelFormat(normal.format), glfmt::pixelType(normal.format), normal.data());
     glGenerateMipmap(GL_TEXTURE_2D);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
