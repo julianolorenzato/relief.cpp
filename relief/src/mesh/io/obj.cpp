@@ -4,7 +4,6 @@
  */
 #include "mesh/io/obj.h"
 
-#include "stb_image.h"
 #define TINYOBJLOADER_IMPLEMENTATION
 #define TINYOBJLOADER_USE_DOUBLE
 #include <array>
@@ -12,6 +11,8 @@
 #include <fstream>
 #include <iostream>
 #include <map>
+#include <optional>
+#include <stdexcept>
 #include <sstream>
 #include <string>
 #include <unordered_map>
@@ -24,23 +25,17 @@ namespace fs = std::filesystem;
 namespace {
 
 /**
- * @brief Decodes an image file into a flat RGBA8 buffer via stb_image.
+ * @brief Loads an image file as a single-level texture, reporting failures to stderr.
  * @param path Path to the image file.
- * @param[out] outData Resized to width*height*4 and filled with RGBA bytes.
- * @param[out] outW Decoded image width.
- * @param[out] outH Decoded image height.
- * @return true on success.
+ * @return The texture, or nullopt if the file could not be loaded.
  */
-bool loadTexture(const fs::path &path, std::vector<uint8_t> &outData, int &outW, int &outH) {
-    int comp;
-    unsigned char *pixels = stbi_load(path.c_str(), &outW, &outH, &comp, 4);
-    if (!pixels) {
-        std::cerr << "Could not load texture: " << path.string() << "\n";
-        return false;
+std::optional<tex::Texture> loadTexture(const fs::path &path) {
+    try {
+        return tex::Texture(path.string(), std::nullopt, nullptr);
+    } catch (const std::runtime_error &e) {
+        std::cerr << e.what() << "\n";
+        return std::nullopt;
     }
-    outData.assign(pixels, pixels + (size_t)outW * outH * 4);
-    stbi_image_free(pixels);
-    return true;
 }
 
 /// Hashes a 3D position by its exact bits (no epsilon): used to weld
@@ -81,7 +76,7 @@ bool loadOBJ(Mesh &mesh, const std::string &path) {
     std::vector<Vertex> vertices;
     std::vector<Wedge> wedges;
     std::vector<Face> faces;
-    Texture<uint8_t> colorTexture, normalTexture;
+    std::optional<tex::Texture> colorTexture, normalTexture;
 
     fs::path dir = fs::path(path).parent_path();
 
@@ -160,16 +155,14 @@ bool loadOBJ(Mesh &mesh, const std::string &path) {
     // First material with a texture wins: Mesh holds one global color/normal
     // texture pair (matching the glTF import path), not per-material ones.
     for (const auto &mat : reader.GetMaterials()) {
-        if (colorTexture.data.empty() && !mat.diffuse_texname.empty())
-            loadTexture(dir / mat.diffuse_texname, colorTexture.data, colorTexture.width,
-                        colorTexture.height);
+        if (!colorTexture && !mat.diffuse_texname.empty())
+            colorTexture = loadTexture(dir / mat.diffuse_texname);
 
         std::string normalMap = !mat.normal_texname.empty() ? mat.normal_texname : mat.bump_texname;
-        if (normalTexture.data.empty() && !normalMap.empty())
-            loadTexture(dir / normalMap, normalTexture.data, normalTexture.width,
-                        normalTexture.height);
+        if (!normalTexture && !normalMap.empty())
+            normalTexture = loadTexture(dir / normalMap);
 
-        if (!colorTexture.data.empty() && !normalTexture.data.empty()) break;
+        if (colorTexture && normalTexture) break;
     }
 
     mesh.replaceGeometry(std::move(vertices), std::move(wedges), std::move(faces));

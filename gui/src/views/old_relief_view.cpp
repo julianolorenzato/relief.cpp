@@ -26,9 +26,11 @@ OldReliefView::~OldReliefView()
 
 void OldReliefView::buildMapsFromMesh()
 {
-    const mesh::Texture<uint8_t> &color = this->mesh_->colorTexture();
-    const mesh::Texture<uint8_t> &normal = this->mesh_->normalTexture();
-    const mesh::Texture<uint8_t> &height = this->mesh_->heightTexture();
+    const auto &colorOpt = this->mesh_->colorTexture();
+    const auto &normalOpt = this->mesh_->normalTexture();
+    if (!this->mesh_->heightTexture())
+        return;
+    const tex::Texture &height = *this->mesh_->heightTexture();
 
     // The maps are float pyramids padded to a square power of two, so their size grows
     // fast (an 8192 map is ~1 GB per texture and fails to allocate): cap it, and let
@@ -36,21 +38,22 @@ void OldReliefView::buildMapsFromMesh()
     constexpr int kMaxMapRes = 2048;
     const int kRes = std::min(
         kMaxMapRes,
-        textures::nextPowerOfTwo(std::max(color.data.empty() ? height.width : color.width,
-                                          color.data.empty() ? height.height : color.height)));
+        textures::nextPowerOfTwo(std::max(colorOpt ? colorOpt->width() : height.width(),
+                                          colorOpt ? colorOpt->height() : height.height())));
 
     // Without a color texture, fall back to a flat gray.
     static const uint8_t kGray[4] = {128, 128, 128, 255};
-    const textures::RawImage rawColor =
-        color.data.empty() ? textures::RawImage{kGray, 1, 1, 4}
-                           : textures::RawImage{color.data.data(), color.width, color.height, 4};
-    const textures::RawImage rawHeight{height.data.data(), height.width, height.height, 4};
+    textures::RawImage rawColor = colorOpt ? textures::rawImageOf(*colorOpt) : textures::RawImage{};
+    if (!rawColor.valid())
+        rawColor = textures::RawImage{kGray, 1, 1, 4};
+    const textures::RawImage rawHeight = textures::rawImageOf(height);
+    const textures::RawImage rawNormal = normalOpt ? textures::rawImageOf(*normalOpt) : textures::RawImage{};
 
     const MipPyramid colorMap = textures::buildColorMap(rawColor, kRes, kRes);
     const MipPyramid normalMap =
-        normal.data.empty()
+        !rawNormal.valid()
             ? textures::buildNormalMapFromHeight(rawHeight, kRes, kRes, 0.1f, 1.0f)
-            : textures::buildNormalMap({normal.data.data(), normal.width, normal.height, 4}, kRes, kRes);
+            : textures::buildNormalMap(rawNormal, kRes, kRes);
     const MipPyramid offsetMap = this->mesh_->buildOffsetMap(kRes, kRes, 16);
     const MipPyramid reliefMap = textures::buildReliefMap(rawHeight, kRes, kRes, offsetMap);
 
@@ -179,7 +182,7 @@ void OldReliefView::initPrograms()
 
 void OldReliefView::onMeshChanged()
 {
-    if (!this->mesh_->heightTexture().data.empty())
+    if (this->mesh_->heightTexture())
         buildMapsFromMesh();
 }
 

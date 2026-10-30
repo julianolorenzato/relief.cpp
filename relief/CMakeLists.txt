@@ -33,6 +33,7 @@ add_library(relief STATIC
     src/mesh/io/gltf.cpp
     src/mesh/edgesel.cpp
     src/heightmap.cpp
+    src/tex.cpp
     src/textures.cpp
     src/metrics.cpp
     src/op/simplification.cpp

@@ -8,12 +8,14 @@
 #include <array>
 #include <cstdint>
 #include <map>
+#include <optional>
 #include <set>
 #include <string>
 #include <tuple>
 #include <utility>
 #include <vector>
 
+#include "relief/tex.h"
 #include "relief/textures.h"
 
 namespace mesh {
@@ -61,15 +63,6 @@ struct Edge {
     bool operator==(const Edge& o) const { return first == o.first && second == o.second; }
 };
 
-/// A row-major RGBA image attached to a mesh, with channels of type `T` (`uint8_t` for RGBA8,
-/// `uint16_t` for RGBA16). Empty `data` means "no texture".
-template <typename T>
-struct Texture {
-    std::vector<T> data;
-    int width = 0;
-    int height = 0;
-};
-
 /**
  * @brief Triangle mesh with position/UV/texture data.
  */
@@ -84,16 +77,16 @@ class Mesh {
     /// @return The mesh faces (indexing `wedges()`).
     const std::vector<Face>& faces() const { return faces_; }
 
-    /// @return The color texture extracted from the source file (empty if none).
-    const Texture<uint8_t>& colorTexture() const { return colorTexture_; }
-    /// @return The normal-map texture extracted from the source file (empty if none).
-    const Texture<uint8_t>& normalTexture() const { return normalTexture_; }
-    /// @return The relief height map (empty if none). Same UV layout as the color texture;
+    /// @return The color texture extracted from the source file (nullopt if none).
+    const std::optional<tex::Texture>& colorTexture() const { return colorTexture_; }
+    /// @return The normal-map texture extracted from the source file (nullopt if none).
+    const std::optional<tex::Texture>& normalTexture() const { return normalTexture_; }
+    /// @return The relief height map (nullopt if none). Same UV layout as the color texture;
     ///         R holds the normalized depth in [0, 1] (0 on the surface, 1 at the deepest
     ///         point), G/B repeat it and A is 255.
-    const Texture<uint8_t>& heightTexture() const { return heightTexture_; }
+    const std::optional<tex::Texture>& heightTexture() const { return heightTexture_; }
 
-    /// @return The baked plane textures (empty textures if not baked), ordered X+, X-, Y+, Y-,
+    /// @return The baked plane textures (nullopt entries if not baked), ordered X+, X-, Y+, Y-,
     ///         Z+, Z- (index `axis * 2 + (negative ? 1 : 0)`). Each is RGBA16 with
     ///         R = U and G = V (the color/normal-map UV, in [0, 1] scaled to [0, 65535]),
     ///         B = depth (distance from the plane as a fraction of the box thickness along the
@@ -101,23 +94,23 @@ class Mesh {
     ///         mesh covers the texel, 0 elsewhere, in which case R, G and B are 0). Texels span
     ///         the plane's local coordinates ((axis + 1) % 3, (axis + 2) % 3) over the box
     ///         extents (see op::bboxproj).
-    const std::array<Texture<uint16_t>, 6>& planes() const { return planes_; }
+    const std::array<std::optional<tex::Texture>, 6>& planes() const { return planes_; }
 
     /// @return The baked smooth normals of the planes, same ordering and layout as planes().
     ///         Each is RGBA16 with RGB = the object-space unit normal interpolated from the
     ///         vertex normals, mapped from [-1, 1] to [0, 65535], and A = silhouette mask.
-    const std::array<Texture<uint16_t>, 6>& normalPlanes() const { return normalPlanes_; }
+    const std::array<std::optional<tex::Texture>, 6>& normalPlanes() const { return normalPlanes_; }
 
     // ---- Texture mutation ----
 
-    /// Replaces the color texture.
-    void setColorTexture(Texture<uint8_t> texture) { colorTexture_ = std::move(texture); }
-    /// Replaces the normal-map texture.
-    void setNormalTexture(Texture<uint8_t> texture) { normalTexture_ = std::move(texture); }
-    /// Replaces the relief height map.
-    void setHeightTexture(Texture<uint8_t> texture) { heightTexture_ = std::move(texture); }
+    /// Replaces the color texture (nullopt clears it).
+    void setColorTexture(std::optional<tex::Texture> texture) { colorTexture_ = std::move(texture); }
+    /// Replaces the normal-map texture (nullopt clears it).
+    void setNormalTexture(std::optional<tex::Texture> texture) { normalTexture_ = std::move(texture); }
+    /// Replaces the relief height map (nullopt clears it).
+    void setHeightTexture(std::optional<tex::Texture> texture) { heightTexture_ = std::move(texture); }
     /// Replaces the baked plane texture at `index` (see planes()).
-    void setPlane(int index, Texture<uint16_t> texture) { planes_[index] = std::move(texture); }
+    void setPlane(int index, std::optional<tex::Texture> texture) { planes_[index] = std::move(texture); }
 
     // ---- Construction, I/O and geometry replacement ----
 
@@ -355,11 +348,11 @@ class Mesh {
     std::vector<Vertex> vertices_;
     std::vector<Wedge> wedges_;
     std::vector<Face> faces_;
-    Texture<uint8_t> colorTexture_;
-    Texture<uint8_t> normalTexture_;
-    Texture<uint8_t> heightTexture_;
-    std::array<Texture<uint16_t>, 6> planes_;
-    std::array<Texture<uint16_t>, 6> normalPlanes_;
+    std::optional<tex::Texture> colorTexture_;
+    std::optional<tex::Texture> normalTexture_;
+    std::optional<tex::Texture> heightTexture_;
+    std::array<std::optional<tex::Texture>, 6> planes_;
+    std::array<std::optional<tex::Texture>, 6> normalPlanes_;
 };
 
 }  // namespace mesh

@@ -203,14 +203,9 @@ void Mesh::bake(int resolution) {
 
         for (int side = 0; side < 2; side++) {
             // Planes are ordered X+, X-, Y+, Y-, Z+, Z-.
-            Texture<uint16_t> &plane = planes_[axis * 2 + (side ? 0 : 1)];
-            plane.width = resolution;
-            plane.height = resolution;
-            plane.data.assign((size_t)resolution * resolution * 4, 0);
-            Texture<uint16_t> &normalPlane = normalPlanes_[axis * 2 + (side ? 0 : 1)];
-            normalPlane.width = resolution;
-            normalPlane.height = resolution;
-            normalPlane.data.assign((size_t)resolution * resolution * 4, 0);
+            planes_[axis * 2 + (side ? 0 : 1)].emplace(resolution, resolution, tex::PixelFormat::RGBA16);
+            normalPlanes_[axis * 2 + (side ? 0 : 1)].emplace(resolution, resolution,
+                                                             tex::PixelFormat::RGBA16);
         }
 
         // A flat box has no area to bake on this axis.
@@ -218,8 +213,8 @@ void Mesh::bake(int resolution) {
 
         for (int side = 0; side < 2; side++) {
             const double sign = side ? 1.0 : -1.0;
-            Texture<uint16_t> &plane = planes_[axis * 2 + (side ? 0 : 1)];
-            Texture<uint16_t> &normalPlane = normalPlanes_[axis * 2 + (side ? 0 : 1)];
+            uint16_t *plane = reinterpret_cast<uint16_t *>(planes_[axis * 2 + (side ? 0 : 1)]->data());
+            uint16_t *normalPlane = reinterpret_cast<uint16_t *>(normalPlanes_[axis * 2 + (side ? 0 : 1)]->data());
             const double thickness = 2 * half[axis];
             std::vector<float> depth((size_t)resolution * resolution,
                                      std::numeric_limits<float>::infinity());
@@ -263,7 +258,7 @@ void Mesh::bake(int resolution) {
 
                         const Eigen::Vector2d value = l0 * uv[0] + l1 * uv[1] + l2 * uv[2];
                         for (int k = 0; k < 2; k++) {
-                            plane.data[texel * 4 + k] =
+                            plane[texel * 4 + k] =
                                 (uint16_t)std::lround(std::clamp(value[k], 0.0, 1.0) * 65535.0);
                         }
 
@@ -271,10 +266,10 @@ void Mesh::bake(int resolution) {
                         if (n.squaredNorm() > 1e-24) n.normalize();
                         else n = sign * Eigen::Vector3d::Unit(axis);
                         for (int k = 0; k < 3; k++) {
-                            normalPlane.data[texel * 4 + k] =
+                            normalPlane[texel * 4 + k] =
                                 (uint16_t)std::lround((0.5 * n[k] + 0.5) * 65535.0);
                         }
-                        normalPlane.data[texel * 4 + 3] = 65535;
+                        normalPlane[texel * 4 + 3] = 65535;
                     }
                 }
             }
@@ -283,8 +278,8 @@ void Mesh::bake(int resolution) {
             for (size_t texel = 0; texel < depth.size(); texel++) {
                 if (std::isinf(depth[texel])) continue;
                 const double d = thickness > 0.0 ? std::clamp(depth[texel] / thickness, 0.0, 1.0) : 0.0;
-                plane.data[texel * 4 + 2] = (uint16_t)std::lround(d * 65535.0);
-                plane.data[texel * 4 + 3] = 65535;
+                plane[texel * 4 + 2] = (uint16_t)std::lround(d * 65535.0);
+                plane[texel * 4 + 3] = 65535;
             }
         }
     }
@@ -451,11 +446,11 @@ Eigen::Vector2d Mesh::vertexUV(int face, int vertexId) const {
 void Mesh::logSummary() const {
     std::cout << "Mesh: " << vertexCount() << " vertices, " << wedges_.size() << " wedges, "
               << faceCount() << " faces\n";
-    if (!colorTexture_.data.empty())
-        std::cout << "  color texture: " << colorTexture_.width << "x" << colorTexture_.height
+    if (colorTexture_)
+        std::cout << "  color texture: " << colorTexture_->width() << "x" << colorTexture_->height()
                   << "\n";
-    if (!normalTexture_.data.empty())
-        std::cout << "  normal texture: " << normalTexture_.width << "x" << normalTexture_.height
+    if (normalTexture_)
+        std::cout << "  normal texture: " << normalTexture_->width() << "x" << normalTexture_->height()
                   << "\n";
 }
 

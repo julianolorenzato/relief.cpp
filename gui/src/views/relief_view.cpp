@@ -7,7 +7,6 @@
 #include <iostream>
 
 using namespace mesh;
-using namespace textures;
 
 // ─── Constructor / Destructor ─────────────────────────────────────────────────
 
@@ -22,34 +21,45 @@ ReliefView::~ReliefView()
 
 void ReliefView::buildPlanesFromMesh()
 {
-    const mesh::Texture<uint8_t> &color = this->mesh_->colorTexture();
+    const auto &color = this->mesh_->colorTexture();
     const auto &planes = this->mesh_->planes();
-
-    constexpr int kMaxMapRes = 2048;
-    const int kRes = color.data.empty()
-                         ? 1
-                         : std::min(kMaxMapRes, textures::nextPowerOfTwo(std::max(color.width, color.height)));
 
     // Without a color texture, fall back to a flat gray.
     static const uint8_t kGray[4] = {128, 128, 128, 255};
-    const textures::RawImage rawColor =
-        color.data.empty() ? textures::RawImage{kGray, 1, 1, 4}
-                           : textures::RawImage{color.data.data(), color.width, color.height, 4};
-    const MipPyramid colorMap = textures::buildColorMap(rawColor, kRes, kRes);
-    uploadTexture(this->colorTex, colorMap, QOpenGLTexture::RGBA32F, QOpenGLTexture::RGBA,
-                  QOpenGLTexture::LinearMipMapLinear, QOpenGLTexture::Linear);
+    tex::Texture colorMap = color && color->valid()
+                                ? *color
+                                : tex::Texture(1, 1, tex::PixelFormat::RGBA8, kGray, nullptr);
+    colorMap.generateMips(tex::boxRule);
+    uploadTexture(this->colorTex, colorMap, QOpenGLTexture::LinearMipMapLinear, QOpenGLTexture::Linear);
 
     delete this->planesTex;
     this->planesTex = nullptr;
     delete this->planeNormalsTex;
     this->planeNormalsTex = nullptr;
-    const int w = planes[0].width, h = planes[0].height;
+    if (!planes[0])
+        return;
+    const int w = planes[0]->width(), h = planes[0]->height();
     if (w <= 0 || h <= 0)
         return;
 
     // Nearest filtering: the mask and depth must not be blended across the silhouette.
     // Level 0 is the baked plane; each coarser level keeps, per 2x2 block, the minimum depth
     // over the covered texels in B and whether any is covered in A (see relief.frag).
+    const tex::MipRule coverageMin = [](const float *const s[4], float *d, int) {
+        float minDepth = 1.f;
+        bool covered = false;
+        for (int i = 0; i < 4; i++)
+        {
+            if (s[i][3] < 0.5f)
+                continue;
+            covered = true;
+            minDepth = std::min(minDepth, s[i][2]);
+        }
+        d[0] = d[1] = 0.f;
+        d[2] = covered ? minDepth : 0.f;
+        d[3] = covered ? 1.f : 0.f;
+    };
+
     int levels = 1;
     for (int size = std::max(w, h); size > 1; size >>= 1)
         levels++;
@@ -63,44 +73,13 @@ void ReliefView::buildPlanesFromMesh()
     this->planesTex->allocateStorage();
     for (int layer = 0; layer < 6; layer++)
     {
-        if (planes[layer].data.size() != (size_t)w * h * 4)
+        if (!planes[layer] || planes[layer]->width() != w || planes[layer]->height() != h)
             continue;
-        std::vector<uint16_t> prev = planes[layer].data;
-        this->planesTex->setData(0, layer, QOpenGLTexture::RGBA, QOpenGLTexture::UInt16, prev.data());
-        int pw = w, ph = h;
-        for (int level = 1; level < levels; level++)
-        {
-            const int cw = std::max(1, pw >> 1), ch = std::max(1, ph >> 1);
-            std::vector<uint16_t> cur((size_t)cw * ch * 4, 0);
-            for (int y = 0; y < ch; y++)
-            {
-                for (int x = 0; x < cw; x++)
-                {
-                    uint16_t minDepth = 65535;
-                    bool covered = false;
-                    for (int dy = 0; dy < 2; dy++)
-                    {
-                        for (int dx = 0; dx < 2; dx++)
-                        {
-                            const int sx = std::min(2 * x + dx, pw - 1);
-                            const int sy = std::min(2 * y + dy, ph - 1);
-                            const uint16_t *src = &prev[((size_t)sy * pw + sx) * 4];
-                            if (src[3] < 32768)
-                                continue;
-                            covered = true;
-                            minDepth = std::min(minDepth, src[2]);
-                        }
-                    }
-                    uint16_t *dst = &cur[((size_t)y * cw + x) * 4];
-                    dst[2] = covered ? minDepth : 0;
-                    dst[3] = covered ? 65535 : 0;
-                }
-            }
-            this->planesTex->setData(level, layer, QOpenGLTexture::RGBA, QOpenGLTexture::UInt16, cur.data());
-            prev = std::move(cur);
-            pw = cw;
-            ph = ch;
-        }
+        tex::Texture plane = *planes[layer];
+        plane.generateMips(coverageMin);
+        for (int level = 0; level < plane.mipCount(); level++)
+            this->planesTex->setData(level, layer, QOpenGLTexture::RGBA, QOpenGLTexture::UInt16,
+                                     plane.mips[level].pixels.data());
     }
     this->planesTex->setMinificationFilter(QOpenGLTexture::NearestMipMapNearest);
     this->planesTex->setMagnificationFilter(QOpenGLTexture::Nearest);
@@ -116,10 +95,10 @@ void ReliefView::buildPlanesFromMesh()
     this->planeNormalsTex->allocateStorage();
     for (int layer = 0; layer < 6; layer++)
     {
-        if (normals[layer].data.size() != (size_t)w * h * 4)
+        if (!normals[layer] || normals[layer]->width() != w || normals[layer]->height() != h)
             continue;
         this->planeNormalsTex->setData(0, layer, QOpenGLTexture::RGBA, QOpenGLTexture::UInt16,
-                                       normals[layer].data.data());
+                                       reinterpret_cast<const uint16_t *>(normals[layer]->data()));
     }
     this->planeNormalsTex->setMinificationFilter(QOpenGLTexture::Nearest);
     this->planeNormalsTex->setMagnificationFilter(QOpenGLTexture::Nearest);
@@ -192,7 +171,7 @@ void ReliefView::initPrograms()
 
 void ReliefView::onMeshChanged()
 {
-    if (!this->mesh_->planes()[0].data.empty())
+    if (this->mesh_->planes()[0])
     {
         buildPlanesFromMesh();
         return;

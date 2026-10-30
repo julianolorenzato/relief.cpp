@@ -11,6 +11,7 @@
 #include <QOpenGLVertexArrayObject>
 #include <QOpenGLShaderProgram>
 #include <QOpenGLTexture>
+#include <QOpenGLPixelTransferOptions>
 #include <QMatrix4x4>
 #include <QPoint>
 #include <QString>
@@ -97,6 +98,13 @@ protected:
     static void uploadTexture(QOpenGLTexture *&tex, const textures::MipPyramid &pyr,
                               QOpenGLTexture::TextureFormat format,
                               QOpenGLTexture::PixelFormat pixelFormat,
+                              QOpenGLTexture::Filter minFilter,
+                              QOpenGLTexture::Filter magFilter);
+
+    /// Uploads each of `t`'s mip levels into a newly (re)allocated 2D `tex` (replacing whatever
+    /// was there before, or leaving `tex` null if `t` is empty), with repeat wrapping and the
+    /// given sampling filters. The GL format follows `t.format`.
+    static void uploadTexture(QOpenGLTexture *&tex, const tex::Texture &t,
                               QOpenGLTexture::Filter minFilter,
                               QOpenGLTexture::Filter magFilter);
 

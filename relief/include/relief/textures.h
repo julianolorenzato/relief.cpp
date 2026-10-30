@@ -7,6 +7,8 @@
 #include <vector>
 #include <cstdint>
 
+#include "relief/tex.h"
+
 /// Map builders for the different texture kinds used by relief mapping.
 namespace textures {
 
@@ -20,6 +22,14 @@ struct RawImage {
     /// @return true if the image has non-null data and positive dimensions/channels.
     bool valid() const { return data && width > 0 && height > 0 && channels > 0; }
 };
+
+/// @return A view of the base level of `t`, or an invalid RawImage (see RawImage::valid())
+///         if `t` is empty or not 8-bit.
+inline RawImage rawImageOf(const tex::Texture& t) {
+    const tex::FormatInfo fi = t.info();
+    if (!t.valid() || fi.channelBytes != 1) return {};
+    return {t.data(), t.width(), t.height(), fi.channels};
+}
 
 /// One channel-set mip pyramid: mips[0] is full res, each subsequent level is
 /// half the resolution. Each level stores `channels` floats per texel, row-major.

@@ -191,25 +191,27 @@ void TexturesModule::rebuildMaps() {
         return v;
     };
 
-    auto add8 = [&](const QString& label, const mesh::Texture<uint8_t> &t) {
-        if (t.data.empty() || t.width <= 0 || t.height <= 0)
+    auto add8 = [&](const QString& label, const std::optional<tex::Texture> &opt) {
+        if (!opt || !opt->valid() || opt->format != tex::PixelFormat::RGBA8)
             return;
+        const tex::Texture &t = *opt;
         MapSource m;
         m.label = label;
-        m.data8 = t.data.data();
-        m.width = t.width;
-        m.height = t.height;
+        m.data8 = t.data();
+        m.width = t.width();
+        m.height = t.height();
         m.views = standardViews();
         maps_.push_back(std::move(m));
     };
-    auto add16 = [&](const QString& label, const mesh::Texture<uint16_t>& t) {
-        if (t.data.empty() || t.width <= 0 || t.height <= 0)
+    auto add16 = [&](const QString& label, const std::optional<tex::Texture>& opt) {
+        if (!opt || !opt->valid() || opt->format != tex::PixelFormat::RGBA16)
             return;
+        const tex::Texture &t = *opt;
         MapSource m;
         m.label = label;
-        m.data16 = t.data.data();
-        m.width = t.width;
-        m.height = t.height;
+        m.data16 = reinterpret_cast<const uint16_t*>(t.data());
+        m.width = t.width();
+        m.height = t.height();
         m.views = planeViews();
         maps_.push_back(std::move(m));
     };

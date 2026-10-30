@@ -321,7 +321,7 @@ void EditorModule::onMeshLoaded(mesh::Mesh *original, mesh::Mesh *simplified) {
     this->glWidgetSimplified->setMesh(this->simplifiedMesh_);
     this->glWidgetOverlay->setMeshes(this->originalMesh_, this->simplifiedMesh_);
 
-    bool hasTexture = !this->originalMesh_->colorTexture().data.empty();
+    bool hasTexture = this->originalMesh_->colorTexture().has_value();
     this->texturedCheck->setEnabled(hasTexture);
     if (!hasTexture) this->texturedCheck->setChecked(false);
 

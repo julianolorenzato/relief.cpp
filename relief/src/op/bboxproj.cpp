@@ -364,9 +364,9 @@ void BBoxProjectionOp::apply(mesh::Mesh& mesh) const {
     const int res = GRID_RES;
 
     // Relief height map, in the UV layout of the color texture.
-    const mesh::Texture<uint8_t> &color = mesh.colorTexture();
-    const int mapW = color.data.empty() ? DEFAULT_HEIGHTMAP_SIZE : color.width;
-    const int mapH = color.data.empty() ? DEFAULT_HEIGHTMAP_SIZE : color.height;
+    const auto &color = mesh.colorTexture();
+    const int mapW = color ? color->width() : DEFAULT_HEIGHTMAP_SIZE;
+    const int mapH = color ? color->height() : DEFAULT_HEIGHTMAP_SIZE;
     std::vector<float> depthMap((size_t)mapW * mapH, -1.f);
 
     for (size_t quadIdx = 0; quadIdx < QUADS.size(); quadIdx++) {
@@ -503,14 +503,12 @@ void BBoxProjectionOp::apply(mesh::Mesh& mesh) const {
     box.exportTo(mesh);
 
     // Uncovered texels (unused atlas space, fill regions) stay on the surface, at depth 0.
-    mesh::Texture<uint8_t> height;
-    height.width = mapW;
-    height.height = mapH;
-    height.data.resize(depthMap.size() * 4);
+    tex::Texture height(mapW, mapH, tex::PixelFormat::RGBA8);
+    uint8_t* heightPx = height.data();
     for (size_t i = 0; i < depthMap.size(); i++) {
         const uint8_t v = (uint8_t)std::lround(std::clamp(depthMap[i], 0.f, 1.f) * 255.f);
-        height.data[i * 4 + 0] = height.data[i * 4 + 1] = height.data[i * 4 + 2] = v;
-        height.data[i * 4 + 3] = 255;
+        heightPx[i * 4 + 0] = heightPx[i * 4 + 1] = heightPx[i * 4 + 2] = v;
+        heightPx[i * 4 + 3] = 255;
     }
     mesh.setHeightTexture(std::move(height));
 }
