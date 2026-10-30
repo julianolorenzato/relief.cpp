@@ -23,34 +23,6 @@ constexpr double kPi = 3.14159265358979323846;
 
 // ─── Offset-map baking helpers ───────────────────────────────────────────────
 
-/// @return Shortest distance from point `p` to segment [a, b].
-double pointSegmentDistance(const Eigen::Vector2d& p, const Eigen::Vector2d& a,
-                            const Eigen::Vector2d& b) {
-    Eigen::Vector2d ab = b - a;
-    double len2 = ab.squaredNorm();
-    double t = len2 > 1e-18 ? (p - a).dot(ab) / len2 : 0.0;
-    t = std::max(0.0, std::min(1.0, t));
-    Eigen::Vector2d proj = a + t * ab;
-    return (p - proj).norm();
-}
-
-/**
- * @brief Computes 2D barycentric coordinates of (px, py) in triangle (a, b, c).
- * @param px,py Query point.
- * @param ax,ay,bx,by,cx,cy Triangle vertices.
- * @param[out] w0,w1,w2 Barycentric weights on success.
- * @return false if the triangle is degenerate (near-zero area).
- */
-bool bary2D(double px, double py, double ax, double ay, double bx, double by, double cx, double cy,
-            double& w0, double& w1, double& w2) {
-    double denom = (by - cy) * (ax - cx) + (cx - bx) * (ay - cy);
-    if (std::abs(denom) < 1e-10) return false;
-    w0 = ((by - cy) * (px - cx) + (cx - bx) * (py - cy)) / denom;
-    w1 = ((cy - ay) * (px - cx) + (ax - cx) * (py - cy)) / denom;
-    w2 = 1.0 - w0 - w1;
-    return true;
-}
-
 /**
  * @brief Rasterizes the band of texels near segment [p0,p1] (in "this"
  *        island's UV space), writing the per-texel translation that maps
@@ -88,10 +60,16 @@ void rasterizeBand(const Eigen::Vector2d& p0, const Eigen::Vector2d& p1, double 
 
     float thetaTurns = (float)(theta / (2.0 * kPi));
 
+    const Eigen::Vector2d ab = p1 - p0;
+    const double len2 = ab.squaredNorm();
+
     for (int iy = iy0; iy <= iy1; iy++) {
         for (int ix = ix0; ix <= ix1; ix++) {
             Eigen::Vector2d p((ix + 0.5) / width, (iy + 0.5) / height);
-            double dist = pointSegmentDistance(p, p0, p1);
+            // Distance from p to segment [p0, p1].
+            double along = len2 > 1e-18 ? (p - p0).dot(ab) / len2 : 0.0;
+            along = std::max(0.0, std::min(1.0, along));
+            double dist = (p - (p0 + along * ab)).norm();
             if (dist > bandWidthUV) continue;
 
             size_t idx = (size_t)iy * width + ix;
@@ -553,10 +531,16 @@ textures::MipPyramid Mesh::buildOffsetMap(int width, int height, int seamBandTex
         int minY = std::max(0, (int)std::floor(std::min({v0, v1, v2})));
         int maxY = std::min(height - 1, (int)std::ceil(std::max({v0, v1, v2})));
 
+        // Barycentric coordinates of each texel center; skip degenerate (near-zero area) triangles.
+        const double denom = (v1 - v2) * (u0 - u2) + (u2 - u1) * (v0 - v2);
+        if (std::abs(denom) < 1e-10) continue;
+
         for (int py = minY; py <= maxY; py++) {
             for (int px = minX; px <= maxX; px++) {
-                double w0, w1, w2;
-                if (!bary2D(px + 0.5, py + 0.5, u0, v0, u1, v1, u2, v2, w0, w1, w2)) continue;
+                const double qx = px + 0.5, qy = py + 0.5;
+                const double w0 = ((v1 - v2) * (qx - u2) + (u2 - u1) * (qy - v2)) / denom;
+                const double w1 = ((v2 - v0) * (qx - u2) + (u0 - u2) * (qy - v2)) / denom;
+                const double w2 = 1.0 - w0 - w1;
                 if (w0 < -1e-4 || w1 < -1e-4 || w2 < -1e-4) continue;
                 islandAt[(size_t)py * width + px] = f.island;
             }
