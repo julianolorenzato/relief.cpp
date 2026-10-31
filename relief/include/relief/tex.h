@@ -58,6 +58,9 @@ constexpr FormatInfo formatInfo(PixelFormat f) {
  */
 using MipRule = std::function<void(const float* const src[4], float* dst, int channels)>;
 
+/// Ready-made MipRule implementations.
+namespace mip {
+
 /// Box average of the 2x2 block, per channel.
 void boxRule(const float* const src[4], float* dst, int channels);
 
@@ -66,6 +69,16 @@ void maxRule(const float* const src[4], float* dst, int channels);
 
 /// Minimum of the 2x2 block, per channel.
 void minRule(const float* const src[4], float* dst, int channels);
+
+/**
+ * @brief Mip rule for baked relief planes (RGBA: depth in B, coverage mask in A).
+ *        B becomes the minimum depth over the covered texels (A >= 0.5) of the block and
+ *        A becomes 1 if any texel is covered, else 0; R and G are zeroed.
+ *        Requires 4 channels; `channels` is ignored.
+ */
+void coverageMinRule(const float* const src[4], float* dst, int channels);
+
+}  // namespace mip
 
 /**
  * @brief A row-major image stored as raw bytes, one buffer per mip level. Empty `mips`
@@ -94,7 +107,7 @@ struct Texture {
      * @throws std::runtime_error if the file cannot be loaded.
      */
     explicit Texture(const std::string& path, std::optional<PixelFormat> format = std::nullopt,
-                     const MipRule& rule = boxRule);
+                     const MipRule& rule = mip::boxRule);
 
     /**
      * @brief Creates a zero-filled single-level texture.
@@ -113,7 +126,7 @@ struct Texture {
      * @param rule Rule used to build the coarser mip levels; empty builds none.
      */
     Texture(int width, int height, PixelFormat format, const uint8_t* basePixels,
-            const MipRule& rule = boxRule);
+            const MipRule& rule = mip::boxRule);
 
     /// @return Channel count and channel size of `format`.
     FormatInfo info() const { return formatInfo(format); }
@@ -141,7 +154,7 @@ struct Texture {
      * @param rule Rule used to derive each texel from its 2x2 block; empty keeps only
      *        the base level.
      */
-    void generateMips(const MipRule& rule = boxRule);
+    void generateMips(const MipRule& rule = mip::boxRule);
 };
 
 }  // namespace tex

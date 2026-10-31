@@ -29,7 +29,7 @@ void ReliefView::buildPlanesFromMesh()
     tex::Texture colorMap = color && color->valid()
                                 ? *color
                                 : tex::Texture(1, 1, tex::PixelFormat::RGBA8, kGray, nullptr);
-    colorMap.generateMips(tex::boxRule);
+    colorMap.generateMips(tex::mip::boxRule);
     uploadTexture(this->colorTex, colorMap, QOpenGLTexture::LinearMipMapLinear, QOpenGLTexture::Linear);
 
     delete this->planesTex;
@@ -45,21 +45,6 @@ void ReliefView::buildPlanesFromMesh()
     // Nearest filtering: the mask and depth must not be blended across the silhouette.
     // Level 0 is the baked plane; each coarser level keeps, per 2x2 block, the minimum depth
     // over the covered texels in B and whether any is covered in A (see relief.frag).
-    const tex::MipRule coverageMin = [](const float *const s[4], float *d, int) {
-        float minDepth = 1.f;
-        bool covered = false;
-        for (int i = 0; i < 4; i++)
-        {
-            if (s[i][3] < 0.5f)
-                continue;
-            covered = true;
-            minDepth = std::min(minDepth, s[i][2]);
-        }
-        d[0] = d[1] = 0.f;
-        d[2] = covered ? minDepth : 0.f;
-        d[3] = covered ? 1.f : 0.f;
-    };
-
     int levels = 1;
     for (int size = std::max(w, h); size > 1; size >>= 1)
         levels++;
@@ -76,7 +61,7 @@ void ReliefView::buildPlanesFromMesh()
         if (!planes[layer] || planes[layer]->width() != w || planes[layer]->height() != h)
             continue;
         tex::Texture plane = *planes[layer];
-        plane.generateMips(coverageMin);
+        plane.generateMips(tex::mip::coverageMinRule);
         for (int level = 0; level < plane.mipCount(); level++)
             this->planesTex->setData(level, layer, QOpenGLTexture::RGBA, QOpenGLTexture::UInt16,
                                      plane.mips[level].pixels.data());
