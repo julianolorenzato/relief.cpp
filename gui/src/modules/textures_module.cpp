@@ -181,50 +181,51 @@ void TexturesModule::rebuildMaps() {
         v.push_back({"A", {3, -1, -1}, true});
         return v;
     };
-    auto planeViews = [] {
+    auto depthViews = [] {
         std::vector<ChannelView> v;
-        v.push_back({"UV (RG)", {0, 1, -1}, false});
-        v.push_back({"U (R)", {0, -1, -1}, true});
-        v.push_back({"V (G)", {1, -1, -1}, true});
-        v.push_back({"Depth (B)", {2, -1, -1}, true});
-        v.push_back({"Mask (A)", {3, -1, -1}, true});
+        v.push_back({"Depth (R)", {0, -1, -1}, true});
+        return v;
+    };
+    auto normalViews = [] {
+        std::vector<ChannelView> v;
+        v.push_back({"Octahedral (RG)", {0, 1, -1}, false});
+        v.push_back({"X (R)", {0, -1, -1}, true});
+        v.push_back({"Y (G)", {1, -1, -1}, true});
         return v;
     };
 
-    auto add8 = [&](const QString& label, const std::optional<tex::Texture> &opt) {
-        if (!opt || !opt->valid() || opt->format != tex::PixelFormat::RGBA8)
+    // Adds `opt` if it is valid and of format `expected`, shown through `views`.
+    auto add = [&](const QString& label, const std::optional<tex::Texture>& opt,
+                   tex::PixelFormat expected, const std::vector<ChannelView>& views) {
+        if (!opt || !opt->valid() || opt->format != expected)
             return;
         const tex::Texture &t = *opt;
+        const tex::FormatInfo fi = t.info();
         MapSource m;
         m.label = label;
-        m.data8 = t.data();
+        if (fi.channelBytes == 1)
+            m.data8 = t.data();
+        else
+            m.data16 = reinterpret_cast<const uint16_t*>(t.data());
+        m.channels = fi.channels;
         m.width = t.width();
         m.height = t.height();
-        m.views = standardViews();
-        maps_.push_back(std::move(m));
-    };
-    auto add16 = [&](const QString& label, const std::optional<tex::Texture>& opt) {
-        if (!opt || !opt->valid() || opt->format != tex::PixelFormat::RGBA16)
-            return;
-        const tex::Texture &t = *opt;
-        MapSource m;
-        m.label = label;
-        m.data16 = reinterpret_cast<const uint16_t*>(t.data());
-        m.width = t.width();
-        m.height = t.height();
-        m.views = planeViews();
+        m.views = views;
         maps_.push_back(std::move(m));
     };
 
     if (originalMesh_) {
         const mesh::Mesh& mesh = *originalMesh_;
-        add8("Color", mesh.colorTexture());
-        add8("Normal", mesh.normalTexture());
-        add8("Height", mesh.heightTexture());
-        static const char* const kPlaneLabels[6] = {"X+ plane", "X- plane", "Y+ plane",
-                                                    "Y- plane", "Z+ plane", "Z- plane"};
-        for (int i = 0; i < 6; i++)
-            add16(kPlaneLabels[i], mesh.planes()[i]);
+        add("Color", mesh.colorTexture(), tex::PixelFormat::RGBA8, standardViews());
+        add("Normal", mesh.normalTexture(), tex::PixelFormat::RGBA8, standardViews());
+        add("Height", mesh.heightTexture(), tex::PixelFormat::RGBA8, standardViews());
+        static const char* const kPlaneNames[6] = {"X+", "X-", "Y+", "Y-", "Z+", "Z-"};
+        for (int i = 0; i < 6; i++) {
+            const QString name = kPlaneNames[i];
+            add(name + " depth", mesh.depthPlanes()[i], tex::PixelFormat::R16, depthViews());
+            add(name + " color", mesh.colorPlanes()[i], tex::PixelFormat::RGBA8, standardViews());
+            add(name + " normal", mesh.normalPlanes()[i], tex::PixelFormat::RG8, normalViews());
+        }
     }
 
     mapCombo_->blockSignals(true);
@@ -313,15 +314,15 @@ std::vector<float> TexturesModule::buildLevel(const MapSource& m, int level, int
             double acc[4] = {0, 0, 0, 0};
             for (int sy = y0; sy < y1; sy++) {
                 for (int sx = x0; sx < x1; sx++) {
-                    size_t i = ((size_t)sy * m.width + sx) * 4;
-                    for (int c = 0; c < 4; c++)
+                    size_t i = ((size_t)sy * m.width + sx) * m.channels;
+                    for (int c = 0; c < m.channels; c++)
                         acc[c] += m.data8 ? m.data8[i + c] : m.data16[i + c];
                 }
             }
             double n = (double)(y1 - y0) * (x1 - x0);
             size_t o = ((size_t)y * outW + x) * 4;
             for (int c = 0; c < 4; c++)
-                out[o + c] = (float)(acc[c] / n) * scale;
+                out[o + c] = c < m.channels ? (float)(acc[c] / n) * scale : (c == 3 ? 1.f : 0.f);
         }
     }
     return out;

@@ -86,20 +86,32 @@ class Mesh {
     ///         point), G/B repeat it and A is 255.
     const std::optional<tex::Texture>& heightTexture() const { return heightTexture_; }
 
-    /// @return The baked plane textures (nullopt entries if not baked), ordered X+, X-, Y+, Y-,
-    ///         Z+, Z- (index `axis * 2 + (negative ? 1 : 0)`). Each is RGBA16 with
-    ///         R = U and G = V (the color/normal-map UV, in [0, 1] scaled to [0, 65535]),
-    ///         B = depth (distance from the plane as a fraction of the box thickness along the
-    ///         axis, in [0, 1] scaled to [0, 65535]) and A = silhouette mask (65535 where the
-    ///         mesh covers the texel, 0 elsewhere, in which case R, G and B are 0). Texels span
-    ///         the plane's local coordinates ((axis + 1) % 3, (axis + 2) % 3) over the box
-    ///         extents (see op::bboxproj).
-    const std::array<std::optional<tex::Texture>, 6>& planes() const { return planes_; }
+    /// @return The baked depth planes (nullopt entries if not baked), ordered X+, X-, Y+, Y-,
+    ///         Z+, Z- (index `axis * 2 + (negative ? 1 : 0)`). Each is R16 holding the
+    ///         distance from the plane to the nearest outward-facing surface, as a fraction of
+    ///         the box thickness along the axis, in [0, 1] scaled to [0, kDepthMax]. Texels the
+    ///         mesh does not cover hold kDepthEmpty (65535), which doubles as the silhouette
+    ///         mask. Texels span the plane's local coordinates ((axis + 1) % 3, (axis + 2) % 3)
+    ///         over the box extents (see op::bboxproj).
+    const std::array<std::optional<tex::Texture>, 6>& depthPlanes() const { return depthPlanes_; }
 
-    /// @return The baked smooth normals of the planes, same ordering and layout as planes().
-    ///         Each is RGBA16 with RGB = the object-space unit normal interpolated from the
-    ///         vertex normals, mapped from [-1, 1] to [0, 65535], and A = silhouette mask.
+    /// @return The baked color of the planes, same ordering and extent as depthPlanes().
+    ///         Each is RGBA8 with RGB = the color texture sampled at the surface the depth
+    ///         plane sees (mid grey if the mesh has no color texture) and A = 255. Texels the
+    ///         mesh does not cover are filled from their covered neighbours (see tex::dilate),
+    ///         so bilinear filtering does not bleed black at the silhouette.
+    const std::array<std::optional<tex::Texture>, 6>& colorPlanes() const { return colorPlanes_; }
+
+    /// @return The baked smooth normals of the planes, same ordering and extent as
+    ///         depthPlanes(). Each is RG8 holding the object-space unit normal (interpolated
+    ///         from the vertex normals) octahedral-encoded, each component mapped from [-1, 1]
+    ///         to [0, 255]. Uncovered texels are dilated like colorPlanes().
     const std::array<std::optional<tex::Texture>, 6>& normalPlanes() const { return normalPlanes_; }
+
+    /// Depth value stored in depthPlanes() for the largest representable distance.
+    static constexpr uint16_t kDepthMax = 65534;
+    /// Depth value stored in depthPlanes() for texels the mesh does not cover.
+    static constexpr uint16_t kDepthEmpty = 65535;
 
     // ---- Texture mutation ----
 
@@ -109,8 +121,6 @@ class Mesh {
     void setNormalTexture(std::optional<tex::Texture> texture) { normalTexture_ = std::move(texture); }
     /// Replaces the relief height map (nullopt clears it).
     void setHeightTexture(std::optional<tex::Texture> texture) { heightTexture_ = std::move(texture); }
-    /// Replaces the baked plane texture at `index` (see planes()).
-    void setPlane(int index, std::optional<tex::Texture> texture) { planes_[index] = std::move(texture); }
 
     // ---- Construction, I/O and geometry replacement ----
 
@@ -266,12 +276,13 @@ class Mesh {
      * @brief Bakes the 6 planes of the mesh's axis-aligned bounding box.
      *
      * For each of the box's 6 planes, the mesh is looked at orthographically from
-     * outside the box. Each texel of the plane's texture is sampled at its center and
-     * stores, for the nearest outward-facing triangle in front of it, the interpolated
-     * color/normal-map UV (R, G), the depth (B) and a silhouette mask (A); texels that no
-     * triangle covers are all zero. The result is planes(), ordered X+, X-, Y+, Y-, Z+, Z-,
-     * each `resolution` x `resolution`. The smooth (vertex-normal interpolated) normals are
-     * baked alongside into normalPlanes(). The geometry is left untouched.
+     * outside the box. Each texel of the plane is sampled at its center and, for the
+     * nearest outward-facing triangle in front of it, stores the depth into depthPlanes()
+     * (kDepthEmpty where no triangle covers the texel), the color texture sampled at the
+     * interpolated UV into colorPlanes(), and the smooth (vertex-normal interpolated)
+     * normal into normalPlanes(). Color and normals are then dilated into the uncovered
+     * texels. All are ordered X+, X-, Y+, Y-, Z+, Z-, each `resolution` x `resolution`.
+     * The geometry is left untouched.
      *
      * @param resolution Side length, in texels, of each plane texture.
      */
@@ -351,7 +362,8 @@ class Mesh {
     std::optional<tex::Texture> colorTexture_;
     std::optional<tex::Texture> normalTexture_;
     std::optional<tex::Texture> heightTexture_;
-    std::array<std::optional<tex::Texture>, 6> planes_;
+    std::array<std::optional<tex::Texture>, 6> depthPlanes_;
+    std::array<std::optional<tex::Texture>, 6> colorPlanes_;
     std::array<std::optional<tex::Texture>, 6> normalPlanes_;
 };
 

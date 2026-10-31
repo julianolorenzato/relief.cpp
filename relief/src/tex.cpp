@@ -158,4 +158,54 @@ void Texture::generateMips(const MipRule& rule) {
     }
 }
 
+void sampleBilinear(const Texture& t, double u, double v, float out[4]) {
+    const FormatInfo fi = t.info();
+    const int w = t.width(), h = t.height();
+    const size_t texel = fi.texelSize();
+
+    const double x = u * w - 0.5, y = v * h - 0.5;
+    const double fx = std::floor(x), fy = std::floor(y);
+    const float tx = float(x - fx), ty = float(y - fy);
+    auto wrap = [](long i, int n) { return int(((i % n) + n) % n); };
+    const int xs[2] = {wrap(long(fx), w), wrap(long(fx) + 1, w)};
+    const int ys[2] = {wrap(long(fy), h), wrap(long(fy) + 1, h)};
+
+    float acc[4] = {0, 0, 0, 0};
+    for (int i = 0; i < 4; ++i) {
+        float c[4] = {0, 0, 0, 1};
+        readTexel(&t.mips[0].pixels[(size_t(ys[i / 2]) * w + xs[i % 2]) * texel], c, fi);
+        if (fi.channels == 1) c[1] = c[2] = c[0];
+        const float wx = (i % 2) ? tx : 1.0f - tx;
+        const float wy = (i / 2) ? ty : 1.0f - ty;
+        for (int k = 0; k < 4; ++k) acc[k] += c[k] * wx * wy;
+    }
+    for (int k = 0; k < 4; ++k) out[k] = acc[k];
+}
+
+void dilate(Texture& t, std::vector<uint8_t>& covered, int passes) {
+    const int w = t.width(), h = t.height();
+    const size_t texel = t.info().texelSize();
+    std::vector<uint8_t>& px = t.mips[0].pixels;
+
+    for (int pass = 0; pass < passes; ++pass) {
+        std::vector<uint8_t> next = covered;
+        for (int y = 0; y < h; ++y)
+            for (int x = 0; x < w; ++x) {
+                const size_t i = size_t(y) * w + x;
+                if (covered[i]) continue;
+                const int nx[4] = {x - 1, x + 1, x, x};
+                const int ny[4] = {y, y, y - 1, y + 1};
+                for (int k = 0; k < 4; ++k) {
+                    if (nx[k] < 0 || nx[k] >= w || ny[k] < 0 || ny[k] >= h) continue;
+                    const size_t j = size_t(ny[k]) * w + nx[k];
+                    if (!covered[j]) continue;
+                    std::memcpy(&px[i * texel], &px[j * texel], texel);
+                    next[i] = 1;
+                    break;
+                }
+            }
+        covered.swap(next);
+    }
+}
+
 }  // namespace tex

@@ -148,6 +148,27 @@ std::vector<int> Mesh::getOutwardingFaces(const Eigen::Vector3d &axis) const {
     return result;
 }
 
+namespace {
+
+/// Number of texels the baked color and normal planes grow past the silhouette.
+constexpr int kDilatePasses = 4;
+
+/**
+ * @brief Octahedral-encodes a unit vector into [-1, 1]^2.
+ * @param n Unit vector.
+ * @return The two coordinates; octDecode() in relief.frag inverts it.
+ */
+Eigen::Vector2d octEncode(const Eigen::Vector3d &n) {
+    Eigen::Vector2d p = n.head<2>() / (std::abs(n.x()) + std::abs(n.y()) + std::abs(n.z()));
+    if (n.z() < 0.0) {
+        const Eigen::Vector2d a(1.0 - std::abs(p.y()), 1.0 - std::abs(p.x()));
+        p = Eigen::Vector2d(p.x() >= 0.0 ? a.x() : -a.x(), p.y() >= 0.0 ? a.y() : -a.y());
+    }
+    return p;
+}
+
+}  // namespace
+
 void Mesh::bake(int resolution) {
     Eigen::Vector3d min = Eigen::Vector3d::Constant(std::numeric_limits<double>::max());
     Eigen::Vector3d max = Eigen::Vector3d::Constant(std::numeric_limits<double>::lowest());
@@ -181,9 +202,12 @@ void Mesh::bake(int resolution) {
 
         for (int side = 0; side < 2; side++) {
             // Planes are ordered X+, X-, Y+, Y-, Z+, Z-.
-            planes_[axis * 2 + (side ? 0 : 1)].emplace(resolution, resolution, tex::PixelFormat::RGBA16);
-            normalPlanes_[axis * 2 + (side ? 0 : 1)].emplace(resolution, resolution,
-                                                             tex::PixelFormat::RGBA16);
+            const int plane = axis * 2 + (side ? 0 : 1);
+            depthPlanes_[plane].emplace(resolution, resolution, tex::PixelFormat::R16);
+            colorPlanes_[plane].emplace(resolution, resolution, tex::PixelFormat::RGBA8);
+            normalPlanes_[plane].emplace(resolution, resolution, tex::PixelFormat::RG8);
+            uint16_t *depthOut = reinterpret_cast<uint16_t *>(depthPlanes_[plane]->data());
+            std::fill_n(depthOut, (size_t)resolution * resolution, kDepthEmpty);
         }
 
         // A flat box has no area to bake on this axis.
@@ -191,11 +215,15 @@ void Mesh::bake(int resolution) {
 
         for (int side = 0; side < 2; side++) {
             const double sign = side ? 1.0 : -1.0;
-            uint16_t *plane = reinterpret_cast<uint16_t *>(planes_[axis * 2 + (side ? 0 : 1)]->data());
-            uint16_t *normalPlane = reinterpret_cast<uint16_t *>(normalPlanes_[axis * 2 + (side ? 0 : 1)]->data());
+            const int plane = axis * 2 + (side ? 0 : 1);
+            uint16_t *depthOut = reinterpret_cast<uint16_t *>(depthPlanes_[plane]->data());
+            uint8_t *colorOut = colorPlanes_[plane]->data();
+            uint8_t *normalOut = normalPlanes_[plane]->data();
             const double thickness = 2 * half[axis];
+            const bool hasColor = colorTexture_ && colorTexture_->valid();
             std::vector<float> depth((size_t)resolution * resolution,
                                      std::numeric_limits<float>::infinity());
+            std::vector<uint8_t> covered((size_t)resolution * resolution, 0);
 
             for (int fi : getOutwardingFaces(sign * Eigen::Vector3d::Unit(axis))) {
                 const Face &f = faces_[fi];
@@ -233,32 +261,38 @@ void Mesh::bake(int resolution) {
                         const float z = (float)(l0 * d[0] + l1 * d[1] + l2 * d[2]);
                         if (z >= depth[texel]) continue;
                         depth[texel] = z;
+                        covered[texel] = 1;
 
-                        const Eigen::Vector2d value = l0 * uv[0] + l1 * uv[1] + l2 * uv[2];
-                        for (int k = 0; k < 2; k++) {
-                            plane[texel * 4 + k] =
-                                (uint16_t)std::lround(std::clamp(value[k], 0.0, 1.0) * 65535.0);
+                        // Color: the atlas sampled at the interpolated UV.
+                        float rgba[4] = {0.5f, 0.5f, 0.5f, 1.0f};
+                        if (hasColor) {
+                            const Eigen::Vector2d value = l0 * uv[0] + l1 * uv[1] + l2 * uv[2];
+                            tex::sampleBilinear(*colorTexture_, value.x(), value.y(), rgba);
                         }
+                        for (int k = 0; k < 3; k++)
+                            colorOut[texel * 4 + k] = (uint8_t)std::lround(std::clamp(rgba[k], 0.0f, 1.0f) * 255.0f);
+                        colorOut[texel * 4 + 3] = 255;
 
                         Eigen::Vector3d n = l0 * nrm[0] + l1 * nrm[1] + l2 * nrm[2];
                         if (n.squaredNorm() > 1e-24) n.normalize();
                         else n = sign * Eigen::Vector3d::Unit(axis);
-                        for (int k = 0; k < 3; k++) {
-                            normalPlane[texel * 4 + k] =
-                                (uint16_t)std::lround((0.5 * n[k] + 0.5) * 65535.0);
-                        }
-                        normalPlane[texel * 4 + 3] = 65535;
+                        const Eigen::Vector2d e = octEncode(n);
+                        for (int k = 0; k < 2; k++)
+                            normalOut[texel * 2 + k] = (uint8_t)std::lround((0.5 * e[k] + 0.5) * 255.0);
                     }
                 }
             }
 
-            // Depth goes in B and the silhouette mask in A, only for covered texels.
             for (size_t texel = 0; texel < depth.size(); texel++) {
-                if (std::isinf(depth[texel])) continue;
+                if (!covered[texel]) continue;
                 const double d = thickness > 0.0 ? std::clamp(depth[texel] / thickness, 0.0, 1.0) : 0.0;
-                plane[texel * 4 + 2] = (uint16_t)std::lround(d * 65535.0);
-                plane[texel * 4 + 3] = 65535;
+                depthOut[texel] = (uint16_t)std::lround(d * kDepthMax);
             }
+
+            // Fill the uncovered texels next to the silhouette, so linear filtering stays clean.
+            std::vector<uint8_t> colorCovered = covered;
+            tex::dilate(*colorPlanes_[plane], colorCovered, kDilatePasses);
+            tex::dilate(*normalPlanes_[plane], covered, kDilatePasses);
         }
     }
 }

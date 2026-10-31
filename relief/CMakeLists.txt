@@ -86,3 +86,8 @@ target_link_libraries(edge_selection_diag PRIVATE relief)
 add_executable(metrics_diag tools/metrics_diag.cpp)
 target_link_libraries(metrics_diag PRIVATE relief)
 
+
+# Bakes os planos do impostor e confere os invariantes (profundidade, normais,
+# dilatação), sem depender da GUI.
+add_executable(bake_diag tools/bake_diag.cpp)
+target_link_libraries(bake_diag PRIVATE relief)

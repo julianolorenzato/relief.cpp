@@ -149,4 +149,28 @@ struct Texture {
     void generateMips(const MipRule& rule = mip::boxRule);
 };
 
+/**
+ * @brief Bilinearly samples the base level of `t` with repeat wrapping. Texel centers sit at
+ *        half-integer coordinates, as in OpenGL, and row 0 is v = 0.
+ * @param t Texture to sample (must be valid()).
+ * @param u Horizontal coordinate, 1 = one full width; any value is wrapped.
+ * @param v Vertical coordinate, 1 = one full height; any value is wrapped.
+ * @param out Output, 4 floats: RGBA. A 1-channel texture is grey (R repeated in G and B), a
+ *        2-channel one has B = 0, and alpha is 1 when absent. Integer formats come out
+ *        normalized to [0,1].
+ */
+void sampleBilinear(const Texture& t, double u, double v, float out[4]);
+
+/**
+ * @brief Grows the covered texels of the base level into the uncovered ones, so bilinear
+ *        filtering at a silhouette does not blend in the empty texels' contents. Each pass
+ *        gives every uncovered texel that touches a covered one (4-neighbourhood) a copy of the
+ *        first such neighbour, and marks it covered.
+ * @param t Texture to modify (base level only; coarser mips are left untouched).
+ * @param covered `width * height` flags, nonzero for texels that hold real data; updated to
+ *        include the texels filled in.
+ * @param passes Number of growth passes (the border grows by that many texels).
+ */
+void dilate(Texture& t, std::vector<uint8_t>& covered, int passes);
+
 }  // namespace tex

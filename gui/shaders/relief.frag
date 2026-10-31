@@ -9,32 +9,35 @@ uniform mat4 projection;
 uniform vec3 LightPosWorld;
 
 // The six baked planes, in layers X+, X-, Y+, Y-, Z+, Z- (layer = axis * 2 + (negative ? 1 : 0)).
-// Each texel is R = U, G = V (into Color_Map), B = depth from the plane as a fraction of the
-// box thickness along its axis, A = silhouette mask. Texel (s, t) spans the plane's local
-// coordinates ((axis + 1) % 3, (axis + 2) % 3) over the box extents.
-uniform sampler2DArray Plane_Maps;
-// Smooth object-space normals of the same planes: RGB = normal * 0.5 + 0.5, A = mask.
+// Texel (s, t) spans the plane's local coordinates ((axis + 1) % 3, (axis + 2) % 3) over the box
+// extents. Depth_Maps: R = depth from the plane as a fraction of the box thickness along its
+// axis, rescaled by DEPTH_SCALE; 1.0 marks a texel the mesh does not cover (silhouette mask).
+uniform sampler2DArray Depth_Maps;
+// Baked color of the same planes: RGB = albedo.
+uniform sampler2DArray Color_Maps;
+// Smooth object-space normals of the same planes, octahedral-encoded: RG = encoded * 0.5 + 0.5.
 uniform sampler2DArray Normal_Maps;
-uniform sampler2D Color_Map;
 
 uniform vec3 BoxMin;
 uniform vec3 BoxMax;
 
 uniform bool ReliefEnabled;
 uniform int LinearSteps;    // Number of uniform steps of the ray search
-uniform int DebugView;  // 0 Shaded, 1 Steps, 2 Hit plane, 3 UV, 4 Flat color (wireframe overlay)
+uniform int DebugView;  // 0 Shaded, 1 Steps, 2 Hit plane, 3 Normal, 4 Flat color (wireframe overlay)
 
-#define MASK_THRESHOLD 0.5
+#define DEPTH_SCALE (65535.0 / 65534.0)  // Mesh::kDepthMax maps to 1.0 once rescaled
 #define DEPTH_EPS 2e-3
 #define REFINE_STEPS 10
 
 /**
- * Samples plane `layer` at the projection of `q` (position in box-normalized [0,1]^3 space).
+ * Samples the depth of plane `layer` at the projection of `q` (position in box-normalized
+ * [0,1]^3 space), as a fraction of the box thickness. 2.0 where the mesh does not cover it.
  */
-vec4 samplePlane(int layer, vec3 q) {
+float sampleDepth(int layer, vec3 q) {
     int axis = layer / 2;
     vec2 st = vec2(q[(axis + 1) % 3], q[(axis + 2) % 3]);
-    return textureLod(Plane_Maps, vec3(st, float(layer)), 0.0);
+    float d = textureLod(Depth_Maps, vec3(st, float(layer)), 0.0).r;
+    return d >= 1.0 ? 2.0 : d * DEPTH_SCALE;
 }
 
 /**
@@ -52,11 +55,11 @@ float planeDepth(int layer, vec3 q) {
  */
 bool insideSolid(vec3 q) {
     for (int axis = 0; axis < 3; axis++) {
-        vec4 p = samplePlane(axis * 2, q);
-        vec4 m = samplePlane(axis * 2 + 1, q);
-        if (p.a < MASK_THRESHOLD || m.a < MASK_THRESHOLD)
+        float p = sampleDepth(axis * 2, q);
+        float m = sampleDepth(axis * 2 + 1, q);
+        if (p > 1.0 || m > 1.0)
             return false;
-        if (planeDepth(axis * 2, q) < p.b || planeDepth(axis * 2 + 1, q) < m.b)
+        if (planeDepth(axis * 2, q) < p || planeDepth(axis * 2 + 1, q) < m)
             return false;
     }
     return true;
@@ -84,10 +87,10 @@ int bestPlane(vec3 q) {
     int best = -1;
     float bestErr = 1e9;
     for (int layer = 0; layer < 6; layer++) {
-        vec4 s = samplePlane(layer, q);
-        if (s.a < MASK_THRESHOLD)
+        float d = sampleDepth(layer, q);
+        if (d > 1.0)
             continue;
-        float err = abs(planeDepth(layer, q) - s.b);
+        float err = abs(planeDepth(layer, q) - d);
         if (err < bestErr) {
             bestErr = err;
             best = layer;
@@ -97,18 +100,31 @@ int bestPlane(vec3 q) {
 }
 
 /**
+ * Decodes an octahedral-encoded unit vector (the inverse of Mesh::bake's octEncode).
+ */
+vec3 octDecode(vec2 e) {
+    vec3 n = vec3(e, 1.0 - abs(e.x) - abs(e.y));
+    if (n.z < 0.0)
+        n.xy = (1.0 - abs(n.yx)) * vec2(n.x >= 0.0 ? 1.0 : -1.0, n.y >= 0.0 ? 1.0 : -1.0);
+    return normalize(n);
+}
+
+/**
  * Surface normal (object space, pointing outward) at `q`, read from the baked smooth normals of
- * plane `layer`. Falls back to the plane's own direction where the normal map is not covered.
+ * plane `layer`.
  */
 vec3 planeNormal(int layer, vec3 q) {
     int axis = layer / 2;
-    vec4 s = textureLod(Normal_Maps, vec3(q[(axis + 1) % 3], q[(axis + 2) % 3], float(layer)), 0.0);
-    vec3 fallback = vec3(0.0);
-    fallback[axis] = (layer % 2 == 0) ? 1.0 : -1.0;
-    if (s.a < MASK_THRESHOLD)
-        return fallback;
-    vec3 n = s.rgb * 2.0 - 1.0;
-    return dot(n, n) > 1e-6 ? normalize(n) : fallback;
+    vec2 e = texture(Normal_Maps, vec3(q[(axis + 1) % 3], q[(axis + 2) % 3], float(layer))).rg;
+    return octDecode(e * 2.0 - 1.0);
+}
+
+/**
+ * Albedo at `q`, read from the baked color of plane `layer`.
+ */
+vec3 planeColor(int layer, vec3 q) {
+    int axis = layer / 2;
+    return texture(Color_Maps, vec3(q[(axis + 1) % 3], q[(axis + 2) % 3], float(layer))).rgb;
 }
 
 /**
@@ -180,9 +196,6 @@ void main() {
     if (layer < 0)
         discard;
 
-    vec4 plane = samplePlane(layer, q);
-    vec2 uv = plane.rg;
-
     vec4 hitWorld = model * vec4(hitObj, 1.0);
     vec4 clip = projection * view * hitWorld;
     gl_FragDepth = clamp(clip.z / clip.w * 0.5 + 0.5, 0.0, 1.0);
@@ -197,13 +210,14 @@ void main() {
         FragColor = vec4(colors[layer], 1.0);
         return;
     }
+
+    vec3 nObj = planeNormal(layer, q);
     if (DebugView == 3) {
-        FragColor = vec4(uv, 0.0, 1.0);
+        FragColor = vec4(nObj * 0.5 + 0.5, 1.0);
         return;
     }
 
-    vec3 albedo = textureLod(Color_Map, uv, 0.0).rgb;
-    vec3 nObj = planeNormal(layer, q);
+    vec3 albedo = planeColor(layer, q);
     vec3 nWorld = normalize(mat3(model) * nObj);
 
     vec3 lightDir = normalize(LightPosWorld - hitWorld.xyz);

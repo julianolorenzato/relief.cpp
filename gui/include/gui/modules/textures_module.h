@@ -89,12 +89,13 @@ private:
 
     /**
      * @brief A non-owning view of one mesh texture. Exactly one of `data8` /
-     *        `data16` is set; both are RGBA, row-major.
+     *        `data16` is set; both hold `channels` interleaved channels, row-major.
      */
     struct MapSource {
         QString label;
         const uint8_t* data8 = nullptr;
         const uint16_t* data16 = nullptr;
+        int channels = 4;  ///< 1..4; missing channels read as 0, and alpha as 1.
         int width = 0;
         int height = 0;
         std::vector<ChannelView> views;
@@ -106,7 +107,7 @@ private:
     static int levelCount(const MapSource& m);
     /**
      * @brief Box-filters level `level` of `m` into floats in [0, 1].
-     * @return width * height * 4 floats (RGBA).
+     * @return width * height * 4 floats (RGBA; channels the map lacks are 0, alpha 1).
      */
     static std::vector<float> buildLevel(const MapSource& m, int level, int& outW, int& outH);
 

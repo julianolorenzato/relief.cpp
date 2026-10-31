@@ -147,8 +147,8 @@ QWidget* ReliefModule::buildControls()
     QComboBox* debugViewCombo = new QComboBox();
     debugViewCombo->addItem("Shaded", 0);
     debugViewCombo->addItem("Step Count", 1);
-    debugViewCombo->addItem("Leap Count", 2);
-    debugViewCombo->addItem("UV After Relief", 3);
+    debugViewCombo->addItem("Hit Plane", 2);
+    debugViewCombo->addItem("Normal", 3);
     connect(debugViewCombo, QOverload<int>::of(&QComboBox::currentIndexChanged), reliefWidget_,
             [this, debugViewCombo](int) { reliefWidget_->setDebugView(debugViewCombo->currentData().toInt()); });
     debugRow->addWidget(debugViewCombo, 1);
