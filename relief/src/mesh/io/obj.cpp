@@ -24,20 +24,6 @@ namespace fs = std::filesystem;
 
 namespace {
 
-/**
- * @brief Loads an image file as a single-level texture, reporting failures to stderr.
- * @param path Path to the image file.
- * @return The texture, or nullopt if the file could not be loaded.
- */
-std::optional<tex::Texture> loadTexture(const fs::path &path) {
-    try {
-        return tex::Texture(path.string(), std::nullopt, nullptr);
-    } catch (const std::runtime_error &e) {
-        std::cerr << e.what() << "\n";
-        return std::nullopt;
-    }
-}
-
 /// Hashes a 3D position by its exact bits (no epsilon): used to weld
 /// vertices that share bit-identical coordinates (see loadOBJ).
 struct PosHash {
@@ -155,12 +141,13 @@ bool loadOBJ(Mesh &mesh, const std::string &path) {
     // First material with a texture wins: Mesh holds one global color/normal
     // texture pair (matching the glTF import path), not per-material ones.
     for (const auto &mat : reader.GetMaterials()) {
+        // A texture that fails to load throws std::runtime_error out of loadOBJ.
         if (!colorTexture && !mat.diffuse_texname.empty())
-            colorTexture = loadTexture(dir / mat.diffuse_texname);
+            colorTexture.emplace((dir / mat.diffuse_texname).string(), std::nullopt, tex::mip::boxRule);
 
         std::string normalMap = !mat.normal_texname.empty() ? mat.normal_texname : mat.bump_texname;
         if (!normalTexture && !normalMap.empty())
-            normalTexture = loadTexture(dir / normalMap);
+            normalTexture.emplace((dir / normalMap).string(), std::nullopt, nullptr);
 
         if (colorTexture && normalTexture) break;
     }

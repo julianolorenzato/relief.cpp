@@ -5,6 +5,7 @@
 #include "gui/views/relief_view.h"
 #include <algorithm>
 #include <iostream>
+#include <stdexcept>
 
 using namespace mesh;
 
@@ -24,13 +25,10 @@ void ReliefView::buildPlanesFromMesh()
     const auto &color = this->mesh_->colorTexture();
     const auto &planes = this->mesh_->planes();
 
-    // Without a color texture, fall back to a flat gray.
-    static const uint8_t kGray[4] = {128, 128, 128, 255};
-    tex::Texture colorMap = color && color->valid()
-                                ? *color
-                                : tex::Texture(1, 1, tex::PixelFormat::RGBA8, kGray, nullptr);
-    colorMap.generateMips(tex::mip::boxRule);
-    uploadTexture(this->colorTex, colorMap, QOpenGLTexture::LinearMipMapLinear, QOpenGLTexture::Linear);
+    // The relief is baked from the mesh's color texture; there is no fallback.
+    if (!color || !color->valid())
+        throw std::runtime_error("ReliefView: mesh has no valid color texture");
+    uploadTexture(this->colorTex, *color,QOpenGLTexture::LinearMipMapLinear, QOpenGLTexture::Linear);
 
     delete this->planesTex;
     this->planesTex = nullptr;
