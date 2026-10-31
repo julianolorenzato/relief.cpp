@@ -3,6 +3,7 @@
  * @brief ReliefView implementation: baked plane array construction and upload.
  */
 #include "gui/views/relief_view.h"
+#include "gui/gl_format.h"
 #include <algorithm>
 #include <iostream>
 #include <stdexcept>
@@ -20,15 +21,37 @@ ReliefView::~ReliefView()
 
 // ─── Public API ───────────────────────────────────────────────────────────────
 
-void ReliefView::buildPlanesFromMesh()
+void ReliefView::uploadColorTexture()
 {
     const auto &color = this->mesh_->colorTexture();
-    const auto &planes = this->mesh_->planes();
 
     // The relief is baked from the mesh's color texture; there is no fallback.
     if (!color || !color->valid())
         throw std::runtime_error("ReliefView: mesh has no valid color texture");
-    uploadTexture(this->colorTex, *color,QOpenGLTexture::LinearMipMapLinear, QOpenGLTexture::Linear);
+
+    delete this->colorTex;
+    this->colorTex = nullptr;
+
+    QOpenGLPixelTransferOptions opts;
+    opts.setAlignment(1);
+
+    this->colorTex = new QOpenGLTexture(QOpenGLTexture::Target2D);
+    this->colorTex->setFormat(static_cast<QOpenGLTexture::TextureFormat>(glfmt::internalFormat(color->format)));
+    this->colorTex->setSize(color->width(), color->height());
+    this->colorTex->setMipLevels(color->mipCount());
+    this->colorTex->allocateStorage();
+    for (int level = 0; level < color->mipCount(); level++)
+        this->colorTex->setData(level, static_cast<QOpenGLTexture::PixelFormat>(glfmt::pixelFormat(color->format)),
+                                static_cast<QOpenGLTexture::PixelType>(glfmt::pixelType(color->format)),
+                                color->mips[level].pixels.data(), &opts);
+    this->colorTex->setMinificationFilter(QOpenGLTexture::LinearMipMapLinear);
+    this->colorTex->setMagnificationFilter(QOpenGLTexture::Linear);
+    this->colorTex->setWrapMode(QOpenGLTexture::Repeat);
+}
+
+void ReliefView::uploadPlanesTextures()
+{
+    const auto &planes = this->mesh_->planes();
 
     delete this->planesTex;
     this->planesTex = nullptr;
@@ -40,35 +63,25 @@ void ReliefView::buildPlanesFromMesh()
     if (w <= 0 || h <= 0)
         return;
 
-    // Nearest filtering: the mask and depth must not be blended across the silhouette.
-    // Level 0 is the baked plane; each coarser level keeps, per 2x2 block, the minimum depth
-    // over the covered texels in B and whether any is covered in A (see relief.frag).
-    int levels = 1;
-    for (int size = std::max(w, h); size > 1; size >>= 1)
-        levels++;
-    this->planeMipCount = levels;
-
+    // A single level, nearest filtering: the mask and depth must not be blended across the silhouette.
     this->planesTex = new QOpenGLTexture(QOpenGLTexture::Target2DArray);
     this->planesTex->setFormat(QOpenGLTexture::RGBA16_UNorm);
     this->planesTex->setSize(w, h);
     this->planesTex->setLayers(6);
-    this->planesTex->setMipLevels(levels);
+    this->planesTex->setMipLevels(1);
     this->planesTex->allocateStorage();
     for (int layer = 0; layer < 6; layer++)
     {
         if (!planes[layer] || planes[layer]->width() != w || planes[layer]->height() != h)
             continue;
-        tex::Texture plane = *planes[layer];
-        plane.generateMips(tex::mip::coverageMinRule);
-        for (int level = 0; level < plane.mipCount(); level++)
-            this->planesTex->setData(level, layer, QOpenGLTexture::RGBA, QOpenGLTexture::UInt16,
-                                     plane.mips[level].pixels.data());
+        this->planesTex->setData(0, layer, QOpenGLTexture::RGBA, QOpenGLTexture::UInt16,
+                                 reinterpret_cast<const uint16_t *>(planes[layer]->data()));
     }
-    this->planesTex->setMinificationFilter(QOpenGLTexture::NearestMipMapNearest);
+    this->planesTex->setMinificationFilter(QOpenGLTexture::Nearest);
     this->planesTex->setMagnificationFilter(QOpenGLTexture::Nearest);
     this->planesTex->setWrapMode(QOpenGLTexture::ClampToEdge);
 
-    // Smooth normals: a single level, nearest filtering (the mask must not be blended).
+    // Smooth normals: same single level, nearest filtering.
     const auto &normals = this->mesh_->normalPlanes();
     this->planeNormalsTex = new QOpenGLTexture(QOpenGLTexture::Target2DArray);
     this->planeNormalsTex->setFormat(QOpenGLTexture::RGBA16_UNorm);
@@ -108,8 +121,6 @@ QOpenGLShaderProgram *ReliefView::bindSurfaceProgram(int debugView)
 
     p.setUniformValue("BoxMin", QVector3D(meshBoundsMin_.x, meshBoundsMin_.y, meshBoundsMin_.z));
     p.setUniformValue("BoxMax", QVector3D(meshBoundsMax_.x, meshBoundsMax_.y, meshBoundsMax_.z));
-    p.setUniformValue("UseMipSearch", this->useMipSearch);
-    p.setUniformValue("PlaneMips", this->planeMipCount);
     this->planesTex->bind(1);
     p.setUniformValue("Plane_Maps", 1);
     this->planeNormalsTex->bind(2);
@@ -122,11 +133,6 @@ QOpenGLShaderProgram *ReliefView::bindSurfaceProgram(int debugView)
 void ReliefView::setReliefEnabled(bool v)
 {
     this->reliefEnabled = v;
-    update();
-}
-void ReliefView::setMipSearch(bool v)
-{
-    this->useMipSearch = v;
     update();
 }
 void ReliefView::setSteps(int v)
@@ -156,7 +162,8 @@ void ReliefView::onMeshChanged()
 {
     if (this->mesh_->planes()[0])
     {
-        buildPlanesFromMesh();
+        uploadColorTexture();
+        uploadPlanesTextures();
         return;
     }
 

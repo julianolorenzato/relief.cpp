@@ -123,11 +123,6 @@ QWidget* ReliefModule::buildControls()
     connect(wireframeCheck, &QCheckBox::toggled, reliefWidget_, &ReliefView::setWireframe);
     containerLayout->addWidget(wireframeCheck);
 
-    QCheckBox* mipSearchCheck = new QCheckBox("Mip Search", controlsContainer);
-    mipSearchCheck->setChecked(true);
-    mipSearchCheck->setToolTip("Mip-hierarchical ray search (off: uniform linear steps)");
-    connect(mipSearchCheck, &QCheckBox::toggled, reliefWidget_, &ReliefView::setMipSearch);
-    containerLayout->addWidget(mipSearchCheck);
 
     // ── Relief mapping parameters ───────────────────────────────────────────
     QGroupBox* paramsGroup = new QGroupBox("Relief Mapping Parameters", controlsContainer);

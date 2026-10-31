@@ -26,19 +26,6 @@ void minRule(const float* const s[4], float* d, int ch) {
     for (int c = 0; c < ch; ++c) d[c] = std::min({s[0][c], s[1][c], s[2][c], s[3][c]});
 }
 
-void coverageMinRule(const float* const s[4], float* d, int) {
-    float minDepth = 1.f;
-    bool covered = false;
-    for (int i = 0; i < 4; ++i) {
-        if (s[i][3] < 0.5f) continue;
-        covered = true;
-        minDepth = std::min(minDepth, s[i][2]);
-    }
-    d[0] = d[1] = 0.f;
-    d[2] = covered ? minDepth : 0.f;
-    d[3] = covered ? 1.f : 0.f;
-}
-
 }  // namespace mip
 
 namespace {

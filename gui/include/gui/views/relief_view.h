@@ -24,8 +24,6 @@ public:
 
 public slots:
     void setReliefEnabled(bool v);
-    /// Selects the plane search: true for the mip-hierarchical one, false for uniform steps.
-    void setMipSearch(bool v);
     void setSteps(int v);
     void setDebugView(int v);
 
@@ -39,8 +37,6 @@ protected:
 private:
     // Render state
     bool reliefEnabled = true;
-    bool useMipSearch  = true;
-    int  planeMipCount = 1;  // Mip levels of planesTex
     int  steps         = 64;
     int  debugView     = 0;
 
@@ -51,9 +47,13 @@ private:
     /// RGBA16 2D array of the 6 baked smooth-normal planes (same layers as planesTex).
     QOpenGLTexture *planeNormalsTex = nullptr;
 
-    /// Builds and uploads the color map and the 6-plane arrays from `mesh_`'s planes.
+    /// Uploads `mesh_`'s color texture to `colorTex`.
     /// Needs a current GL context.
-    void buildPlanesFromMesh();
+    /// @throws std::runtime_error if the mesh has no valid color texture.
+    void uploadColorTexture();
+    /// Builds and uploads the 6-plane arrays (`planesTex`, `planeNormalsTex`) from `mesh_`'s planes.
+    /// Needs a current GL context.
+    void uploadPlanesTextures();
     /// Binds the shader program, its uniforms and textures.
     /// @param debugView DebugView uniform value.
     /// @return The bound program, to release after drawing.

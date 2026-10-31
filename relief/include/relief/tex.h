@@ -70,14 +70,6 @@ void maxRule(const float* const src[4], float* dst, int channels);
 /// Minimum of the 2x2 block, per channel.
 void minRule(const float* const src[4], float* dst, int channels);
 
-/**
- * @brief Mip rule for baked relief planes (RGBA: depth in B, coverage mask in A).
- *        B becomes the minimum depth over the covered texels (A >= 0.5) of the block and
- *        A becomes 1 if any texel is covered, else 0; R and G are zeroed.
- *        Requires 4 channels; `channels` is ignored.
- */
-void coverageMinRule(const float* const src[4], float* dst, int channels);
-
 }  // namespace mip
 
 /**
