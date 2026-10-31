@@ -153,6 +153,117 @@ namespace {
 /// Number of texels the baked color and normal planes grow past the silhouette.
 constexpr int kDilatePasses = 4;
 
+/// Hits closer than this, as a fraction of the box thickness, are the same surface (triangles
+/// sharing an edge) or a zero-thickness fold.
+constexpr float kHitMergeEps = 2e-4f;
+
+/// Texels baked per band, which bounds the memory of the per-ray hit lists.
+constexpr int kBandTexels = 1 << 19;
+
+/// Hits kept per ray while baking, before reducing them to Mesh::kAxisHits.
+constexpr int kCandidates = 8;
+
+/// The hits of one ray along an axis, sorted from the axis' negative end.
+struct RayHits {
+    // One slot of slack: a hit is inserted before the list is reduced back to kCandidates.
+    float z[kCandidates + 1];       ///< Depth, as a fraction of the box thickness.
+    int face[kCandidates + 1];      ///< The face hit.
+    int8_t facing[kCandidates + 1]; ///< +1 if that face faces the axis' positive end, -1 otherwise.
+    uint8_t mixed[kCandidates + 1]; ///< Nonzero if faces of both facings were hit at this depth.
+    int n;                          ///< Number of hits stored.
+};
+
+/// Removes hits `i` and `i + 1` of `r`.
+void removePair(RayHits &r, int i) {
+    for (int j = i; j + 2 < r.n; j++) {
+        r.z[j] = r.z[j + 2];
+        r.face[j] = r.face[j + 2];
+        r.facing[j] = r.facing[j + 2];
+        r.mixed[j] = r.mixed[j + 2];
+    }
+    r.n -= 2;
+}
+
+/**
+ * @brief Removes the thinnest gap between two solid slabs, i.e. the closest pair (exit, next
+ *        entry), which merges the two slabs. Every other hit keeps its inside/outside parity.
+ *        Only air is ever filled in, never solid carved away: the other two axes can still
+ *        reject filled-in air, but nothing can bring back a deleted slab.
+ * @pre `r` has at least 3 hits.
+ */
+void removeThinnestGap(RayHits &r) {
+    int best = -1;
+    for (int i = 1; i + 1 < r.n; i += 2)
+        if (best < 0 || r.z[i + 1] - r.z[i] < r.z[best + 1] - r.z[best]) best = i;
+    removePair(r, best);
+}
+
+/**
+ * @brief Adds a hit to a ray, keeping the list sorted. Hits at the same depth are one surface
+ *        seen twice across a shared edge when they face the same way, and a ray that only
+ *        grazes the solid (zero thickness, no net change of parity) when they face both ways;
+ *        the latter is flagged `mixed` and dropped by finalizeHits().
+ * @param r Hits of the ray.
+ * @param z Depth of the new hit.
+ * @param face Face that was hit.
+ * @param facing +1 if `face` faces the axis' positive end, -1 otherwise.
+ */
+void insertHit(RayHits &r, float z, int face, int8_t facing) {
+    for (int i = 0; i < r.n; i++) {
+        if (std::abs(r.z[i] - z) >= kHitMergeEps) continue;
+        if (r.facing[i] != facing) r.mixed[i] = 1;
+        return;
+    }
+
+    int pos = r.n;
+    while (pos > 0 && r.z[pos - 1] > z) pos--;
+    for (int i = r.n; i > pos; i--) {
+        r.z[i] = r.z[i - 1];
+        r.face[i] = r.face[i - 1];
+        r.facing[i] = r.facing[i - 1];
+        r.mixed[i] = r.mixed[i - 1];
+    }
+    r.z[pos] = z;
+    r.face[pos] = face;
+    r.facing[pos] = facing;
+    r.mixed[pos] = 0;
+    r.n++;
+    if (r.n > kCandidates) {
+        // A grazing hit stands for a zero-net pair, so dropping it keeps the parity.
+        for (int i = 0; i < r.n; i++) {
+            if (!r.mixed[i]) continue;
+            for (int j = i; j + 1 < r.n; j++) {
+                r.z[j] = r.z[j + 1];
+                r.face[j] = r.face[j + 1];
+                r.facing[j] = r.facing[j + 1];
+                r.mixed[j] = r.mixed[j + 1];
+            }
+            r.n--;
+            return;
+        }
+        removeThinnestGap(r);
+    }
+}
+
+/**
+ * @brief Drops the grazing hits and reduces the ray to at most Mesh::kAxisHits hits by
+ *        repeatedly filling in its thinnest gap (see removeThinnestGap()), which keeps every
+ *        slab and the inside/outside parity.
+ */
+void finalizeHits(RayHits &r) {
+    int kept = 0;
+    for (int i = 0; i < r.n; i++) {
+        if (r.mixed[i]) continue;
+        r.z[kept] = r.z[i];
+        r.face[kept] = r.face[i];
+        r.facing[kept] = r.facing[i];
+        r.mixed[kept] = 0;
+        kept++;
+    }
+    r.n = kept;
+    while (r.n > Mesh::kAxisHits) removeThinnestGap(r);
+}
+
 /**
  * @brief Octahedral-encodes a unit vector into [-1, 1]^2.
  * @param n Unit vector.
@@ -196,103 +307,139 @@ void Mesh::bake(int resolution) {
         return a.x() * b.y() - a.y() * b.x();
     };
 
+    const int bandRows = std::max(1, kBandTexels / resolution);
+    const size_t count = (size_t)resolution * resolution;
+
     for (int axis = 0; axis < 3; axis++) {
         const int u = (axis + 1) % 3;
         const int v = (axis + 2) % 3;
 
-        for (int side = 0; side < 2; side++) {
-            // Planes are ordered X+, X-, Y+, Y-, Z+, Z-.
-            const int plane = axis * 2 + (side ? 0 : 1);
-            depthPlanes_[plane].emplace(resolution, resolution, tex::PixelFormat::R16);
-            colorPlanes_[plane].emplace(resolution, resolution, tex::PixelFormat::RGBA8);
-            normalPlanes_[plane].emplace(resolution, resolution, tex::PixelFormat::RG8);
-            uint16_t *depthOut = reinterpret_cast<uint16_t *>(depthPlanes_[plane]->data());
-            std::fill_n(depthOut, (size_t)resolution * resolution, kDepthEmpty);
+        depthPlanes_[axis].emplace(resolution, resolution, tex::PixelFormat::RGBA16);
+        uint16_t *depthOut = reinterpret_cast<uint16_t *>(depthPlanes_[axis]->data());
+        std::fill_n(depthOut, count * kAxisHits, kDepthEmpty);
+        for (int k = 0; k < kAxisHits; k++) {
+            colorPlanes_[axis * kAxisHits + k].emplace(resolution, resolution, tex::PixelFormat::RGBA8);
+            normalPlanes_[axis * kAxisHits + k].emplace(resolution, resolution, tex::PixelFormat::RG8);
         }
 
         // A flat box has no area to bake on this axis.
         if (half[u] <= 0.0 || half[v] <= 0.0) continue;
 
-        for (int side = 0; side < 2; side++) {
-            const double sign = side ? 1.0 : -1.0;
-            const int plane = axis * 2 + (side ? 0 : 1);
-            uint16_t *depthOut = reinterpret_cast<uint16_t *>(depthPlanes_[plane]->data());
-            uint8_t *colorOut = colorPlanes_[plane]->data();
-            uint8_t *normalOut = normalPlanes_[plane]->data();
-            const double thickness = 2 * half[axis];
-            const bool hasColor = colorTexture_ && colorTexture_->valid();
-            std::vector<float> depth((size_t)resolution * resolution,
-                                     std::numeric_limits<float>::infinity());
-            std::vector<uint8_t> covered((size_t)resolution * resolution, 0);
+        const double thickness = 2 * half[axis];
+        const bool hasColor = colorTexture_ && colorTexture_->valid();
 
-            for (int fi : getOutwardingFaces(sign * Eigen::Vector3d::Unit(axis))) {
-                const Face &f = faces_[fi];
-                std::array<Eigen::Vector2d, 3> t, uv;
-                std::array<double, 3> d;
-                std::array<Eigen::Vector3d, 3> nrm;
-                for (int i = 0; i < 3; i++) {
-                    const Wedge &wedge = wedges_[f.w[i]];
-                    const Eigen::Vector3d p = vertices_[wedge.vertex].pos - center;
-                    t[i] = Eigen::Vector2d((p[u] + half[u]) / (2 * half[u]) * resolution,
+        // The faces a ray along the axis can hit, and which end each one faces.
+        std::vector<int8_t> facing(faces_.size(), 0);
+        std::vector<int> axisFaces;
+        for (int fi = 0; fi < (int)faces_.size(); fi++) {
+            if (faces_[fi].removed) continue;
+            const double along = faceNormal(faces_[fi])[axis];
+            if (std::abs(along) <= 1e-12) continue;
+            facing[fi] = along > 0.0 ? 1 : -1;
+            axisFaces.push_back(fi);
+        }
+
+        // A face projected on the plane, in texels, with its per-corner attributes.
+        struct Tri {
+            std::array<Eigen::Vector2d, 3> t, uv;
+            std::array<double, 3> z;
+            std::array<Eigen::Vector3d, 3> nrm;
+            double area;
+        };
+        auto project = [&](int fi) {
+            const Face &f = faces_[fi];
+            Tri tri;
+            for (int i = 0; i < 3; i++) {
+                const Wedge &wedge = wedges_[f.w[i]];
+                const Eigen::Vector3d p = vertices_[wedge.vertex].pos - center;
+                tri.t[i] = Eigen::Vector2d((p[u] + half[u]) / (2 * half[u]) * resolution,
                                            (p[v] + half[v]) / (2 * half[v]) * resolution);
-                    // Distance from the plane: smaller is nearer the viewer.
-                    d[i] = half[axis] - sign * p[axis];
-                    uv[i] = wedge.uv;
-                    nrm[i] = vertexNormals[wedge.vertex];
-                }
+                tri.z[i] = (p[axis] + half[axis]) / thickness;
+                tri.uv[i] = wedge.uv;
+                tri.nrm[i] = vertexNormals[wedge.vertex];
+            }
+            tri.area = cross(tri.t[1] - tri.t[0], tri.t[2] - tri.t[0]);
+            return tri;
+        };
+        // Barycentric coordinates of the center of texel (x, y).
+        auto bary = [&](const Tri &tri, int x, int y, double l[3]) {
+            const Eigen::Vector2d c(x + 0.5, y + 0.5);
+            l[0] = cross(tri.t[1] - c, tri.t[2] - c) / tri.area;
+            l[1] = cross(tri.t[2] - c, tri.t[0] - c) / tri.area;
+            l[2] = cross(tri.t[0] - c, tri.t[1] - c) / tri.area;
+        };
 
-                const double area = cross(t[1] - t[0], t[2] - t[0]);
-                if (std::abs(area) <= 1e-12) continue;
+        // Which texels hold hit k, to dilate each layer afterwards.
+        std::array<std::vector<uint8_t>, kAxisHits> covered;
+        for (auto &c : covered) c.assign(count, 0);
 
-                const int minX = std::max(0, (int)std::floor(std::min({t[0].x(), t[1].x(), t[2].x()})));
-                const int maxX = std::min(resolution - 1, (int)std::ceil(std::max({t[0].x(), t[1].x(), t[2].x()})));
-                const int minY = std::max(0, (int)std::floor(std::min({t[0].y(), t[1].y(), t[2].y()})));
-                const int maxY = std::min(resolution - 1, (int)std::ceil(std::max({t[0].y(), t[1].y(), t[2].y()})));
+        for (int y0 = 0; y0 < resolution; y0 += bandRows) {
+            const int y1 = std::min(resolution, y0 + bandRows);
+            std::vector<RayHits> hits((size_t)(y1 - y0) * resolution);
+
+            for (int fi : axisFaces) {
+                const Tri tri = project(fi);
+                if (std::abs(tri.area) <= 1e-12) continue;
+
+                const int minX = std::max(0, (int)std::floor(std::min({tri.t[0].x(), tri.t[1].x(), tri.t[2].x()})));
+                const int maxX = std::min(resolution - 1, (int)std::ceil(std::max({tri.t[0].x(), tri.t[1].x(), tri.t[2].x()})));
+                const int minY = std::max(y0, (int)std::floor(std::min({tri.t[0].y(), tri.t[1].y(), tri.t[2].y()})));
+                const int maxY = std::min(y1 - 1, (int)std::ceil(std::max({tri.t[0].y(), tri.t[1].y(), tri.t[2].y()})));
 
                 for (int y = minY; y <= maxY; y++) {
                     for (int x = minX; x <= maxX; x++) {
-                        const Eigen::Vector2d c(x + 0.5, y + 0.5);
-                        const double l0 = cross(t[1] - c, t[2] - c) / area;
-                        const double l1 = cross(t[2] - c, t[0] - c) / area;
-                        const double l2 = cross(t[0] - c, t[1] - c) / area;
-                        if (l0 < -1e-4 || l1 < -1e-4 || l2 < -1e-4) continue;
-
-                        const size_t texel = (size_t)y * resolution + x;
-                        const float z = (float)(l0 * d[0] + l1 * d[1] + l2 * d[2]);
-                        if (z >= depth[texel]) continue;
-                        depth[texel] = z;
-                        covered[texel] = 1;
-
-                        // Color: the atlas sampled at the interpolated UV.
-                        float rgba[4] = {0.5f, 0.5f, 0.5f, 1.0f};
-                        if (hasColor) {
-                            const Eigen::Vector2d value = l0 * uv[0] + l1 * uv[1] + l2 * uv[2];
-                            tex::sampleBilinear(*colorTexture_, value.x(), value.y(), rgba);
-                        }
-                        for (int k = 0; k < 3; k++)
-                            colorOut[texel * 4 + k] = (uint8_t)std::lround(std::clamp(rgba[k], 0.0f, 1.0f) * 255.0f);
-                        colorOut[texel * 4 + 3] = 255;
-
-                        Eigen::Vector3d n = l0 * nrm[0] + l1 * nrm[1] + l2 * nrm[2];
-                        if (n.squaredNorm() > 1e-24) n.normalize();
-                        else n = sign * Eigen::Vector3d::Unit(axis);
-                        const Eigen::Vector2d e = octEncode(n);
-                        for (int k = 0; k < 2; k++)
-                            normalOut[texel * 2 + k] = (uint8_t)std::lround((0.5 * e[k] + 0.5) * 255.0);
+                        double l[3];
+                        bary(tri, x, y, l);
+                        if (l[0] < -1e-4 || l[1] < -1e-4 || l[2] < -1e-4) continue;
+                        const float z = (float)(l[0] * tri.z[0] + l[1] * tri.z[1] + l[2] * tri.z[2]);
+                        insertHit(hits[(size_t)(y - y0) * resolution + x], z, fi, facing[fi]);
                     }
                 }
             }
 
-            for (size_t texel = 0; texel < depth.size(); texel++) {
-                if (!covered[texel]) continue;
-                const double d = thickness > 0.0 ? std::clamp(depth[texel] / thickness, 0.0, 1.0) : 0.0;
-                depthOut[texel] = (uint16_t)std::lround(d * kDepthMax);
-            }
+            for (RayHits &r : hits) finalizeHits(r);
 
-            // Fill the uncovered texels next to the silhouette, so linear filtering stays clean.
-            std::vector<uint8_t> colorCovered = covered;
-            tex::dilate(*colorPlanes_[plane], colorCovered, kDilatePasses);
-            tex::dilate(*normalPlanes_[plane], covered, kDilatePasses);
+            // Write the kept hits: depth, then the color and normal at the surface they hit.
+            for (int y = y0; y < y1; y++) {
+                for (int x = 0; x < resolution; x++) {
+                    const RayHits &r = hits[(size_t)(y - y0) * resolution + x];
+                    const size_t texel = (size_t)y * resolution + x;
+                    for (int k = 0; k < r.n; k++) {
+                        const Tri tri = project(r.face[k]);
+                        double l[3];
+                        bary(tri, x, y, l);
+                        depthOut[texel * kAxisHits + k] =
+                            (uint16_t)std::lround(std::clamp((double)r.z[k], 0.0, 1.0) * kDepthMax);
+                        covered[k][texel] = 1;
+
+                        // Color: the atlas sampled at the interpolated UV.
+                        float rgba[4] = {0.5f, 0.5f, 0.5f, 1.0f};
+                        if (hasColor) {
+                            const Eigen::Vector2d value = l[0] * tri.uv[0] + l[1] * tri.uv[1] + l[2] * tri.uv[2];
+                            tex::sampleBilinear(*colorTexture_, value.x(), value.y(), rgba);
+                        }
+                        uint8_t *colorOut = colorPlanes_[axis * kAxisHits + k]->data();
+                        for (int c = 0; c < 3; c++)
+                            colorOut[texel * 4 + c] = (uint8_t)std::lround(std::clamp(rgba[c], 0.0f, 1.0f) * 255.0f);
+                        colorOut[texel * 4 + 3] = 255;
+
+                        Eigen::Vector3d n = l[0] * tri.nrm[0] + l[1] * tri.nrm[1] + l[2] * tri.nrm[2];
+                        if (n.squaredNorm() > 1e-24) n.normalize();
+                        else n = r.facing[k] * Eigen::Vector3d::Unit(axis);
+                        const Eigen::Vector2d e = octEncode(n);
+                        uint8_t *normalOut = normalPlanes_[axis * kAxisHits + k]->data();
+                        for (int c = 0; c < 2; c++)
+                            normalOut[texel * 2 + c] = (uint8_t)std::lround((0.5 * e[c] + 0.5) * 255.0);
+                    }
+                }
+            }
+        }
+
+        // Fill the texels without hit k next to the ones that have it, so linear filtering stays clean.
+        for (int k = 0; k < kAxisHits; k++) {
+            std::vector<uint8_t> colorCovered = covered[k];
+            tex::dilate(*colorPlanes_[axis * kAxisHits + k], colorCovered, kDilatePasses);
+            tex::dilate(*normalPlanes_[axis * kAxisHits + k], covered[k], kDilatePasses);
         }
     }
 }

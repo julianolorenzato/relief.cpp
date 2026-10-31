@@ -1,9 +1,9 @@
 /**
  * @file bake_diag.cpp
- * @brief Diagnostic tool: bakes a mesh's impostor planes and checks the result's invariants
- *        (depth range and silhouette sentinel, decodable unit normals, dilated color/normals
- *        past the silhouette), printing the coverage and memory per plane. Exits nonzero on
- *        a violated invariant.
+ * @brief Diagnostic tool: bakes a mesh's layered depth views and checks the result's invariants
+ *        (hits sorted with the missing ones last, depth range, decodable unit normals, color and
+ *        normals dilated past each layer's silhouette), printing the hit-count histogram and
+ *        memory per axis. Exits nonzero on a violated invariant.
  */
 #include "relief/mesh.h"
 
@@ -40,60 +40,81 @@ int main(int argc, char **argv) {
         return 1;
     }
     const int resolution = argc > 2 ? std::stoi(argv[2]) : 256;
+    constexpr int H = Mesh::kAxisHits;
 
     try {
         Mesh mesh(argv[1]);
         mesh.bake(resolution);
 
-        static const char *const names[6] = {"X+", "X-", "Y+", "Y-", "Z+", "Z-"};
+        static const char *const names[3] = {"X", "Y", "Z"};
         int failures = 0;
         size_t bytes = 0;
-        for (int i = 0; i < 6; i++) {
-            const auto &depthTex = mesh.depthPlanes()[i];
-            const auto &colorTex = mesh.colorPlanes()[i];
-            const auto &normalTex = mesh.normalPlanes()[i];
-            if (!depthTex || !colorTex || !normalTex) {
-                std::cerr << names[i] << ": missing plane\n";
+        const size_t count = (size_t)resolution * resolution;
+
+        for (int axis = 0; axis < 3; axis++) {
+            const auto &depthTex = mesh.depthPlanes()[axis];
+            if (!depthTex) {
+                std::cerr << names[axis] << ": missing depth plane\n";
                 failures++;
                 continue;
             }
-            bytes += depthTex->mips[0].pixels.size() + colorTex->mips[0].pixels.size() +
-                     normalTex->mips[0].pixels.size();
-
-            const size_t count = (size_t)resolution * resolution;
+            bytes += depthTex->mips[0].pixels.size();
             const uint8_t *depthBytes = depthTex->data();
-            const uint8_t *color = colorTex->data();
-            const uint8_t *normal = normalTex->data();
 
-            size_t covered = 0, badDepth = 0, badNormal = 0, undilated = 0;
+            size_t histogram[H + 1] = {};
+            size_t oddRays = 0, unsorted = 0, badDepth = 0, gaps = 0;
             for (size_t t = 0; t < count; t++) {
-                uint16_t d;
-                std::memcpy(&d, depthBytes + t * 2, 2);
-                if (d != Mesh::kDepthEmpty) covered++;
-                if (d > Mesh::kDepthMax && d != Mesh::kDepthEmpty) badDepth++;
-
-                float n[3];
-                octDecode(normal[t * 2] / 255.0f * 2.0f - 1.0f, normal[t * 2 + 1] / 255.0f * 2.0f - 1.0f, n);
-                if (!std::isfinite(n[0] + n[1] + n[2])) badNormal++;
-                if (color[t * 4 + 3] != 255 && d != Mesh::kDepthEmpty) badNormal++;
-            }
-
-            // A covered plane must dilate past its silhouette: with at least one covered texel and
-            // one empty one, some empty texel must carry color (the border grew into it).
-            if (covered > 0 && covered < count) {
-                for (size_t t = 0; t < count && !undilated; t++) {
-                    uint16_t d;
-                    std::memcpy(&d, depthBytes + t * 2, 2);
-                    if (d == Mesh::kDepthEmpty && color[t * 4 + 3] == 255) undilated = 1;
+                uint16_t d[H];
+                std::memcpy(d, depthBytes + t * H * 2, H * 2);
+                int n = 0;
+                while (n < H && d[n] != Mesh::kDepthEmpty) n++;
+                histogram[n]++;
+                if (n & 1) oddRays++;
+                for (int k = 0; k < H; k++) {
+                    if (k >= n && d[k] != Mesh::kDepthEmpty) gaps++;
+                    if (k < n && d[k] > Mesh::kDepthMax) badDepth++;
+                    if (k > 0 && k < n && d[k] < d[k - 1]) unsorted++;
                 }
-                undilated = !undilated;
             }
 
-            std::cout << names[i] << ": covered " << covered << "/" << count << " ("
-                      << (100.0 * covered / count) << "%)"
-                      << (badDepth ? "  BAD DEPTH" : "") << (badNormal ? "  BAD NORMAL" : "")
+            // Every layer: normals decode, color alpha says whether the ray has that hit, and a
+            // layer with both covered and uncovered texels shows its dilated border.
+            size_t badLayer = 0, undilated = 0;
+            for (int k = 0; k < H; k++) {
+                const auto &colorTex = mesh.colorPlanes()[axis * H + k];
+                const auto &normalTex = mesh.normalPlanes()[axis * H + k];
+                if (!colorTex || !normalTex) {
+                    badLayer++;
+                    continue;
+                }
+                bytes += colorTex->mips[0].pixels.size() + normalTex->mips[0].pixels.size();
+                const uint8_t *color = colorTex->data();
+                const uint8_t *normal = normalTex->data();
+
+                size_t covered = 0;
+                bool borderFilled = false;
+                for (size_t t = 0; t < count; t++) {
+                    uint16_t d;
+                    std::memcpy(&d, depthBytes + (t * H + k) * 2, 2);
+                    const bool has = d != Mesh::kDepthEmpty;
+                    covered += has;
+                    if (has && color[t * 4 + 3] != 255) badLayer++;
+                    if (!has && color[t * 4 + 3] == 255) borderFilled = true;
+
+                    float n[3];
+                    octDecode(normal[t * 2] / 255.0f * 2.0f - 1.0f, normal[t * 2 + 1] / 255.0f * 2.0f - 1.0f, n);
+                    if (!std::isfinite(n[0] + n[1] + n[2])) badLayer++;
+                }
+                if (covered > 0 && covered < count && !borderFilled) undilated++;
+            }
+
+            std::cout << names[axis] << ": rays with 0/1/2/3/4 hits:";
+            for (int n = 0; n <= H; n++) std::cout << " " << histogram[n];
+            std::cout << "  (odd " << oddRays << ")"
+                      << (badDepth ? "  BAD DEPTH" : "") << (unsorted ? "  UNSORTED" : "")
+                      << (gaps ? "  GAP" : "") << (badLayer ? "  BAD LAYER" : "")
                       << (undilated ? "  NOT DILATED" : "") << "\n";
-            if (badDepth || badNormal || undilated) failures++;
+            if (badDepth || unsorted || gaps || badLayer || undilated) failures++;
         }
         std::cout << "memory: " << bytes / 1024.0 << " KiB at " << resolution << "x" << resolution << "\n";
         return failures ? 1 : 0;

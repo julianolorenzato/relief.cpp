@@ -21,7 +21,7 @@ ReliefView::~ReliefView()
 
 // ─── Public API ───────────────────────────────────────────────────────────────
 
-QOpenGLTexture *ReliefView::uploadPlanes(const std::array<std::optional<tex::Texture>, 6> &planes,
+QOpenGLTexture *ReliefView::uploadPlanes(const std::optional<tex::Texture> *planes, int layers,
                                          QOpenGLTexture::Filter filter)
 {
     if (!planes[0] || !planes[0]->valid())
@@ -36,10 +36,10 @@ QOpenGLTexture *ReliefView::uploadPlanes(const std::array<std::optional<tex::Tex
     QOpenGLTexture *texture = new QOpenGLTexture(QOpenGLTexture::Target2DArray);
     texture->setFormat(static_cast<QOpenGLTexture::TextureFormat>(glfmt::internalFormat(format)));
     texture->setSize(w, h);
-    texture->setLayers(6);
+    texture->setLayers(layers);
     texture->setMipLevels(1);
     texture->allocateStorage();
-    for (int layer = 0; layer < 6; layer++)
+    for (int layer = 0; layer < layers; layer++)
     {
         if (!planes[layer] || planes[layer]->format != format || planes[layer]->width() != w ||
             planes[layer]->height() != h)
@@ -57,9 +57,12 @@ QOpenGLTexture *ReliefView::uploadPlanes(const std::array<std::optional<tex::Tex
 void ReliefView::uploadPlanesTextures()
 {
     deleteTextures();
-    this->depthTex = uploadPlanes(this->mesh_->depthPlanes(), QOpenGLTexture::Nearest);
-    this->colorTex = uploadPlanes(this->mesh_->colorPlanes(), QOpenGLTexture::Linear);
-    this->normalTex = uploadPlanes(this->mesh_->normalPlanes(), QOpenGLTexture::Linear);
+    const auto &depth = this->mesh_->depthPlanes();
+    const auto &color = this->mesh_->colorPlanes();
+    const auto &normal = this->mesh_->normalPlanes();
+    this->depthTex = uploadPlanes(depth.data(), (int)depth.size(), QOpenGLTexture::Nearest);
+    this->colorTex = uploadPlanes(color.data(), (int)color.size(), QOpenGLTexture::Linear);
+    this->normalTex = uploadPlanes(normal.data(), (int)normal.size(), QOpenGLTexture::Linear);
 }
 
 QOpenGLShaderProgram *ReliefView::bindSurfaceProgram(int debugView)

@@ -86,32 +86,42 @@ class Mesh {
     ///         point), G/B repeat it and A is 255.
     const std::optional<tex::Texture>& heightTexture() const { return heightTexture_; }
 
-    /// @return The baked depth planes (nullopt entries if not baked), ordered X+, X-, Y+, Y-,
-    ///         Z+, Z- (index `axis * 2 + (negative ? 1 : 0)`). Each is R16 holding the
-    ///         distance from the plane to the nearest outward-facing surface, as a fraction of
-    ///         the box thickness along the axis, in [0, 1] scaled to [0, kDepthMax]. Texels the
-    ///         mesh does not cover hold kDepthEmpty (65535), which doubles as the silhouette
-    ///         mask. Texels span the plane's local coordinates ((axis + 1) % 3, (axis + 2) % 3)
-    ///         over the box extents (see op::bboxproj).
-    const std::array<std::optional<tex::Texture>, 6>& depthPlanes() const { return depthPlanes_; }
-
-    /// @return The baked color of the planes, same ordering and extent as depthPlanes().
-    ///         Each is RGBA8 with RGB = the color texture sampled at the surface the depth
-    ///         plane sees (mid grey if the mesh has no color texture) and A = 255. Texels the
-    ///         mesh does not cover are filled from their covered neighbours (see tex::dilate),
-    ///         so bilinear filtering does not bleed black at the silhouette.
-    const std::array<std::optional<tex::Texture>, 6>& colorPlanes() const { return colorPlanes_; }
-
-    /// @return The baked smooth normals of the planes, same ordering and extent as
-    ///         depthPlanes(). Each is RG8 holding the object-space unit normal (interpolated
-    ///         from the vertex normals) octahedral-encoded, each component mapped from [-1, 1]
-    ///         to [0, 255]. Uncovered texels are dilated like colorPlanes().
-    const std::array<std::optional<tex::Texture>, 6>& normalPlanes() const { return normalPlanes_; }
-
+    /// Number of surface hits stored per ray along an axis.
+    static constexpr int kAxisHits = 4;
     /// Depth value stored in depthPlanes() for the largest representable distance.
     static constexpr uint16_t kDepthMax = 65534;
-    /// Depth value stored in depthPlanes() for texels the mesh does not cover.
+    /// Depth value stored in depthPlanes() for a hit the ray does not have.
     static constexpr uint16_t kDepthEmpty = 65535;
+
+    /// @return The baked depth planes (nullopt entries if not baked), one per axis X, Y, Z.
+    ///         Each is RGBA16: the rays run along the axis through every texel center, and
+    ///         channel k (R, G, B, A) holds the k-th surface the ray hits, counting from the
+    ///         axis' negative end, as a fraction of the box thickness along the axis in
+    ///         [0, 1] scaled to [0, kDepthMax]. Both front- and back-facing surfaces count, so
+    ///         a ray through a closed solid has an even number of hits: entry, exit, entry,
+    ///         exit. Missing hits (a ray has fewer than kAxisHits, or the mesh does not cover
+    ///         the texel) are kDepthEmpty and come last. A point is inside the solid along
+    ///         the ray when an odd number of hits lie before it. A ray with more than
+    ///         kAxisHits hits is reduced by repeatedly filling in its thinnest gap between
+    ///         two slabs, which keeps every slab and the parity.
+    ///         Texels span the plane's local coordinates ((axis + 1) % 3, (axis + 2) % 3) over
+    ///         the box extents (see op::bboxproj).
+    const std::array<std::optional<tex::Texture>, 3>& depthPlanes() const { return depthPlanes_; }
+
+    /// @return The baked color of every hit, indexed `axis * kAxisHits + hit` (the hit order of
+    ///         depthPlanes()), with the same extent as the depth planes. Each is RGBA8 with
+    ///         RGB = the color texture sampled at the hit surface (mid grey if the mesh has no
+    ///         color texture) and A = 255 where the ray has that hit. Texels without it are
+    ///         filled from their covered neighbours (see tex::dilate), so bilinear filtering
+    ///         does not bleed black at the silhouette.
+    const std::array<std::optional<tex::Texture>, 3 * kAxisHits>& colorPlanes() const { return colorPlanes_; }
+
+    /// @return The baked smooth normals of every hit, same indexing and extent as
+    ///         colorPlanes(). Each is RG8 holding the object-space unit normal (interpolated
+    ///         from the vertex normals, pointing outward whichever way the hit faces)
+    ///         octahedral-encoded, each component mapped from [-1, 1] to [0, 255]. Texels
+    ///         without the hit are dilated like colorPlanes().
+    const std::array<std::optional<tex::Texture>, 3 * kAxisHits>& normalPlanes() const { return normalPlanes_; }
 
     // ---- Texture mutation ----
 
@@ -273,16 +283,16 @@ class Mesh {
     // ---- Baking ----
 
     /**
-     * @brief Bakes the 6 planes of the mesh's axis-aligned bounding box.
+     * @brief Bakes the mesh's layered depth views along the 3 axes of its bounding box.
      *
-     * For each of the box's 6 planes, the mesh is looked at orthographically from
-     * outside the box. Each texel of the plane is sampled at its center and, for the
-     * nearest outward-facing triangle in front of it, stores the depth into depthPlanes()
-     * (kDepthEmpty where no triangle covers the texel), the color texture sampled at the
-     * interpolated UV into colorPlanes(), and the smooth (vertex-normal interpolated)
-     * normal into normalPlanes(). Color and normals are then dilated into the uncovered
-     * texels. All are ordered X+, X-, Y+, Y-, Z+, Z-, each `resolution` x `resolution`.
-     * The geometry is left untouched.
+     * For each axis, rays run through the center of every texel of a `resolution` x
+     * `resolution` grid spanning the box. The surfaces each ray hits, at most kAxisHits of them (front-
+     * and back-facing alike, coincident hits from triangles sharing an edge merged, and
+     * grazing hits that face both ways at the same depth dropped; a ray with more is reduced
+     * by filling in its thinnest gaps) are stored sorted into depthPlanes(),
+     * together with the color texture sampled at each hit (colorPlanes()) and the smooth
+     * (vertex-normal interpolated) normal (normalPlanes()). Color and normals are then
+     * dilated into the texels that lack the hit. The geometry is left untouched.
      *
      * @param resolution Side length, in texels, of each plane texture.
      */
@@ -362,9 +372,9 @@ class Mesh {
     std::optional<tex::Texture> colorTexture_;
     std::optional<tex::Texture> normalTexture_;
     std::optional<tex::Texture> heightTexture_;
-    std::array<std::optional<tex::Texture>, 6> depthPlanes_;
-    std::array<std::optional<tex::Texture>, 6> colorPlanes_;
-    std::array<std::optional<tex::Texture>, 6> normalPlanes_;
+    std::array<std::optional<tex::Texture>, 3> depthPlanes_;
+    std::array<std::optional<tex::Texture>, 3 * kAxisHits> colorPlanes_;
+    std::array<std::optional<tex::Texture>, 3 * kAxisHits> normalPlanes_;
 };
 
 }  // namespace mesh

@@ -183,7 +183,10 @@ void TexturesModule::rebuildMaps() {
     };
     auto depthViews = [] {
         std::vector<ChannelView> v;
-        v.push_back({"Depth (R)", {0, -1, -1}, true});
+        v.push_back({"Hit 0 (R)", {0, -1, -1}, true});
+        v.push_back({"Hit 1 (G)", {1, -1, -1}, true});
+        v.push_back({"Hit 2 (B)", {2, -1, -1}, true});
+        v.push_back({"Hit 3 (A)", {3, -1, -1}, true});
         return v;
     };
     auto normalViews = [] {
@@ -219,12 +222,16 @@ void TexturesModule::rebuildMaps() {
         add("Color", mesh.colorTexture(), tex::PixelFormat::RGBA8, standardViews());
         add("Normal", mesh.normalTexture(), tex::PixelFormat::RGBA8, standardViews());
         add("Height", mesh.heightTexture(), tex::PixelFormat::RGBA8, standardViews());
-        static const char* const kPlaneNames[6] = {"X+", "X-", "Y+", "Y-", "Z+", "Z-"};
-        for (int i = 0; i < 6; i++) {
-            const QString name = kPlaneNames[i];
-            add(name + " depth", mesh.depthPlanes()[i], tex::PixelFormat::R16, depthViews());
-            add(name + " color", mesh.colorPlanes()[i], tex::PixelFormat::RGBA8, standardViews());
-            add(name + " normal", mesh.normalPlanes()[i], tex::PixelFormat::RG8, normalViews());
+        static const char* const kAxisNames[3] = {"X", "Y", "Z"};
+        for (int axis = 0; axis < 3; axis++) {
+            const QString name = kAxisNames[axis];
+            add(name + " depth", mesh.depthPlanes()[axis], tex::PixelFormat::RGBA16, depthViews());
+            for (int k = 0; k < mesh::Mesh::kAxisHits; k++) {
+                const int layer = axis * mesh::Mesh::kAxisHits + k;
+                const QString hit = QString("%1 hit %2").arg(name).arg(k);
+                add(hit + " color", mesh.colorPlanes()[layer], tex::PixelFormat::RGBA8, standardViews());
+                add(hit + " normal", mesh.normalPlanes()[layer], tex::PixelFormat::RG8, normalViews());
+            }
         }
     }
 
